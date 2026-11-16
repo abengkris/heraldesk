@@ -29,3 +29,15 @@ class UnknownPlatformError(AccountError):
 
 class NoAccountsError(AccountError):
     """No social account matched the request."""
+
+
+class ContentError(DomainError):
+    """A content item operation cannot be completed."""
+
+
+class ContentItemNotFoundError(ContentError):
+    """The requested content item does not belong to the scoped profile."""
+
+
+class IllegalContentTransition(ContentError):
+    """The requested state change is not allowed by the content state machine."""

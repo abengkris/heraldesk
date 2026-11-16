@@ -33,6 +33,11 @@ llm:
   timeout_seconds: 60
   # Optional folder with <role>.json fake-provider fixtures.
   fake_fixtures_dir: ""
+research:
+  # auto: fake search with the fake LLM provider, DuckDuckGo HTML otherwise.
+  search_provider: auto
+  timeout_seconds: 10
+  max_results: 5
 server:
   # Loopback only by default. A non-loopback host requires authentication.
   host: 127.0.0.1

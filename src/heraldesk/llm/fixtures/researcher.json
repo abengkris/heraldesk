@@ -1,0 +1,13 @@
+{
+  "ideas": [
+    {
+      "title": "A smaller dashboard that loads faster",
+      "angle": "compare the old and new load times on the same hardware",
+      "evidence": [
+        "The old dashboard stays available for one more week.",
+        "The new build loads in under a second on the same hardware."
+      ],
+      "sources": ["https://example.com/research"]
+    }
+  ]
+}

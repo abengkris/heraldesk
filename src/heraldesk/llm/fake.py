@@ -45,16 +45,21 @@ class FakeLLM:
     fixtures: Mapping[str, str] | None = None
     fixture_dir: Path | None = None
     responses: Sequence[str] = ()
+    role_responses: Mapping[str, Sequence[str]] | None = None
     fail_with: LLMError | None = None
+    fail_agents: frozenset[str] = frozenset()
     cost_per_1k_tokens: float = DEFAULT_COST_PER_1K_TOKENS
     calls: list[LLMRequest] = field(default_factory=list)
     _response_index: int = field(default=0, init=False, repr=False)
+    _role_indexes: dict[str, int] = field(default_factory=dict, init=False, repr=False)
 
     def complete(self, request: LLMRequest) -> LLMResult:
         """Return the next scripted response, else the fixture for the agent role."""
         self.calls.append(request)
         if self.fail_with is not None:
             raise self.fail_with
+        if request.agent in self.fail_agents:
+            raise LLMError(f"fake provider failure for agent {request.agent}")
         text = self._next_text(request.agent)
         tokens_in = sum(estimate_tokens(message.content) for message in request.messages)
         tokens_out = estimate_tokens(text)
@@ -68,6 +73,12 @@ class FakeLLM:
         )
 
     def _next_text(self, role: str) -> str:
+        if self.role_responses is not None and role in self.role_responses:
+            sequence = self.role_responses[role]
+            if sequence:
+                index = min(self._role_indexes.get(role, 0), len(sequence) - 1)
+                self._role_indexes[role] = index + 1
+                return sequence[index]
         if self.responses:
             index = min(self._response_index, len(self.responses) - 1)
             self._response_index += 1

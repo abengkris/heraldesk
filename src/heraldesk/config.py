@@ -78,6 +78,14 @@ class TelegramSettings(_Section):
     allowed_chat_ids: list[int] = Field(default_factory=list)
 
 
+class ResearchSettings(_Section):
+    """Researcher web search. ``auto`` uses the fake when the LLM provider is fake."""
+
+    search_provider: Literal["auto", "fake", "duckduckgo"] = "auto"
+    timeout_seconds: float = Field(default=10.0, gt=0.0)
+    max_results: int = Field(default=5, ge=1, le=20)
+
+
 class Config(BaseSettings):
     """Validated global configuration."""
 
@@ -91,6 +99,7 @@ class Config(BaseSettings):
 
     version: Literal[1] = 1
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    research: ResearchSettings = Field(default_factory=ResearchSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
 

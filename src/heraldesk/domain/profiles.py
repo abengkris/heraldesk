@@ -62,6 +62,10 @@ DEFAULT_BANNED_YAML = """\
 banned_words: []
 banned_topics: []
 required_disclaimers: []
+# Optional lint overrides. Omit banned_buzzwords to use the built-in anti-slop list;
+# set it to [] to turn the buzzword rule off for this profile.
+# banned_buzzwords: []
+# allow_em_dash: false
 """
 
 

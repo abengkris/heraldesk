@@ -15,7 +15,17 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from heraldesk.db.models import AgentRun, AuditLog, Job, Profile, SocialAccount, utcnow
+from heraldesk.db.models import (
+    AgentRun,
+    AuditLog,
+    ContentIdea,
+    ContentItem,
+    Job,
+    PipelineRun,
+    Profile,
+    SocialAccount,
+    utcnow,
+)
 from heraldesk.db.scope import ProfileScope
 
 if TYPE_CHECKING:
@@ -441,3 +451,236 @@ class GlobalCostRepository:
     def cost_since(self, since: datetime) -> float:
         """Return the total cost of every profile's runs since *since*."""
         return self.totals_since(since).cost_usd
+
+
+class PipelineRunRepository:
+    """Scoped storage for pipeline executions."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(
+        self,
+        scope: ProfileScope,
+        *,
+        pipeline: str,
+        trigger: str,
+        started_at: datetime,
+        status: str = "running",
+    ) -> PipelineRun:
+        """Insert one pipeline run for the scoped profile."""
+        run = PipelineRun(
+            profile_id=scope.profile_id,
+            pipeline=pipeline,
+            trigger=trigger,
+            status=status,
+            started_at=started_at,
+        )
+        self._session.add(run)
+        self._session.flush()
+        return run
+
+    def get(self, scope: ProfileScope, run_id: int) -> PipelineRun | None:
+        """Return one pipeline run only when it belongs to the scoped profile."""
+        return self._session.scalar(
+            select(PipelineRun).where(
+                PipelineRun.id == run_id,
+                PipelineRun.profile_id == scope.profile_id,
+            )
+        )
+
+    def finish(
+        self,
+        scope: ProfileScope,
+        run_id: int,
+        *,
+        status: str,
+        finished_at: datetime,
+        error: str | None = None,
+    ) -> PipelineRun | None:
+        """Mark a scoped pipeline run finished."""
+        run = self.get(scope, run_id)
+        if run is None:
+            return None
+        run.status = status
+        run.finished_at = finished_at
+        run.error = error
+        self._session.flush()
+        return run
+
+
+class ContentIdeaRepository:
+    """Scoped access to researched content ideas."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(
+        self,
+        scope: ProfileScope,
+        *,
+        source: str,
+        title: str,
+        angle: str,
+        evidence: list[str],
+        status: str = "proposed",
+        created_at: datetime | None = None,
+    ) -> ContentIdea:
+        """Insert one idea for the scoped profile."""
+        idea = ContentIdea(
+            profile_id=scope.profile_id,
+            source=source,
+            title=title,
+            angle=angle,
+            evidence=list(evidence),
+            status=status,
+        )
+        if created_at is not None:
+            idea.created_at = created_at
+        self._session.add(idea)
+        self._session.flush()
+        return idea
+
+    def get(self, scope: ProfileScope, idea_id: int) -> ContentIdea | None:
+        """Return one idea only when it belongs to the scoped profile."""
+        return self._session.scalar(
+            select(ContentIdea).where(
+                ContentIdea.id == idea_id,
+                ContentIdea.profile_id == scope.profile_id,
+            )
+        )
+
+    def list(
+        self,
+        scope: ProfileScope,
+        *,
+        since: datetime | None = None,
+        limit: int = 200,
+    ) -> list[ContentIdea]:
+        """Return ideas of the scoped profile, newest first."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        query = select(ContentIdea).where(ContentIdea.profile_id == scope.profile_id)
+        if since is not None:
+            query = query.where(ContentIdea.created_at >= since)
+        ideas = self._session.scalars(query.order_by(ContentIdea.id.desc()).limit(limit)).all()
+        return list(ideas)
+
+    def mark_status(self, scope: ProfileScope, idea_id: int, status: str) -> ContentIdea | None:
+        """Change the status of one scoped idea."""
+        idea = self.get(scope, idea_id)
+        if idea is None:
+            return None
+        idea.status = status
+        self._session.flush()
+        return idea
+
+
+class ContentItemRepository:
+    """Scoped access to content items.
+
+    State changes deliberately have no repository method: callers must use
+    :func:`heraldesk.domain.content.transition`.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(
+        self,
+        scope: ProfileScope,
+        *,
+        platform: str,
+        body: str,
+        idea_id: int | None = None,
+        account_id: int | None = None,
+        media: dict[str, Any] | None = None,
+        risk_level: str | None = None,
+        risk_notes: str | None = None,
+        created_by_run_id: int | None = None,
+        state: str = "drafted",
+        created_at: datetime | None = None,
+    ) -> ContentItem:
+        """Insert one content item for the scoped profile."""
+        item = ContentItem(
+            profile_id=scope.profile_id,
+            account_id=account_id,
+            idea_id=idea_id,
+            platform=platform,
+            body=body,
+            media={} if media is None else media,
+            state=state,
+            risk_level=risk_level,
+            risk_notes=risk_notes,
+            created_by_run_id=created_by_run_id,
+        )
+        if created_at is not None:
+            item.created_at = created_at
+        self._session.add(item)
+        self._session.flush()
+        return item
+
+    def get(self, scope: ProfileScope, item_id: int) -> ContentItem | None:
+        """Return one content item only when it belongs to the scoped profile."""
+        return self._session.scalar(
+            select(ContentItem).where(
+                ContentItem.id == item_id,
+                ContentItem.profile_id == scope.profile_id,
+            )
+        )
+
+    def list(
+        self,
+        scope: ProfileScope,
+        *,
+        since: datetime | None = None,
+        states: tuple[str, ...] | None = None,
+        limit: int = 200,
+    ) -> list[ContentItem]:
+        """Return content items of the scoped profile, newest first."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        query = select(ContentItem).where(ContentItem.profile_id == scope.profile_id)
+        if since is not None:
+            query = query.where(ContentItem.created_at >= since)
+        if states is not None:
+            query = query.where(ContentItem.state.in_(states))
+        items = self._session.scalars(query.order_by(ContentItem.id.desc()).limit(limit)).all()
+        return list(items)
+
+    def update_draft(
+        self,
+        scope: ProfileScope,
+        item_id: int,
+        *,
+        body: str,
+        media: dict[str, Any] | None = None,
+    ) -> ContentItem | None:
+        """Replace the body and media of a scoped draft item."""
+        item = self.get(scope, item_id)
+        if item is None:
+            return None
+        item.body = body
+        if media is not None:
+            item.media = media
+        item.updated_at = utcnow()
+        self._session.flush()
+        return item
+
+    def set_risk(
+        self,
+        scope: ProfileScope,
+        item_id: int,
+        *,
+        risk_level: str | None,
+        risk_notes: str | None,
+    ) -> ContentItem | None:
+        """Store the Compliance result on a scoped item."""
+        item = self.get(scope, item_id)
+        if item is None:
+            return None
+        item.risk_level = risk_level
+        item.risk_notes = risk_notes
+        item.updated_at = utcnow()
+        self._session.flush()
+        return item

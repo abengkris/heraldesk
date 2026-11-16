@@ -92,6 +92,8 @@ class AgentRunner:
         temperature: float = 0.0,
         redactor: SecretRegistry | None = None,
         clock: Callable[[], datetime] | None = None,
+        pipeline_run_id: int | None = None,
+        persist: bool = True,
     ) -> None:
         if max_output_retries < 0 or max_provider_retries < 0:
             raise ValueError("retry limits must not be negative")
@@ -109,6 +111,8 @@ class AgentRunner:
         self._clock: Callable[[], datetime] = (
             clock if clock is not None else lambda: datetime.now(UTC)
         )
+        self._pipeline_run_id = pipeline_run_id
+        self._persist = persist
 
     def run(
         self,
@@ -245,37 +249,40 @@ class AgentRunner:
                 continue
 
             stored_output = self._redactor.redact_json(output.model_dump(mode="json"))
-            run = self._runs.add(
-                context.scope,
-                agent=agent.role,
-                status="succeeded",
-                model=last_model,
-                input=stored_input,
-                output=stored_output if isinstance(stored_output, dict) else {},
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
-                cost_usd=round(cost_usd, 6),
-                started_at=started_at,
-                finished_at=self._clock(),
-                pipeline_run_id=None,
-            )
-            self._audit.record(
-                context.scope,
-                actor=f"agent:{agent.role}",
-                action="agent.run_succeeded",
-                entity="agent_run",
-                entity_id=run.id,
-                payload={
-                    "agent": agent.role,
-                    "status": "succeeded",
-                    "model": last_model,
-                    "attempts": attempts,
-                    "cost_usd": round(cost_usd, 6),
-                },
-            )
-            self._session.commit()
+            run_id = 0
+            if self._persist:
+                run = self._runs.add(
+                    context.scope,
+                    agent=agent.role,
+                    status="succeeded",
+                    model=last_model,
+                    input=stored_input,
+                    output=stored_output if isinstance(stored_output, dict) else {},
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=round(cost_usd, 6),
+                    started_at=started_at,
+                    finished_at=self._clock(),
+                    pipeline_run_id=self._pipeline_run_id,
+                )
+                run_id = run.id
+                self._audit.record(
+                    context.scope,
+                    actor=f"agent:{agent.role}",
+                    action="agent.run_succeeded",
+                    entity="agent_run",
+                    entity_id=run_id,
+                    payload={
+                        "agent": agent.role,
+                        "status": "succeeded",
+                        "model": last_model,
+                        "attempts": attempts,
+                        "cost_usd": round(cost_usd, 6),
+                    },
+                )
+                self._session.commit()
             return AgentRunResult(
-                run_id=run.id,
+                run_id=run_id,
                 agent=agent.role,
                 output=output,
                 model=last_model,
@@ -317,38 +324,42 @@ class AgentRunner:
         error: str,
     ) -> NoReturn:
         message = _truncate(self._redactor.redact(error), MAX_ERROR_CHARS)
-        run = self._runs.add(
-            context.scope,
-            agent=agent.role,
-            status="failed",
-            model=model,
-            input=input_payload,
-            output=None,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            cost_usd=round(cost_usd, 6),
-            error=message,
-            started_at=started_at,
-            finished_at=self._clock(),
-            pipeline_run_id=None,
-        )
-        self._audit.record(
-            context.scope,
-            actor=f"agent:{agent.role}",
-            action="agent.run_failed",
-            entity="agent_run",
-            entity_id=run.id,
-            payload={
-                "agent": agent.role,
-                "status": "failed",
-                "model": model,
-                "attempts": attempts,
-                "cost_usd": round(cost_usd, 6),
-            },
-        )
-        self._session.commit()
+        run_id: int | None = None
+        if self._persist:
+            run = self._runs.add(
+                context.scope,
+                agent=agent.role,
+                status="failed",
+                model=model,
+                input=input_payload,
+                output=None,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=round(cost_usd, 6),
+                error=message,
+                started_at=started_at,
+                finished_at=self._clock(),
+                pipeline_run_id=self._pipeline_run_id,
+            )
+            run_id = run.id
+            self._audit.record(
+                context.scope,
+                actor=f"agent:{agent.role}",
+                action="agent.run_failed",
+                entity="agent_run",
+                entity_id=run_id,
+                payload={
+                    "agent": agent.role,
+                    "status": "failed",
+                    "model": model,
+                    "attempts": attempts,
+                    "cost_usd": round(cost_usd, 6),
+                },
+            )
+            self._session.commit()
         detail = "no LLM call was made" if attempts == 0 else f"failed after {attempts} LLM call(s)"
+        label = f"run {run_id}" if run_id is not None else "dry run"
         raise AgentRunError(
-            f"{agent.role} agent run {run.id} {detail}: {message}",
-            run_id=run.id,
+            f"{agent.role} {label} {detail}: {message}",
+            run_id=run_id,
         )

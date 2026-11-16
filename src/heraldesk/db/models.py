@@ -1,7 +1,8 @@
-"""SQLAlchemy models for the core domain and the agent runtime.
+"""SQLAlchemy models for the core domain, agent runtime and content pipeline.
 
 Tables owned by M1: profiles, social accounts, the audit log and the business jobs table.
-M2 adds ``agent_runs``. Content, approvals, inbox, metrics and pipelines arrive later.
+M2 adds ``agent_runs``. M3 adds ``pipeline_runs``, ``content_ideas`` and ``content_items``.
+Approvals, inbox and metrics arrive later.
 
 Every profile-owned table carries ``profile_id``. Access to those rows goes through
 :class:`heraldesk.db.scope.ProfileScope` in the repository layer.
@@ -219,7 +220,9 @@ class AgentRun(Base):
         ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
     agent: Mapped[str] = mapped_column(String(32), nullable=False)
-    pipeline_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pipeline_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pipeline_runs.id", ondelete="SET NULL"), nullable=True
+    )
     input: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     output: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     model: Mapped[str] = mapped_column(String(128), nullable=False, default="")
@@ -232,3 +235,140 @@ class AgentRun(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+CONTENT_STATES = (
+    "drafted",
+    "reviewed",
+    "pending_approval",
+    "approved",
+    "scheduled",
+    "published",
+    "blocked",
+    "rejected",
+    "cancelled",
+    "failed",
+    "needs_review",
+)
+
+
+class PipelineRun(Base):
+    """One execution of a deterministic pipeline such as ``daily_content``."""
+
+    __tablename__ = "pipeline_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running','succeeded','failed')",
+            name="ck_pipeline_runs_status",
+        ),
+        CheckConstraint(
+            "trigger IN ('cli','dry_run','schedule','manual')",
+            name="ck_pipeline_runs_trigger",
+        ),
+        Index("ix_pipeline_runs_profile_id", "profile_id"),
+        Index("ix_pipeline_runs_started_at", "started_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    pipeline: Mapped[str] = mapped_column(String(64), nullable=False)
+    trigger: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="cli", server_default="cli"
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="running", server_default="running"
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ContentIdea(Base):
+    """A research idea that may become one or more content items."""
+
+    __tablename__ = "content_ideas"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('proposed','used','discarded')",
+            name="ck_content_ideas_status",
+        ),
+        Index("ix_content_ideas_profile_id", "profile_id"),
+        Index("ix_content_ideas_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(String(64), nullable=False, default="research")
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    angle: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    evidence: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="proposed", server_default="proposed"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
+    )
+
+
+class ContentItem(Base):
+    """One draft or published post. State changes go through ``domain.content.transition``."""
+
+    __tablename__ = "content_items"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ("
+            "'drafted','reviewed','pending_approval','approved','scheduled','published',"
+            "'blocked','rejected','cancelled','failed','needs_review'"
+            ")",
+            name="ck_content_items_state",
+        ),
+        CheckConstraint(
+            "risk_level IS NULL OR risk_level IN ('low','medium','high','blocked')",
+            name="ck_content_items_risk_level",
+        ),
+        Index("ix_content_items_profile_id", "profile_id"),
+        Index("ix_content_items_state", "state"),
+        Index("ix_content_items_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("social_accounts.id", ondelete="SET NULL"), nullable=True
+    )
+    idea_id: Mapped[int | None] = mapped_column(
+        ForeignKey("content_ideas.id", ondelete="SET NULL"), nullable=True
+    )
+    platform: Mapped[str] = mapped_column(String(32), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    media: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    state: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="drafted", server_default="drafted"
+    )
+    risk_level: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    risk_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("content_items.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+        server_default=func.now(),
+    )

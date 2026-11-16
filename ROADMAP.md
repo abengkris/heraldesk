@@ -5,7 +5,7 @@ Each milestone is done only when its acceptance criteria pass and tests exist. D
 - [ ] M0 Foundation and packaging (`init`, `doctor`, SQLite, CI)
 - [x] M1 Core domain (profiles from files, accounts, audit log, kill switch, ProfileScope)
 - [x] M2 LLM layer and agent runtime (fake provider, cost tracking)
-- [ ] M3 `daily_content` pipeline with fake publisher
+- [x] M3 `daily_content` pipeline with fake publisher
 - [ ] M4 Approval flow and Telegram
 - [ ] M5 Scheduler, publisher, Threads and Nostr adapters
 - [ ] M6 Community manager and analyst

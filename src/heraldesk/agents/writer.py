@@ -35,6 +35,10 @@ class Writer(Agent):
         if data.evidence:
             lines.append("Evidence you may use:")
             lines.extend(f"- {item}" for item in data.evidence)
+        if data.feedback:
+            lines.append("A previous draft was rejected by deterministic lint:")
+            lines.extend(f"- {item}" for item in data.feedback)
+            lines.append("Rewrite the draft so every issue above is fixed.")
         lines.extend(
             [
                 "",

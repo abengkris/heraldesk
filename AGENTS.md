@@ -36,6 +36,7 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
 - Add an account: `uv run heraldesk account add <slug> --platform fake --handle @name --credential token=...`
 - Test accounts offline: `uv run heraldesk account test <slug>` (fake adapter in M1)
 - Run the Writer once and record the trace: `uv run heraldesk agent run writer <slug> --idea "..."`
+- Run the daily content pipeline: `uv run heraldesk run daily <slug> [--dry-run]` (`--dry-run` writes nothing)
 - Show agent run traces and cost: `uv run heraldesk runs <slug>`
 - Halt everything: `uv run heraldesk stop-all` (`--off` clears the global kill switch)
 - Try a throwaway instance: `HERALDESK_HOME=$(mktemp -d) uv run heraldesk init`

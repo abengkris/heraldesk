@@ -37,3 +37,22 @@ instead of guessing. Format: `- [ ] (date, milestone) question`. The maintainer 
   implemented yet" and exits 0), `--help`, `--version`. Recorded in `docs/decisions.md`.
 
 No open questions remain for M0. Later ambiguities are added here when their milestone starts.
+
+## Resolved during M3
+
+- [x] (2026-11-16, M3) **Does `--dry-run` persist drafts and run traces?**
+  **RESOLVED 2026-11-16: no.** `--dry-run` is a pure simulation. It creates no pipeline run,
+  idea, content item, agent run or audit entry, and only prints the would-be drafts. The
+  persistence acceptance test uses `heraldesk run daily` without the flag. Recorded in
+  `docs/decisions.md`.
+- [x] (2026-11-16, M3) **Where are lint rules configured per profile?**
+  **RESOLVED 2026-11-16:** in `banned.yaml`. `banned_buzzwords: null` uses the built-in list,
+  `banned_buzzwords: []` disables the rule, `banned_words` always applies, and
+  `allow_em_dash` defaults to false. No new profile file is introduced.
+- [x] (2026-11-16, M3) **Does M3 create `pipeline_runs` even though the scope names only the content tables?**
+  **RESOLVED 2026-11-16: yes.** The M2 decision says the table arrives with the first
+  pipeline, and the M3 acceptance criterion requires all runs to be recorded. `agent_runs`
+  gains its foreign key in migration `0004`.
+- [x] (2026-11-16, M3) **May the fake platform fallback create a `social_accounts` row?**
+  **RESOLVED 2026-11-16: no.** The fallback exists only in memory so `profile new` plus
+  `run daily` works offline; accounts are never auto-created.

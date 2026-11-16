@@ -52,8 +52,8 @@ def test_invalid_role_cannot_escape_the_prompt_folder(profile_setup: ProfileSetu
 
 def test_missing_prompt_is_a_config_error(profile_setup: ProfileSetup) -> None:
     with pytest.raises(AgentConfigError) as caught:
-        PromptLibrary(profile_setup.layout).load("strategist")
-    assert "strategist" in str(caught.value)
+        PromptLibrary(profile_setup.layout).load("analyst")
+    assert "analyst" in str(caught.value)
 
 
 def test_system_prompt_contains_profile_identity_banned_list_and_schema(

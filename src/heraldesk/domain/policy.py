@@ -101,15 +101,29 @@ class AutonomyPolicy(_StrictModel):
 
 
 class BannedLists(_StrictModel):
-    """Parsed ``banned.yaml``."""
+    """Parsed ``banned.yaml``.
+
+    ``banned_buzzwords`` controls the deterministic lint rule. ``None`` means "use the
+    built-in anti-slop list"; an explicit empty list turns the rule off for this profile.
+    """
 
     banned_words: list[str] = Field(default_factory=list)
     banned_topics: list[str] = Field(default_factory=list)
     required_disclaimers: list[str] = Field(default_factory=list)
+    banned_buzzwords: list[str] | None = None
+    allow_em_dash: bool = False
 
     @field_validator("banned_words", "banned_topics", "required_disclaimers")
     @classmethod
     def _clean_entries(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values if value.strip()]
+        return list(dict.fromkeys(cleaned))
+
+    @field_validator("banned_buzzwords")
+    @classmethod
+    def _clean_buzzwords(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
         cleaned = [value.strip() for value in values if value.strip()]
         return list(dict.fromkeys(cleaned))
 

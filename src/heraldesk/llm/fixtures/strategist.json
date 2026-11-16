@@ -1,0 +1,13 @@
+{
+  "slots": [
+    {
+      "platform": "fake",
+      "pillar": "product updates",
+      "goal": "explain one concrete improvement",
+      "angle": "show the measured result instead of adjectives"
+    }
+  ],
+  "pillars": ["product updates"],
+  "platforms": ["fake"],
+  "goals": ["explain one concrete improvement"]
+}

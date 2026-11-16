@@ -276,3 +276,54 @@ These answers close the open questions raised after the first full read of the s
   unchanged: no Windows skips, and the fix is data availability, not error handling. Verified by resolving
   `ZoneInfo("UTC")` and `ZoneInfo("Asia/Jakarta")` with `PYTHONTZPATH=""`, which hides the OS database just like
   Windows.
+
+## M3 implementation decisions (2026-11-16)
+
+- **M3 adds three tables in migration `0004`:** `pipeline_runs`, `content_ideas` and `content_items`. It also adds
+  the nullable foreign key `agent_runs.pipeline_run_id -> pipeline_runs.id` promised by the M2 decision. Every table
+  carries `profile_id`; `content_items` has `state`, `risk_level`, `risk_notes`, `media`, `idea_id`, `account_id`,
+  `parent_id` and `created_by_run_id` as documented in architecture section 4.
+- **The content state machine lives in `domain/content.py` and only `transition()` changes a state.** The legal M3
+  edges are: drafted -> reviewed/blocked/cancelled/needs_review; reviewed -> pending_approval/blocked/cancelled;
+  pending_approval -> approved/rejected/blocked/cancelled; approved -> scheduled/cancelled; scheduled ->
+  published/failed/cancelled; failed -> scheduled/needs_review/cancelled; needs_review -> cancelled. `published`,
+  `blocked`, `rejected` and `cancelled` are terminal. The human edit path blocked/rejected -> drafted is deliberately
+  left to the M4 approval service, so M3 cannot bypass Compliance.
+- **`heraldesk run daily --dry-run` writes nothing at all.** It runs the same deterministic simulation and prints
+  the would-be drafts, but creates no `pipeline_runs`, `content_ideas`, `content_items`, `agent_runs` or audit rows.
+  The agent runner gained a `persist=False` mode that skips traces, audit and commits. Persistence tests use
+  `heraldesk run daily` without the flag.
+- **The fake platform fallback does not create a `social_accounts` row.** When a profile has no account, the
+  pipeline targets `fake` in memory so `profile new` can be exercised offline. Accounts are only read, never
+  auto-created.
+- **Lint configuration lives in `banned.yaml`.** `banned_buzzwords: null` (or omitted) uses the built-in anti-slop
+  list, `banned_buzzwords: []` disables that rule, `banned_words` are always enforced, and `allow_em_dash: false`
+  rejects U+2014 by default. Two failed lint attempts move a draft to `needs_review`; Compliance is not called for a
+  draft that never passed lint.
+- **Compliance fails closed.** A provider error, exhausted call budget or invalid Compliance output moves the draft
+  to `blocked` with a reason such as `compliance unavailable`. A `blocked` risk verdict also blocks. Nothing that
+  fails Compliance can reach `pending_approval` or `approved`.
+- **Deduplication uses the last 60 days of ideas and content bodies.** Text is case-folded, punctuation is removed and
+  whitespace collapsed. A candidate is a near-duplicate when it equals an existing fingerprint, is contained in it,
+  or reaches a `difflib` ratio of 0.8. Duplicates inside the same run are also rejected.
+- **The combined per-draft LLM budget is four calls.** The pipeline allocates the remaining budget across Writer lint
+  retries and Compliance by lowering `AgentRunner`'s output retry allowance. When the budget is exhausted after lint,
+  the draft is blocked as `compliance unavailable`; before lint it goes to `needs_review`.
+- **Researcher search is behind `tools.web_search.WebSearch`.** The fake is the default whenever the LLM provider is
+  fake (`research.search_provider: auto`), which keeps tests and CI offline. The real provider is DuckDuckGo HTML
+  (no API key) with a 10 s timeout. Every URL must be HTTPS, contain no credentials in the URL, resolve to a public
+  address, and pass loopback/private/link-local/reserved/metadata checks before the request is made. Search evidence
+  is untrusted data wrapped in explicit delimiters.
+- **User-facing draft bodies are redacted before persistence and printing.** `SecretRegistry` removes known credential
+  values and recognisable token shapes from content bodies, evidence, risk notes and pipeline errors. Tests assert a
+  model-echoed `sk-...` token never reaches `content_items`, `agent_runs`, audit payloads or pipeline output.
+- **`run daily` accepts `active` and `draft` profiles but refuses `paused` profiles and either kill switch.** M3 is
+  hardcoded `draft_only`, so allowing a draft profile to produce drafts cannot publish anything. The autonomy engine
+  remains M4.
+- **The Designer step is a deterministic placeholder.** No image model is called in M3. Each draft stores a
+  `visual_brief` and `alt_text` in `content_items.media` with `source: designer_placeholder_m3`.
+- **No approvals service, autonomy engine, scheduler, publisher or Telegram code is added in M3.**
+- **Test updates:** revision expectations move from `0003` to `0004`; the CLI command surface gains the `run` group;
+  the missing-prompt test now uses a role that still has no prompt (`analyst`). New M3 tests cover every legal and
+  illegal state transition, lint accept/reject cases, 60-day dedupe, dry-run zero writes, pipeline end to end,
+  Compliance fail-closed, SSRF rejection and secret redaction.
