@@ -24,9 +24,13 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
 ## Commands (keep this section up to date as the project grows)
 - Install dev deps: `uv sync`
 - Run tests: `uv run pytest`
+- Run the core cross-platform subset (what Windows CI runs): `uv run pytest -m core`
 - Lint/format: `uv run ruff check . && uv run ruff format .`
 - Type check: `uv run mypy src/heraldesk`
-- Run app: `uv run heraldesk serve`
+- Run app: `uv run heraldesk serve` (M0 stub)
+- Initialise an instance: `uv run heraldesk init`
+- Diagnose an instance offline: `uv run heraldesk doctor` (network checks are opt-in with `--online`)
+- Try a throwaway instance: `HERALDESK_HOME=$(mktemp -d) uv run heraldesk init`
 
 ## Code conventions
 - Type hints on all public functions. `mypy --strict` on `core/` and `domain/`.

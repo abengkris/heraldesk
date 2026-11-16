@@ -1,0 +1,88 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "heraldesk"
+dynamic = ["version"]
+description = "Your autonomous social media department. Self-hosted, open source, single-user."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12,<3.13"
+authors = [{ name = "Abeng" }]
+keywords = ["social-media", "automation", "self-hosted", "llm", "agents"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3.12",
+  "Typing :: Typed",
+]
+dependencies = [
+  "alembic>=1.14",
+  "cryptography>=43",
+  "pydantic-settings>=2.6",
+  "pyyaml>=6.0.2",
+  "rich>=13.9",
+  "sqlalchemy>=2.0.36",
+  "typer>=0.15",
+]
+
+[project.scripts]
+heraldesk = "heraldesk.cli.main:app"
+hdesk = "heraldesk.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/abengkris/heraldesk"
+Documentation = "https://github.com/abengkris/heraldesk/blob/main/docs/architecture.md"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.14",
+  "pytest>=8.3",
+  "ruff>=0.8",
+  "types-pyyaml>=6.0.12",
+]
+
+[tool.hatch.version]
+path = "src/heraldesk/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/heraldesk"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"alembic" = "heraldesk/_alembic"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "alembic", "alembic.ini", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "core: cross-platform core tests, also run on Windows",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/versions/*" = ["E501", "F401"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/heraldesk"]
+mypy_path = "src"
+show_error_codes = true

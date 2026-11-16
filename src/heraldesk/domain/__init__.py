@@ -1,0 +1,1 @@
+"""Heraldesk domain package."""
