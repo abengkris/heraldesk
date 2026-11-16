@@ -1,21 +1,29 @@
 """Heraldesk command line interface.
 
-M0 exposes only ``init``, ``doctor`` and a ``serve`` stub. Content, accounts, queues and
-reports arrive in later milestones.
+M1 exposes the M0 bootstrap commands plus profile, account and global off-switch control.
+Content, queues, reports and the server arrive in later milestones.
 """
 
 from __future__ import annotations
 
-from typing import Annotated, NoReturn
+from typing import Annotated
 
 import typer
-from rich.console import Console
 from rich.table import Table
 
 from heraldesk import __version__
+from heraldesk.cli.account import account_app
+from heraldesk.cli.common import abort, console, session_for
+from heraldesk.cli.profile import profile_app
+from heraldesk.core.audit import AuditService
 from heraldesk.core.bootstrap import BootstrapError, initialize
 from heraldesk.core.crypto import CryptoError
 from heraldesk.core.doctor import CheckStatus, has_failures, run_checks
+from heraldesk.core.locks import (
+    KillSwitchError,
+    engage_global_kill_switch,
+    release_global_kill_switch,
+)
 from heraldesk.paths import LayoutError
 
 app = typer.Typer(
@@ -23,12 +31,8 @@ app = typer.Typer(
     no_args_is_help=True,
     help="Self-hosted autonomous social media department.",
 )
-console = Console()
-
-
-def _abort(message: str) -> NoReturn:
-    console.print(f"[bold red]error:[/bold red] {message}")
-    raise typer.Exit(code=1)
+app.add_typer(profile_app, name="profile")
+app.add_typer(account_app, name="account")
 
 
 def _version_callback(value: bool) -> None:
@@ -58,7 +62,7 @@ def init_command() -> None:
     try:
         result = initialize()
     except (BootstrapError, CryptoError, LayoutError) as exc:
-        _abort(str(exc))
+        abort(str(exc))
 
     console.print("[bold]Heraldesk is initialised.[/bold]")
     console.print(f"Data folder: {result.layout.home}")
@@ -110,6 +114,51 @@ def doctor_command(
         console.print("[green]All checks passed.[/green]")
 
 
+@app.command("stop-all")
+def stop_all_command(
+    off: Annotated[
+        bool, typer.Option("--off", help="Clear the global kill switch instead of engaging it.")
+    ] = False,
+) -> None:
+    """Engage or clear the global kill switch. It outranks every profile setting."""
+    with session_for() as (layout, session):
+        service = AuditService(session)
+        try:
+            if off:
+                changed = release_global_kill_switch(layout)
+                if changed:
+                    service.record(
+                        None,
+                        actor="user",
+                        action="killswitch.disengaged",
+                        entity="killswitch",
+                        payload={"scope": "global", "enabled": False},
+                    )
+                console.print(
+                    "[bold red]Global kill switch cleared.[/bold red]"
+                    if changed
+                    else "Global kill switch was already clear."
+                )
+            else:
+                changed = engage_global_kill_switch(layout)
+                if changed:
+                    service.record(
+                        None,
+                        actor="user",
+                        action="killswitch.engaged",
+                        entity="killswitch",
+                        payload={"scope": "global", "enabled": True},
+                    )
+                console.print(
+                    "[bold red]Global kill switch engaged.[/bold red] "
+                    "Publishing and replies are halted for every profile."
+                    if changed
+                    else "Global kill switch was already engaged."
+                )
+        except KillSwitchError as exc:
+            abort(str(exc))
+
+
 @app.command("serve")
 def serve_command(
     host: Annotated[str | None, typer.Option(help="Bind address (reserved for M7).")] = None,
@@ -121,7 +170,7 @@ def serve_command(
         bool, typer.Option("--no-telegram", help="Disable Telegram (reserved).")
     ] = False,
 ) -> None:
-    """Run the server. Not implemented in M0."""
+    """Run the server. Not implemented yet."""
     _ = (host, port, no_web, no_telegram)
     console.print("heraldesk serve is not implemented yet.")
     console.print("M0 ships the CLI bootstrap only; the server arrives in M7.")

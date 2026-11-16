@@ -30,6 +30,12 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
 - Run app: `uv run heraldesk serve` (M0 stub)
 - Initialise an instance: `uv run heraldesk init`
 - Diagnose an instance offline: `uv run heraldesk doctor` (network checks are opt-in with `--online`)
+- Create a profile skeleton: `uv run heraldesk profile new <slug> --name "Name" --type company --timezone UTC --languages en,id`
+- Validate profile files: `uv run heraldesk profile reload [slug]`
+- Control a profile: `uv run heraldesk profile pause|resume|killswitch <slug>`
+- Add an account: `uv run heraldesk account add <slug> --platform fake --handle @name --credential token=...`
+- Test accounts offline: `uv run heraldesk account test <slug>` (fake adapter in M1)
+- Halt everything: `uv run heraldesk stop-all` (`--off` clears the global kill switch)
 - Try a throwaway instance: `HERALDESK_HOME=$(mktemp -d) uv run heraldesk init`
 
 ## Code conventions

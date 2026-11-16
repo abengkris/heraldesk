@@ -13,6 +13,9 @@ from pathlib import Path
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from heraldesk.db import models  # noqa: F401  (register models on Base.metadata)
+from heraldesk.db.base import Base
+
 config = context.config
 
 if not config.get_main_option("sqlalchemy.url"):
@@ -20,7 +23,7 @@ if not config.get_main_option("sqlalchemy.url"):
     database = (home / "heraldesk.db").resolve()
     config.set_main_option("sqlalchemy.url", f"sqlite:///{database.as_posix()}")
 
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:

@@ -187,3 +187,36 @@ These answers close the open questions raised after the first full read of the s
 - **Tests never touch the real data folder.** An autouse fixture points `HERALDESK_HOME` at `tmp_path` for every
   test. Permission tests assert mode bits (not effective access), so they still work when the suite runs as root.
 
+## M1 implementation decisions (2026-11-16)
+
+- **M1 schema is exactly four tables.** `profiles`, `social_accounts`, `audit_log` and the business `jobs` table are
+  created by migration `0002`. Content, approvals, inbox and metrics stay deferred to their milestones.
+- **Profile metadata lives in YAML front matter at the top of `soul.md`.** The architecture lists the profile files
+  but no metadata file, while `profiles` needs name, type, timezone and languages. Front matter keeps the file set
+  unchanged and still makes the files the source of truth. Without front matter the slug becomes the display name and
+  safe defaults apply (`type: other`, `timezone: UTC`, `languages: [en]`).
+- **All four profile files are required.** `soul.md`, `brief.md`, `policy.yaml` and `banned.yaml` must exist; `voice/`
+  is optional. Missing files fail `profile reload` with the offending path instead of silently using defaults. Empty
+  policy/banned YAML files are valid and use safe defaults; an empty `brief.md` is not.
+- **`profile new` creates a `draft` profile.** It writes a non-interactive skeleton with `default_mode: draft_only` and
+  never activates the profile. The user edits the files, runs `profile reload`, then `profile resume`.
+- **The global kill switch is a marker file, not a table.** `$HERALDESK_HOME/killswitch` is created with mode 600 by
+  `heraldesk stop-all` and removed by `stop-all --off`. Reason: the marker is independent of profile rows and schema
+  tables, so every process can check it cheaply; `stop-all` still requires an initialised instance so the action is
+  audited. Per-profile kill switches stay in `profiles.kill_switch`. Precedence is global, per-profile, `paused`,
+  `draft`, then allowed.
+- **`ProfileScope` is the only profile data path.** `ProfileRepository`, `SocialAccountRepository`, `AuditRepository`
+  and `JobRepository` take `scope` as their first argument after `self` and filter every query by `profile_id`.
+  `ProfileCatalog` is the single global exception: it creates the first row (before an id exists) and lists metadata
+  for `profile list`; it never exposes profile file content. `profiles.id` is itself the profile id, so the
+  `profiles` table does not duplicate it in a second `profile_id` column.
+- **Audit append-only is enforced in the service, not with SQLite triggers.** `AuditService` and `AuditRepository` have
+  no update/delete methods. Payload keys that look like secrets (`token`, `password`, `credential`, `api_key`, ...)
+  are rejected so a future caller cannot accidentally write credentials into the audit log. Redacted metadata only,
+  as decided for retention.
+- **`account test` uses the fake adapter for every platform in M1.** Real adapters arrive in M5. The fake adapter does
+  no network I/O and accepts a non-empty `token` credential, which keeps `account add|test` useful offline.
+- **Known platform names are validated at add time.** M1 accepts `fake`, `threads`, `nostr`, `x`, `facebook`,
+  `instagram` and `linkedin`; adding others is a typo error. This does not claim the real adapters exist yet.
+- **M1 tests that are cross-platform carry `pytest.mark.core`.** This makes the Windows CI subset meaningful for the
+  new profile, policy, crypto, audit, isolation, account and off-switch tests.

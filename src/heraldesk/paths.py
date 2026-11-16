@@ -18,6 +18,7 @@ DATA_SUBDIRS = ("profiles", "agents", "logs", "backups")
 DB_FILENAME = "heraldesk.db"
 CONFIG_FILENAME = "heraldesk.yaml"
 KEY_FILENAME = "secret.key"
+KILLSWITCH_FILENAME = "killswitch"
 ENV_FILENAME = ".env"
 
 
@@ -54,6 +55,11 @@ class Layout:
     def env_path(self) -> Path:
         """Path to the gitignored ``.env`` file that holds LLM API keys."""
         return self.home / ENV_FILENAME
+
+    @property
+    def killswitch_path(self) -> Path:
+        """Marker file for the global kill switch (present means publishing is halted)."""
+        return self.home / KILLSWITCH_FILENAME
 
     @property
     def subdirs(self) -> tuple[Path, ...]:

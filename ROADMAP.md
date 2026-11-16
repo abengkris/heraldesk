@@ -3,7 +3,7 @@
 Each milestone is done only when its acceptance criteria pass and tests exist. Details in `docs/architecture.md` section 13.
 
 - [ ] M0 Foundation and packaging (`init`, `doctor`, SQLite, CI)
-- [ ] M1 Core domain (profiles from files, accounts, audit log, kill switch, ProfileScope)
+- [x] M1 Core domain (profiles from files, accounts, audit log, kill switch, ProfileScope)
 - [ ] M2 LLM layer and agent runtime (fake provider, cost tracking)
 - [ ] M3 `daily_content` pipeline with fake publisher
 - [ ] M4 Approval flow and Telegram
