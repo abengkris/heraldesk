@@ -32,6 +32,8 @@ dependencies = [
   "pyyaml>=6.0.2",
   "rich>=13.9",
   "sqlalchemy>=2.0.36",
+  # Provides the IANA timezone database where the OS has none (Windows, minimal containers).
+  "tzdata>=2024.1",
   "typer>=0.15",
 ]
 

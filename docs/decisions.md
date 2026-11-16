@@ -267,3 +267,12 @@ These answers close the open questions raised after the first full read of the s
 - **Retry budget across a future pipeline:** the R5 limit of 4 LLM calls per draft is not implemented in M2 because
   there is no pipeline. M2 enforces the per-run limit (2 retries). M3 must keep the combined budget when lint returns
   and schema retries land.
+- **`tzdata>=2024.1` is an unconditional runtime dependency.** Windows ships no system IANA timezone database (no
+  `/usr/share/zoneinfo` equivalent), so `zoneinfo.ZoneInfo(...)` cannot resolve keys such as `UTC` or `Asia/Jakarta`
+  and raises `ModuleNotFoundError: No module named 'tzdata'` underneath, which `llm/budget.py` and profile validation
+  surface as `ValueError: unknown IANA timezone ...`. This broke the Windows-only core tests in CI #3 (commit
+  `7b6a1e7`). The dependency is not marked `sys_platform == "win32"` because minimal container images also lack the
+  OS database, and an unconditional dependency keeps one code path everywhere. Tests, budget logic and CI are
+  unchanged: no Windows skips, and the fix is data availability, not error handling. Verified by resolving
+  `ZoneInfo("UTC")` and `ZoneInfo("Asia/Jakarta")` with `PYTHONTZPATH=""`, which hides the OS database just like
+  Windows.
