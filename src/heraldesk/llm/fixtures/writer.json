@@ -1,0 +1,7 @@
+{
+  "body": "We shipped a smaller dashboard today. It loads in under a second on the same hardware, and the old version stays available for one more week.",
+  "variants": [
+    "The dashboard is smaller and faster now. The old version stays for one more week."
+  ],
+  "hashtags": ["#release"]
+}

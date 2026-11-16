@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -37,6 +37,19 @@ class ConfigError(Exception):
     """Raised when the configuration file cannot be read or validated."""
 
 
+class _HeraldeskDotEnvSource(DotEnvSettingsSource):
+    """Read only Heraldesk settings from ``.env``.
+
+    ``.env`` also holds provider API keys (``DEEPSEEK_API_KEY`` and friends). Those must
+    not be treated as configuration fields, otherwise strict validation rejects them.
+    """
+
+    def __call__(self) -> dict[str, Any]:
+        data = super().__call__()
+        fields = set(self.settings_cls.model_fields)
+        return {key: value for key, value in data.items() if key.split("__", 1)[0] in fields}
+
+
 class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -46,6 +59,9 @@ class LLMSettings(_Section):
 
     default_model: str = ""
     max_daily_cost_usd: float = Field(default=5.0, ge=0.0)
+    provider: Literal["auto", "litellm", "fake"] = "auto"
+    timeout_seconds: float = Field(default=60.0, gt=0.0)
+    fake_fixtures_dir: str = ""
 
 
 class ServerSettings(_Section):
@@ -92,7 +108,7 @@ class Config(BaseSettings):
         dotenv_file = _dotenv_file.get()
         if dotenv_file is not None:
             sources.append(
-                DotEnvSettingsSource(
+                _HeraldeskDotEnvSource(
                     settings_cls,
                     env_file=dotenv_file,
                     env_file_encoding="utf-8",

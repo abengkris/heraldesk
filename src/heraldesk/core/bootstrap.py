@@ -24,9 +24,15 @@ DEFAULT_CONFIG_YAML = """\
 # LLM API keys belong in .env (plaintext, gitignored) or the environment, never here.
 version: 1
 llm:
+  # auto: fake provider when default_model is empty or starts with "fake/",
+  # LiteLLM otherwise. "fake" and "litellm" force one provider.
+  provider: auto
   # LiteLLM model name, for example "deepseek/deepseek-chat" or "ollama/llama3.2".
   default_model: ""
   max_daily_cost_usd: 5.0
+  timeout_seconds: 60
+  # Optional folder with <role>.json fake-provider fixtures.
+  fake_fixtures_dir: ""
 server:
   # Loopback only by default. A non-loopback host requires authentication.
   host: 127.0.0.1

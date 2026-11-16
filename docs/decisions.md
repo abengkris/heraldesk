@@ -220,3 +220,50 @@ These answers close the open questions raised after the first full read of the s
   `instagram` and `linkedin`; adding others is a typo error. This does not claim the real adapters exist yet.
 - **M1 tests that are cross-platform carry `pytest.mark.core`.** This makes the Windows CI subset meaningful for the
   new profile, policy, crypto, audit, isolation, account and off-switch tests.
+
+## M2 implementation decisions (2026-11-16)
+
+- **M2 adds exactly one table, `agent_runs`** (migration `0003`). Columns follow architecture section 4.
+  `pipeline_run_id` is a nullable integer **without a foreign key** until the `pipeline_runs` table arrives with
+  the first pipeline in M3. Reason: creating an empty pipeline table now would pre-empt M3 schema decisions.
+- **Runtime dependencies added:** `litellm` (mandated by architecture sections 2 and 5 for provider access) and
+  `python-dotenv` (reading provider keys from `$HERALDESK_HOME/.env`; pydantic-settings already depends on it, but
+  the dependency is now explicit because Heraldesk imports it directly). LiteLLM is imported lazily inside the
+  provider so the fake path, the CLI and CI never pay its import cost.
+- **The fake provider is the default for an empty or `fake/...` model.** `llm.provider` is `auto|litellm|fake`;
+  `auto` picks fake for an empty model or one starting with `fake/`, and LiteLLM otherwise. CI and all tests use the
+  fake provider only. The real-provider check stays manual, as decided in R5/Test realism.
+- **Fake fixtures are files, not code.** Bundled fixtures live at `heraldesk/llm/fixtures/<role>.json`;
+  `llm.fake_fixtures_dir` points at a user folder that takes precedence. The fake provider also accepts an in-memory
+  response script, which is how retry and failure tests are built.
+- **Structured output:** the system prompt embeds the Pydantic JSON Schema, the provider is asked for JSON mode, and
+  the reply is parsed and validated. Invalid output is retried **at most twice per AgentRunner call** (3 calls total),
+  matching architecture section 5. A provider *error* is retried once, per R5. Then the run is marked `failed` and
+  `AgentRunError` is raised. Nothing is skipped silently, so the future pipeline fails closed.
+- **One `agent_runs` row per AgentRunner call.** `tokens_in`, `tokens_out` and `cost_usd` are totals across every
+  attempt of that run. The row and its `agent.run_succeeded` / `agent.run_failed` audit entry are committed
+  immediately, so a failure remains visible when the caller's transaction is rolled back. M3 pipelines must account
+  for this commit boundary.
+- **Daily cost cap is enforced globally on the UTC day**, before every provider call and including retries. Spend is
+  read from `agent_runs`, so it survives restarts and equals what `heraldesk runs` reports. Per-profile reporting uses
+  midnight in the profile timezone. A cap of `0` blocks every call. The in-run cost accumulated before a retry is
+  counted as pending spend, so retries cannot sneak under the cap.
+- **`.env` holds both Heraldesk settings and provider keys.** The dotenv source now filters keys whose root is not a
+  Heraldesk config field, so `DEEPSEEK_API_KEY=...` no longer fails strict validation. `build_llm` copies missing
+  keys from `.env` into the process environment for LiteLLM; real environment variables win. Values are never logged.
+- **Prompt precedence:** bundled `heraldesk/agents/prompts/<role>.md`, overridden by
+  `$HERALDESK_HOME/agents/<role>.md`. Role names are validated so a prompt path cannot escape the folder. The system
+  prompt is built only from the role template, `soul.md`, `banned.yaml`, platform constraints and the output schema.
+  Environment variables and credentials are never read into prompts.
+- **Secrets are redacted before persistence.** `agent_runs.input`, `agent_runs.output`, `agent_runs.error` and audit
+  payloads pass through a registry built from credential-shaped environment variables plus known token shapes
+  (`sk-...`, `ghp_...`, bearer headers). A model that echoes a key cannot plant it in the database.
+- **Platform limits are provisional prompt metadata.** `platforms/base.PROVISIONAL_CONSTRAINTS` holds documented
+  public limits used by Writer prompts; real adapters replace them with `constraints()` in M5.
+- **M2 CLI surface adds two commands:** `heraldesk agent run writer <profile> --idea ...` (the manual proof path, and
+  the only way to exercise a real provider before pipelines exist) and `heraldesk runs <profile>` (architecture
+  section 9 assigns `runs` to M2). Pipelines still arrive in M3; the placeholder modules and other agents stay
+  docstrings.
+- **Retry budget across a future pipeline:** the R5 limit of 4 LLM calls per draft is not implemented in M2 because
+  there is no pipeline. M2 enforces the per-run limit (2 retries). M3 must keep the combined budget when lint returns
+  and schema retries land.

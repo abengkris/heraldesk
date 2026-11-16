@@ -12,10 +12,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from heraldesk.db.models import AuditLog, Job, Profile, SocialAccount, utcnow
+from heraldesk.db.models import AgentRun, AuditLog, Job, Profile, SocialAccount, utcnow
 from heraldesk.db.scope import ProfileScope
 
 if TYPE_CHECKING:
@@ -317,3 +317,127 @@ class JobRepository:
         else:
             query = query.where(Job.profile_id == scope.profile_id)
         return self._session.scalar(query)
+
+
+@dataclass(frozen=True, slots=True)
+class RunTotals:
+    """Aggregated agent run counts, tokens and cost."""
+
+    runs: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cost_usd: float = 0.0
+
+
+def _totals_from_row(row: Any) -> RunTotals:
+    return RunTotals(
+        runs=int(row[0] or 0),
+        tokens_in=int(row[1] or 0),
+        tokens_out=int(row[2] or 0),
+        cost_usd=float(row[3] or 0.0),
+    )
+
+
+class AgentRunRepository:
+    """Scoped storage for agent run traces."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(
+        self,
+        scope: ProfileScope,
+        *,
+        agent: str,
+        status: str,
+        model: str,
+        input: dict[str, Any],
+        started_at: datetime,
+        output: dict[str, Any] | None = None,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        cost_usd: float = 0.0,
+        error: str | None = None,
+        finished_at: datetime | None = None,
+        pipeline_run_id: int | None = None,
+    ) -> AgentRun:
+        """Insert one run trace for the scoped profile."""
+        run = AgentRun(
+            profile_id=scope.profile_id,
+            agent=agent,
+            pipeline_run_id=pipeline_run_id,
+            input=input,
+            output=output,
+            model=model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=cost_usd,
+            status=status,
+            error=error,
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+        self._session.add(run)
+        self._session.flush()
+        return run
+
+    def list(self, scope: ProfileScope, *, limit: int = 50) -> list[AgentRun]:
+        """Return newest runs of the scoped profile first."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        runs = self._session.scalars(
+            select(AgentRun)
+            .where(AgentRun.profile_id == scope.profile_id)
+            .order_by(AgentRun.id.desc())
+            .limit(limit)
+        ).all()
+        return list(runs)
+
+    def totals_since(
+        self, scope: ProfileScope, since: datetime, until: datetime | None = None
+    ) -> RunTotals:
+        """Aggregate runs of one profile from *since* (inclusive) to *until* (exclusive)."""
+        query = select(
+            func.count(AgentRun.id),
+            func.coalesce(func.sum(AgentRun.tokens_in), 0),
+            func.coalesce(func.sum(AgentRun.tokens_out), 0),
+            func.coalesce(func.sum(AgentRun.cost_usd), 0.0),
+        ).where(
+            AgentRun.profile_id == scope.profile_id,
+            AgentRun.started_at >= since,
+        )
+        if until is not None:
+            query = query.where(AgentRun.started_at < until)
+        return _totals_from_row(self._session.execute(query).one())
+
+    def cost_since(self, scope: ProfileScope, since: datetime) -> float:
+        """Return the cost of one profile's runs since *since*."""
+        return self.totals_since(scope, since).cost_usd
+
+
+class GlobalCostRepository:
+    """Read-only cross-profile cost aggregate for the global daily cap.
+
+    This is the one place allowed to read agent runs without a :class:`ProfileScope`,
+    because ``max_daily_cost_usd`` is enforced globally. It returns sums only, never rows
+    or profile content.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def totals_since(self, since: datetime, until: datetime | None = None) -> RunTotals:
+        """Aggregate every profile's runs from *since* (inclusive) to *until* (exclusive)."""
+        query = select(
+            func.count(AgentRun.id),
+            func.coalesce(func.sum(AgentRun.tokens_in), 0),
+            func.coalesce(func.sum(AgentRun.tokens_out), 0),
+            func.coalesce(func.sum(AgentRun.cost_usd), 0.0),
+        ).where(AgentRun.started_at >= since)
+        if until is not None:
+            query = query.where(AgentRun.started_at < until)
+        return _totals_from_row(self._session.execute(query).one())
+
+    def cost_since(self, since: datetime) -> float:
+        """Return the total cost of every profile's runs since *since*."""
+        return self.totals_since(since).cost_usd

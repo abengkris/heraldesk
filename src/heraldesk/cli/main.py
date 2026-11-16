@@ -1,7 +1,7 @@
 """Heraldesk command line interface.
 
-M1 exposes the M0 bootstrap commands plus profile, account and global off-switch control.
-Content, queues, reports and the server arrive in later milestones.
+M0-M2 expose bootstrap, profile, account, off-switch, single-agent and run-trace commands.
+Pipelines, queues, reports and the server arrive in later milestones.
 """
 
 from __future__ import annotations
@@ -13,8 +13,10 @@ from rich.table import Table
 
 from heraldesk import __version__
 from heraldesk.cli.account import account_app
+from heraldesk.cli.agent import agent_app
 from heraldesk.cli.common import abort, console, session_for
 from heraldesk.cli.profile import profile_app
+from heraldesk.cli.runs import runs_command
 from heraldesk.core.audit import AuditService
 from heraldesk.core.bootstrap import BootstrapError, initialize
 from heraldesk.core.crypto import CryptoError
@@ -33,6 +35,8 @@ app = typer.Typer(
 )
 app.add_typer(profile_app, name="profile")
 app.add_typer(account_app, name="account")
+app.add_typer(agent_app, name="agent")
+app.command("runs")(runs_command)
 
 
 def _version_callback(value: bool) -> None:
