@@ -19,6 +19,12 @@ from heraldesk import paths
 from heraldesk.config import ConfigError, is_loopback, load_config
 from heraldesk.core.crypto import CryptoError, key_is_secure, validate_key
 from heraldesk.db.engine import WAL_MODE, inspect_database
+from heraldesk.db.migrations import MigrationError, head_revision
+from heraldesk.telegram.credentials import (
+    TelegramConfigError,
+    resolve_bot_token,
+    token_source,
+)
 
 REQUIRED_PYTHON = (3, 12)
 
@@ -49,7 +55,10 @@ def run_checks(home: Path | None = None, *, online: bool = False) -> list[CheckR
         _check_layout(layout),
         _check_key(layout),
         _check_database(layout),
+        _check_migrations(layout),
         _check_config(layout),
+        _check_telegram(layout),
+        _check_reports(layout),
         _check_env_file(layout),
         _check_server_host(layout),
     ]
@@ -156,6 +165,29 @@ def _check_database(layout: paths.Layout) -> CheckResult:
     )
 
 
+def _check_migrations(layout: paths.Layout) -> CheckResult:
+    status = inspect_database(layout.db_path)
+    if status.error is not None or not status.exists:
+        return CheckResult(
+            "migrations",
+            CheckStatus.WARN,
+            "skipped because the database is not readable",
+        )
+    if not status.revision:
+        return CheckResult("migrations", CheckStatus.WARN, "no schema revision; run heraldesk init")
+    try:
+        head = head_revision(layout.db_path)
+    except MigrationError as exc:
+        return CheckResult("migrations", CheckStatus.FAIL, str(exc))
+    if status.revision != head:
+        return CheckResult(
+            "migrations",
+            CheckStatus.FAIL,
+            f"database revision {status.revision}, expected {head}; run heraldesk init",
+        )
+    return CheckResult("migrations", CheckStatus.PASS, f"revision {head}")
+
+
 def _check_config(layout: paths.Layout) -> CheckResult:
     if not layout.config_path.is_file():
         return CheckResult(
@@ -168,6 +200,62 @@ def _check_config(layout: paths.Layout) -> CheckResult:
     except ConfigError as exc:
         return CheckResult("heraldesk.yaml", CheckStatus.FAIL, str(exc))
     return CheckResult("heraldesk.yaml", CheckStatus.PASS, str(layout.config_path))
+
+
+def _check_telegram(layout: paths.Layout) -> CheckResult:
+    try:
+        config = load_config(layout.home)
+    except ConfigError:
+        return CheckResult(
+            "telegram token",
+            CheckStatus.WARN,
+            "skipped because the configuration is invalid",
+        )
+    if not config.telegram.enabled:
+        return CheckResult("telegram token", CheckStatus.PASS, "telegram is disabled")
+    try:
+        token = resolve_bot_token(layout)
+    except TelegramConfigError as exc:
+        return CheckResult("telegram token", CheckStatus.FAIL, str(exc))
+    if token is None:
+        return CheckResult(
+            "telegram token",
+            CheckStatus.FAIL,
+            "telegram.enabled is true but no bot token is configured; "
+            "run 'heraldesk telegram token set'",
+        )
+    return CheckResult(
+        "telegram token",
+        CheckStatus.PASS,
+        f"configured (source: {token_source(layout)})",
+    )
+
+
+def _check_reports(layout: paths.Layout) -> CheckResult:
+    reports = layout.reports
+    if reports.exists():
+        if not reports.is_dir():
+            return CheckResult("reports", CheckStatus.FAIL, f"{reports} is not a directory")
+        try:
+            with tempfile.NamedTemporaryFile(dir=reports, prefix=".doctor-", delete=True):
+                pass
+        except OSError as exc:
+            return CheckResult("reports", CheckStatus.FAIL, f"not writable: {exc}")
+        return CheckResult("reports", CheckStatus.PASS, str(reports))
+    try:
+        with tempfile.NamedTemporaryFile(dir=layout.home, prefix=".doctor-", delete=True):
+            pass
+    except OSError as exc:
+        return CheckResult(
+            "reports",
+            CheckStatus.FAIL,
+            f"{reports} is missing and cannot be created: {exc}",
+        )
+    return CheckResult(
+        "reports",
+        CheckStatus.PASS,
+        f"{reports} not created yet; the data folder is writable",
+    )
 
 
 def _check_env_file(layout: paths.Layout) -> CheckResult:

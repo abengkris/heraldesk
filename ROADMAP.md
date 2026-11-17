@@ -10,8 +10,8 @@ Each milestone is done only when its acceptance criteria pass and tests exist. D
 - [x] M5 Scheduler and publisher (fake adapter; real Threads/Nostr adapters deferred with a documented `NotSupported` reason)
 - [x] M6 Telegram notifications and inbox basics (Community manager and analyst deferred; see `docs/decisions.md`)
 - [x] M7 Server and background jobs (FastAPI, scheduler sweep, Telegram polling; web UI and `/api/v1` deferred)
-- [ ] M8 Plugins and more adapters
-- [ ] M9 v0.1.0 release (PyPI, Docker, docs)
+- [x] M8 Community and analyst CLI (manual inbox triage, deterministic reports; plugin loader and extra adapters deferred)
+- [x] M9 v1.0.0 hardening and release docs (backup/restore, doctor checks, changelog, README; Docker/PyPI/plugin publishing deferred)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video generation,
 auto-DM outreach, scraping without official APIs.

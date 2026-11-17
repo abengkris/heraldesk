@@ -673,3 +673,49 @@ These answers close the open questions raised after the first full read of the s
   reply success and failure, already-triaged refusal, ignore reasons, unlinked messages, report period
   boundaries, created-at cohort metrics, failure/post limits, zero-data reports, byte-identical repeat
   runs, redaction and every new CLI command.
+
+## M9 implementation decisions (2026-11-17)
+
+- **M9 in this repository is hardening and release documentation, not Docker or PyPI publishing.** The
+  architecture section 13 row for M9 names a Docker image, PyPI publication, compose/systemd examples and a
+  full documentation set. The requested milestone is narrower: backup/restore, doctor hardening, error and
+  secret checks, release docs and version 1.0.0. Docker, PyPI, compose, systemd and a release workflow are
+  deliberately deferred. No new social API, web UI, LLM feature or plugin loader is added.
+- **Backups are private ZIP archives built with the standard library.** `heraldesk backup` snapshots SQLite
+  through the `sqlite3` online backup API and writes a `manifest.json`, `heraldesk.db`, `heraldesk.yaml`,
+  `profiles/**` and `agents/**` (user prompt overrides). The archive is mode 600. `.env`, `logs/`, generated
+  `reports/`, previous backups and SQLite `-wal`/`-shm` files are never included. No new dependency is added.
+- **`secret.key` is opt-in.** The default backup excludes it; `--with-credentials` includes it and refuses to
+  run when the key is missing. A backup without the key can never restore the database because the encrypted
+  social credentials would be unusable.
+- **Restore follows the M0 rule exactly.** An archive without `secret.key` fails with: "Backup has no
+  secret.key, cannot decrypt social credentials. Restore profiles and config only with --without-credentials,
+  or provide secret.key". `--without-credentials` restores config, profiles and agents only; it does not restore
+  `heraldesk.db` and does not restore `secret.key`. Full database restore therefore requires a backup made with
+  `--with-credentials`.
+- **Restore is safe by default.** The archive is validated before the target is touched: unsafe paths (`..`,
+  absolute paths, unexpected roots, duplicate entries), invalid ZIPs, invalid manifests, invalid configs and
+  unreadable databases are rejected. Existing target data requires `--force`; the default output lives under
+  `$HERALDESK_HOME/backups/`. A restored `secret.key` is re-applied with mode 600.
+- **Backup and restore are audited.** `backup.created` records the path, entry count and whether the key was
+  included. `backup.restored` is written to the restored database after a full restore. `--without-credentials`
+  has no restored database to write to, so it prints the files-only result and the next `heraldesk init` step.
+  Audit payloads never contain the key, credentials or archive contents.
+- **Doctor hardening adds three checks.** `migrations` compares the stored Alembic revision with the installed
+  head and fails when the database is behind or unknown. `telegram token` fails when `telegram.enabled` is true
+  but no token can be resolved, and never prints the token. `reports` verifies the reports directory is writable,
+  or that it can be created from a writable data folder. Existing Python, data-folder, key, database, config,
+  `.env` and loopback checks remain.
+- **Kill-switch precedence is unchanged.** M9 adds regression tests proving the global switch blocks manual
+  publishing, the CLI scheduler sweep and the `heraldesk serve` background sweep. No gate was relaxed.
+- **CLI error hardening is tested, not implemented as a blanket exception handler.** All DB-backed commands
+  were exercised without an initialised home, with a missing database and with an invalid config. They exit 1
+  with a clear message and no traceback; secret-bearing environment values never appear in the output. Backup
+  and restore errors use the same `abort()` path.
+- **Version 1.0.0 is read from `src/heraldesk/__init__.py`.** `pyproject.toml` keeps `dynamic = ["version"]` and
+  already points hatchling at that file, so no duplicate static version is added. `CHANGELOG.md` records the
+  M0-M9 milestones and the deferred scope.
+- **Test updates:** new `test_backup.py`, `test_cli_m9.py` and `test_hardening.py`; `test_doctor.py` gains the
+  migration, Telegram-token and reports checks; the CLI command set gains `backup` and `restore`; the serve
+  background path gains a kill-switch regression. The schema and Alembic head remain `0009`; M9 adds no
+  migration.

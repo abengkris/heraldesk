@@ -25,7 +25,16 @@ def _plain_output(text: str) -> str:
 def test_command_surface_is_init_doctor_serve_profile_account_stop_all() -> None:
     commands = {command.name for command in app.registered_commands}
     groups = {group.name for group in app.registered_groups}
-    assert commands == {"init", "doctor", "serve", "stop-all", "runs", "publish"}
+    assert commands == {
+        "init",
+        "doctor",
+        "serve",
+        "stop-all",
+        "runs",
+        "publish",
+        "backup",
+        "restore",
+    }
     assert groups == {
         "profile",
         "account",
@@ -58,6 +67,8 @@ def test_help_lists_the_commands() -> None:
         "telegram",
         "inbox",
         "report",
+        "backup",
+        "restore",
     ):
         assert command in result.output
 

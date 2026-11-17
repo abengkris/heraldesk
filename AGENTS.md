@@ -31,7 +31,8 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
   (API at `/health`, `/status` and `/webhook/telegram`; scheduler sweep every 60 s; Telegram polling every 10 s
   when `telegram.enabled` and `telegram.mode: polling`)
 - Initialise an instance: `uv run heraldesk init`
-- Diagnose an instance offline: `uv run heraldesk doctor` (network checks are opt-in with `--online`)
+- Diagnose an instance offline: `uv run heraldesk doctor` (database migration head, config, `secret.key`,
+  Telegram token when enabled, writability and reports directory; network checks are opt-in with `--online`)
 - Create a profile skeleton: `uv run heraldesk profile new <slug> --name "Name" --type company --timezone UTC --languages en,id`
 - Validate profile files: `uv run heraldesk profile reload [slug]`
 - Control a profile: `uv run heraldesk profile pause|resume|killswitch <slug>`
@@ -54,6 +55,10 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
 - Generate deterministic reports: `uv run heraldesk report weekly [--week YYYY-Www]`,
   `uv run heraldesk report monthly [--month YYYY-MM]` (written to `$HERALDESK_HOME/reports/`)
 - Show agent run traces and cost: `uv run heraldesk runs <slug>`
+- Back up the instance: `uv run heraldesk backup [--output PATH] [--with-credentials]`
+  (`--with-credentials` includes `secret.key`; a backup without it cannot restore the database)
+- Restore a backup: `uv run heraldesk restore <archive> [--without-credentials] [--force]`
+  (`--without-credentials` restores config, profiles and agents only, never the DB or key)
 - Halt everything: `uv run heraldesk stop-all` (`--off` clears the global kill switch)
 - Try a throwaway instance: `HERALDESK_HOME=$(mktemp -d) uv run heraldesk init`
 

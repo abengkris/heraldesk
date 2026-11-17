@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from alembic.config import Config as AlembicConfig
+from alembic.script import ScriptDirectory
 
 from heraldesk.db.engine import sqlite_url
 
@@ -37,3 +38,15 @@ def alembic_config(db_path: Path) -> AlembicConfig:
     config.set_main_option("script_location", str(scripts_directory()))
     config.set_main_option("sqlalchemy.url", sqlite_url(db_path))
     return config
+
+
+def head_revision(db_path: Path) -> str:
+    """Return the newest revision shipped by this installation."""
+    try:
+        script = ScriptDirectory.from_config(alembic_config(db_path))
+        head = script.get_current_head()
+    except Exception as exc:
+        raise MigrationError(f"cannot read the Alembic head: {exc}") from exc
+    if head is None:
+        raise MigrationError("the Alembic migration scripts have no head revision")
+    return head

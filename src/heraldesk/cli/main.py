@@ -1,9 +1,9 @@
 """Heraldesk command line interface.
 
 The CLI exposes bootstrap, profile, account, off-switch, single-agent, daily pipeline,
-run-trace, approval-queue, publishing, scheduler, Telegram, manual inbox triage and
-deterministic report commands. M7 adds the single-process server, which runs the API,
-scheduler and Telegram bot together. M8 adds ``inbox`` and ``report``.
+run-trace, approval-queue, publishing, scheduler, Telegram, manual inbox triage,
+deterministic report and backup/restore commands. M7 adds the single-process server, M8
+adds ``inbox`` and ``report``, and M9 adds ``backup`` and ``restore``.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from rich.table import Table
 from heraldesk import __version__
 from heraldesk.cli.account import account_app
 from heraldesk.cli.agent import agent_app
+from heraldesk.cli.backup import backup_command, restore_command
 from heraldesk.cli.common import abort, console, session_for
 from heraldesk.cli.inbox import inbox_app
 from heraldesk.cli.profile import profile_app
@@ -55,6 +56,8 @@ app.add_typer(inbox_app, name="inbox")
 app.add_typer(report_app, name="report")
 app.command("publish")(publish_command)
 app.command("runs")(runs_command)
+app.command("backup")(backup_command)
+app.command("restore")(restore_command)
 
 
 def _version_callback(value: bool) -> None:
