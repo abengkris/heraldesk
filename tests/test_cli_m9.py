@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
-from heraldesk import paths
+from heraldesk import __version__, paths
 from heraldesk.cli.main import app
 from heraldesk.core.audit import AuditService
 from heraldesk.core.backup import NO_KEY_MESSAGE, create_backup
@@ -197,8 +197,8 @@ def test_invalid_config_errors_never_print_a_token(
         assert "Traceback" not in result.output
 
 
-def test_version_is_1_0_0() -> None:
+def test_version_matches_the_package() -> None:
     result = invoke("--version")
 
     assert result.exit_code == 0
-    assert "heraldesk 1.0.0" in result.output
+    assert f"heraldesk {__version__}" in result.output
