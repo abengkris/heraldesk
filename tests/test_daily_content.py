@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import func, select
 
 from heraldesk.core.audit import AuditService
+from heraldesk.core.redact import SecretRegistry
 from heraldesk.db.models import (
     AgentRun,
     Approval,
@@ -24,10 +25,13 @@ from heraldesk.db.repositories import (
     ContentItemRepository,
     PipelineRunRepository,
     SocialAccountRepository,
+    TelegramNotificationRepository,
 )
 from heraldesk.domain.profiles import ProfileDefinition, load_profile
 from heraldesk.llm.fake import FakeLLM, json_fixture
 from heraldesk.pipelines.daily_content import DailyContentError, run_daily_content
+from heraldesk.telegram.fake import FakeTelegramAdapter
+from heraldesk.telegram.notifier import NotificationService
 from heraldesk.tools.web_search import FakeWebSearch
 from tests.conftest import ProfileSetup
 
@@ -46,6 +50,7 @@ def run_pipeline(
     now: datetime = NOW,
     dry_run: bool = False,
     definition: ProfileDefinition | None = None,
+    notifier: NotificationService | None = None,
 ):
     return run_daily_content(
         db_session,
@@ -58,6 +63,7 @@ def run_pipeline(
         cap_usd=5.0,
         dry_run=dry_run,
         now=now,
+        notifier=notifier,
     )
 
 
@@ -386,3 +392,39 @@ def test_strategist_failure_marks_the_pipeline_failed(
     run = db_session.scalars(select(PipelineRun)).one()
     assert run.status == "failed"
     assert run.error is not None
+
+
+def test_pending_approval_notifies_once(profile_setup: ProfileSetup, db_session) -> None:
+    telegram = FakeTelegramAdapter()
+    notifier = NotificationService(
+        db_session,
+        profile_setup.layout,
+        telegram,
+        allowed_chat_ids=(123456789,),
+        redactor=SecretRegistry.from_environment(),
+    )
+
+    result = run_pipeline(db_session, profile_setup, FakeLLM(), notifier=notifier)
+
+    assert result.items[0].state == "pending_approval"
+    assert telegram.send_calls == 1
+    rows = TelegramNotificationRepository(db_session).list(profile_setup.scope)
+    assert len(rows) == 1
+    assert rows[0].event == "approval_requested"
+
+
+def test_dry_run_does_not_send_telegram(profile_setup: ProfileSetup, db_session) -> None:
+    telegram = FakeTelegramAdapter()
+    notifier = NotificationService(
+        db_session,
+        profile_setup.layout,
+        telegram,
+        allowed_chat_ids=(123456789,),
+        redactor=SecretRegistry.from_environment(),
+    )
+
+    result = run_pipeline(db_session, profile_setup, FakeLLM(), dry_run=True, notifier=notifier)
+
+    assert result.dry_run is True
+    assert telegram.send_calls == 0
+    assert TelegramNotificationRepository(db_session).list(profile_setup.scope) == []

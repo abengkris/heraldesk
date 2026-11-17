@@ -26,6 +26,8 @@ from heraldesk.db.models import (
     PipelineRun,
     Profile,
     SocialAccount,
+    TelegramMessage,
+    TelegramNotification,
     utcnow,
 )
 from heraldesk.db.scope import ProfileScope
@@ -958,3 +960,123 @@ class ApprovalRepository:
         approval.updated_at = utcnow()
         self._session.flush()
         return approval
+
+
+class TelegramMessageRepository:
+    """Scoped storage for inbound Telegram messages.
+
+    ``scope=None`` is used only before a message is linked to a profile. Once a command
+    resolves a profile, the row is written with that scope.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(
+        self,
+        scope: ProfileScope | None,
+        *,
+        chat_id: int,
+        sender_id: int | None,
+        text: str,
+        command: str | None,
+        content_item_id: int | None,
+        response: str | None,
+        created_at: datetime | None = None,
+    ) -> TelegramMessage:
+        """Store one already-redacted inbound message."""
+        message = TelegramMessage(
+            profile_id=None if scope is None else scope.profile_id,
+            chat_id=chat_id,
+            sender_id=sender_id,
+            text=text,
+            command=command,
+            content_item_id=content_item_id,
+            response=response,
+            created_at=utcnow() if created_at is None else created_at,
+        )
+        self._session.add(message)
+        self._session.flush()
+        return message
+
+    def list(self, scope: ProfileScope, *, limit: int = 20) -> list[TelegramMessage]:
+        """Return the newest messages of one profile, newest first."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        messages = self._session.scalars(
+            select(TelegramMessage)
+            .where(TelegramMessage.profile_id == scope.profile_id)
+            .order_by(TelegramMessage.id.desc())
+            .limit(limit)
+        ).all()
+        return list(messages)
+
+
+class TelegramNotificationRepository:
+    """Scoped storage for the idempotent outbound notification ledger."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def find(
+        self,
+        scope: ProfileScope | None,
+        idempotency_key: str,
+    ) -> TelegramNotification | None:
+        """Return the notification for *idempotency_key* within the requested scope."""
+        query = select(TelegramNotification).where(
+            TelegramNotification.idempotency_key == idempotency_key
+        )
+        if scope is None:
+            query = query.where(TelegramNotification.profile_id.is_(None))
+        else:
+            query = query.where(TelegramNotification.profile_id == scope.profile_id)
+        return self._session.scalar(query)
+
+    def add(
+        self,
+        scope: ProfileScope | None,
+        *,
+        event: str,
+        idempotency_key: str,
+        status: str,
+        message_preview: str | None,
+        recipients: list[str],
+        error: str | None,
+        created_at: datetime | None = None,
+        sent_at: datetime | None = None,
+    ) -> TelegramNotification:
+        """Insert one notification ledger row."""
+        notification = TelegramNotification(
+            profile_id=None if scope is None else scope.profile_id,
+            event=event,
+            idempotency_key=idempotency_key,
+            status=status,
+            message_preview=message_preview,
+            recipients=list(recipients),
+            error=error,
+            created_at=utcnow() if created_at is None else created_at,
+            sent_at=sent_at,
+        )
+        self._session.add(notification)
+        self._session.flush()
+        return notification
+
+    def list(
+        self,
+        scope: ProfileScope | None,
+        *,
+        limit: int = 50,
+    ) -> list[TelegramNotification]:
+        """Return newest notification rows for a profile, or global rows for ``None``."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        query = select(TelegramNotification)
+        if scope is None:
+            query = query.where(TelegramNotification.profile_id.is_(None))
+        else:
+            query = query.where(TelegramNotification.profile_id == scope.profile_id)
+        rows = self._session.scalars(
+            query.order_by(TelegramNotification.id.desc()).limit(limit)
+        ).all()
+        return list(rows)

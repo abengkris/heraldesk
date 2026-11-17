@@ -35,6 +35,7 @@ from heraldesk.publisher import (
     publish_block_reason,
     publish_item,
 )
+from heraldesk.telegram.notifier import NotificationService
 
 SchedulerAdapterFactory = Callable[[str], PlatformAdapter]
 
@@ -102,6 +103,7 @@ def run_scheduler(
     cipher: CredentialCipher | None = None,
     actor: str = "system",
     retry_backoff_seconds: Sequence[int] = DEFAULT_RETRY_BACKOFF_SECONDS,
+    notifier: NotificationService | None = None,
 ) -> SchedulerResult:
     """Publish every due item, or list them with ``dry_run=True`` and write nothing.
 
@@ -183,6 +185,7 @@ def run_scheduler(
                 actor=actor,
                 trigger="scheduler",
                 retry_backoff_seconds=retry_backoff_seconds,
+                notifier=notifier,
             )
             entries.append(
                 replace(

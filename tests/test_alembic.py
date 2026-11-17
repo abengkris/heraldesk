@@ -28,6 +28,8 @@ def test_m1_schema_creates_the_core_domain_tables(initialized: InitResult) -> No
         "content_ideas",
         "content_items",
         "approvals",
+        "telegram_messages",
+        "telegram_notifications",
     }
 
 
@@ -45,6 +47,8 @@ def test_m1_profile_owned_tables_have_profile_id(initialized: InitResult) -> Non
                 "content_ideas",
                 "content_items",
                 "approvals",
+                "telegram_messages",
+                "telegram_notifications",
             ):
                 columns = {column["name"] for column in inspector.get_columns(table)}
                 assert "profile_id" in columns
@@ -90,6 +94,46 @@ def test_m5_publisher_columns_exist(initialized: InitResult) -> None:
     assert "ix_content_items_due" in indexes
 
 
+def test_m6_telegram_tables_and_columns_exist(initialized: InitResult) -> None:
+    engine = build_engine(initialized.layout.db_path)
+    try:
+        with engine.connect() as connection:
+            inspector = inspect(connection)
+            message_columns = {
+                column["name"] for column in inspector.get_columns("telegram_messages")
+            }
+            notification_columns = {
+                column["name"] for column in inspector.get_columns("telegram_notifications")
+            }
+            notification_indexes = {
+                index["name"] for index in inspector.get_indexes("telegram_notifications")
+            }
+    finally:
+        engine.dispose()
+    assert {
+        "profile_id",
+        "chat_id",
+        "sender_id",
+        "text",
+        "command",
+        "content_item_id",
+        "response",
+        "created_at",
+    } <= message_columns
+    assert {
+        "profile_id",
+        "event",
+        "idempotency_key",
+        "status",
+        "message_preview",
+        "recipients",
+        "error",
+        "created_at",
+        "sent_at",
+    } <= notification_columns
+    assert "ix_telegram_notifications_profile_id" in notification_indexes
+
+
 def test_migration_scripts_are_present() -> None:
     directory = scripts_directory()
     assert (directory / "env.py").is_file()
@@ -99,6 +143,7 @@ def test_migration_scripts_are_present() -> None:
     assert list((directory / "versions").glob("0004*.py"))
     assert list((directory / "versions").glob("0005*.py"))
     assert list((directory / "versions").glob("0006*.py"))
+    assert list((directory / "versions").glob("0007*.py"))
 
 
 def test_downgrade_to_base_clears_the_revision(initialized: InitResult) -> None:

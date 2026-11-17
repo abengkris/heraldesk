@@ -18,6 +18,7 @@ from heraldesk.llm.factory import build_llm, resolve_model
 from heraldesk.llm.types import LLMProvider
 from heraldesk.pipelines.daily_content import DailyContentError, run_daily_content
 from heraldesk.platforms.fake import FakeAdapter
+from heraldesk.telegram.runtime import notifier_for
 from heraldesk.tools.web_search import DuckDuckGoHTMLSearch, FakeWebSearch, WebSearch
 
 run_app = typer.Typer(
@@ -73,6 +74,7 @@ def daily_command(
                 cap_usd=config.llm.max_daily_cost_usd,
                 dry_run=dry_run,
                 adapter=FakeAdapter(),
+                notifier=notifier_for(session, layout),
             )
         except (DailyContentError, AgentError, LLMError, ValueError) as exc:
             abort(str(exc))

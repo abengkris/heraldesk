@@ -45,6 +45,18 @@ class PolicyAction(StrEnum):
     REPLY = "reply"
 
 
+class NotifyMode(StrEnum):
+    """How much Telegram traffic a profile wants.
+
+    ``off`` mutes every notification, ``approvals_only`` keeps just the human-approval
+    request, and ``all`` also includes publish, final-failure and kill-switch events.
+    """
+
+    OFF = "off"
+    APPROVALS_ONLY = "approvals_only"
+    ALL = "all"
+
+
 class PolicyRisk(StrEnum):
     """Risk levels a rule can match. ``blocked`` never reaches policy."""
 
@@ -107,6 +119,16 @@ class AutonomyPolicy(_StrictModel):
     quiet_hours: QuietHours | None = None
     max_posts_per_day: int = Field(default=3, ge=0)
     disclose_ai: bool = False
+    notify: NotifyMode = NotifyMode.ALL
+
+    @field_validator("notify", mode="before")
+    @classmethod
+    def _coerce_notify(cls, value: object) -> object:
+        # YAML 1.1 reads an unquoted ``off`` as False and ``on`` as True. Accept the
+        # documented ``notify: off`` spelling instead of forcing users to quote it.
+        if isinstance(value, bool):
+            return NotifyMode.OFF if value is False else NotifyMode.ALL
+        return value
 
 
 class BannedLists(_StrictModel):

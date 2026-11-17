@@ -20,6 +20,7 @@ CONFIG_FILENAME = "heraldesk.yaml"
 KEY_FILENAME = "secret.key"
 KILLSWITCH_FILENAME = "killswitch"
 ENV_FILENAME = ".env"
+TELEGRAM_TOKEN_FILENAME = "telegram.token"
 
 
 class LayoutError(Exception):
@@ -60,6 +61,11 @@ class Layout:
     def killswitch_path(self) -> Path:
         """Marker file for the global kill switch (present means publishing is halted)."""
         return self.home / KILLSWITCH_FILENAME
+
+    @property
+    def telegram_token_path(self) -> Path:
+        """Optional Fernet-encrypted Telegram bot token (mode 600)."""
+        return self.home / TELEGRAM_TOKEN_FILENAME
 
     @property
     def subdirs(self) -> tuple[Path, ...]:

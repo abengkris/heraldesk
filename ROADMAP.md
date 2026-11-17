@@ -8,7 +8,7 @@ Each milestone is done only when its acceptance criteria pass and tests exist. D
 - [x] M3 `daily_content` pipeline with fake publisher
 - [x] M4 Approval flow and autonomy (Telegram deferred)
 - [x] M5 Scheduler and publisher (fake adapter; real Threads/Nostr adapters deferred with a documented `NotSupported` reason)
-- [ ] M6 Community manager and analyst
+- [x] M6 Telegram notifications and inbox basics (Community manager and analyst deferred; see `docs/decisions.md`)
 - [ ] M7 Local web UI
 - [ ] M8 Plugins and more adapters
 - [ ] M9 v0.1.0 release (PyPI, Docker, docs)

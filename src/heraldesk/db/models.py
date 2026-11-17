@@ -2,8 +2,8 @@
 
 Tables owned by M1: profiles, social accounts, the audit log and the business jobs table.
 M2 adds ``agent_runs``. M3 adds ``pipeline_runs``, ``content_ideas`` and ``content_items``.
-M4 adds ``approvals``. M5 adds publisher metadata to ``content_items``. Inbox and metrics
-arrive later.
+M4 adds ``approvals``. M5 adds publisher metadata to ``content_items``. M6 adds
+``telegram_messages`` and ``telegram_notifications``. Metrics arrive later.
 
 Every profile-owned table carries ``profile_id``. Access to those rows goes through
 :class:`heraldesk.db.scope.ProfileScope` in the repository layer.
@@ -452,3 +452,88 @@ class Approval(Base):
         server_default=func.now(),
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+TELEGRAM_NOTIFICATION_EVENTS = (
+    "approval_requested",
+    "published",
+    "failed_final",
+    "killswitch",
+)
+
+TELEGRAM_NOTIFICATION_STATUSES = (
+    "sent",
+    "suppressed",
+    "failed",
+)
+
+
+class TelegramMessage(Base):
+    """One inbound Telegram message, stored redacted.
+
+    ``profile_id`` is nullable because a message can arrive before its command links it
+    to a profile or content item. The text is already redacted when it reaches this table.
+    """
+
+    __tablename__ = "telegram_messages"
+    __table_args__ = (
+        Index("ix_telegram_messages_profile_id", "profile_id"),
+        Index("ix_telegram_messages_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), nullable=True
+    )
+    chat_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    sender_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    command: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    content_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("content_items.id", ondelete="SET NULL"), nullable=True
+    )
+    response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
+    )
+
+
+class TelegramNotification(Base):
+    """One outbound notification event.
+
+    ``idempotency_key`` is unique, so a repeated scheduler run or a manual publisher call
+    cannot create a second row or send a second message for the same event.
+    """
+
+    __tablename__ = "telegram_notifications"
+    __table_args__ = (
+        CheckConstraint(
+            "event IN ('approval_requested','published','failed_final','killswitch')",
+            name="ck_telegram_notifications_event",
+        ),
+        CheckConstraint(
+            "status IN ('sent','suppressed','failed')",
+            name="ck_telegram_notifications_status",
+        ),
+        UniqueConstraint(
+            "idempotency_key",
+            name="uq_telegram_notifications_idempotency_key",
+        ),
+        Index("ix_telegram_notifications_profile_id", "profile_id"),
+        Index("ix_telegram_notifications_event", "event"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), nullable=True
+    )
+    event: Mapped[str] = mapped_column(String(32), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    message_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recipients: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

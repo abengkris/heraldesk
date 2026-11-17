@@ -19,6 +19,8 @@ from heraldesk.db.repositories import (
     JobRepository,
     ProfileRepository,
     SocialAccountRepository,
+    TelegramMessageRepository,
+    TelegramNotificationRepository,
 )
 from heraldesk.db.scope import ProfileScope, ScopeError
 from heraldesk.domain.accounts import add_account
@@ -102,6 +104,8 @@ def test_every_scoped_repository_method_takes_scope_first() -> None:
         JobRepository,
         ContentItemRepository,
         ApprovalRepository,
+        TelegramMessageRepository,
+        TelegramNotificationRepository,
     )
     for cls in classes:
         for name, method in inspect.getmembers(cls, inspect.isfunction):

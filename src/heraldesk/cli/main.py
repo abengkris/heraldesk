@@ -22,6 +22,7 @@ from heraldesk.cli.queue import queue_app
 from heraldesk.cli.run import run_app
 from heraldesk.cli.runs import runs_command
 from heraldesk.cli.scheduler import scheduler_app
+from heraldesk.cli.telegram import telegram_app
 from heraldesk.core.audit import AuditService
 from heraldesk.core.bootstrap import BootstrapError, initialize
 from heraldesk.core.crypto import CryptoError
@@ -32,6 +33,7 @@ from heraldesk.core.locks import (
     release_global_kill_switch,
 )
 from heraldesk.paths import LayoutError
+from heraldesk.telegram.runtime import notifier_for
 
 app = typer.Typer(
     add_completion=False,
@@ -44,6 +46,7 @@ app.add_typer(agent_app, name="agent")
 app.add_typer(run_app, name="run")
 app.add_typer(queue_app, name="queue")
 app.add_typer(scheduler_app, name="scheduler")
+app.add_typer(telegram_app, name="telegram")
 app.command("publish")(publish_command)
 app.command("runs")(runs_command)
 
@@ -136,17 +139,19 @@ def stop_all_command(
     """Engage or clear the global kill switch. It outranks every profile setting."""
     with session_for() as (layout, session):
         service = AuditService(session)
+        entry_id: int | str | None = None
         try:
             if off:
                 changed = release_global_kill_switch(layout)
                 if changed:
-                    service.record(
+                    entry = service.record(
                         None,
                         actor="user",
                         action="killswitch.disengaged",
                         entity="killswitch",
                         payload={"scope": "global", "enabled": False},
                     )
+                    entry_id = entry.id
                 console.print(
                     "[bold red]Global kill switch cleared.[/bold red]"
                     if changed
@@ -155,13 +160,14 @@ def stop_all_command(
             else:
                 changed = engage_global_kill_switch(layout)
                 if changed:
-                    service.record(
+                    entry = service.record(
                         None,
                         actor="user",
                         action="killswitch.engaged",
                         entity="killswitch",
                         payload={"scope": "global", "enabled": True},
                     )
+                    entry_id = entry.id
                 console.print(
                     "[bold red]Global kill switch engaged.[/bold red] "
                     "Publishing and replies are halted for every profile."
@@ -170,6 +176,15 @@ def stop_all_command(
                 )
         except KillSwitchError as exc:
             abort(str(exc))
+        if changed and entry_id is not None:
+            notifier = notifier_for(session, layout)
+            if notifier is not None:
+                notifier.notify_killswitch(
+                    None,
+                    slug=None,
+                    enabled=not off,
+                    event_id=str(entry_id),
+                )
 
 
 @app.command("serve")

@@ -102,3 +102,25 @@ No open questions remain for M0. Later ambiguities are added here when their mil
 - [x] (2026-11-17, M5) **Does the scheduler publish `draft_only` items after a human approves them?**
   **RESOLVED 2026-11-17: no.** `draft_only` means manual publishing only. After approval the item stays
   `approved`; `heraldesk publish <id>` is the only way out. Recorded in `docs/decisions.md`.
+
+## Resolved during M6
+
+- [x] (2026-11-17, M6) **Where is the Telegram bot token stored?**
+  **RESOLVED 2026-11-17:** environment, `.env`, or an encrypted `telegram.token` file protected by
+  `secret.key`. Never in `heraldesk.yaml` or SQLite plaintext. `telegram token set|status` manages the
+  encrypted file. Recorded in `docs/decisions.md`.
+- [x] (2026-11-17, M6) **Which chat receives profile notifications?**
+  **RESOLVED 2026-11-17:** every id in `telegram.allowed_chat_ids`; zero ids produces a suppressed
+  ledger row. Chat ids are partially masked in audit and CLI output. Recorded in
+  `docs/decisions.md`.
+- [x] (2026-11-17, M6) **What happens to notifications muted by `notify: off|approvals_only`?**
+  **RESOLVED 2026-11-17:** one `suppressed` notification row and one `telegram.suppressed` audit entry,
+  with no send. This keeps suppression final across scheduler re-runs. Recorded in
+  `docs/decisions.md`.
+- [x] (2026-11-17, M6) **Do manual publishes notify, or only scheduler publishes?**
+  **RESOLVED 2026-11-17:** both. The notification call lives in `publish_item`, so `heraldesk publish`
+  and the scheduler share the same code and idempotency keys. Recorded in `docs/decisions.md`.
+- [x] (2026-11-17, M6) **How does an inbound message choose a profile?**
+  **RESOLVED 2026-11-17:** approve/reject resolve it from the content item; `/queue` uses an optional
+  profile hint, then the single registered profile, otherwise replies with the profile list. No
+  chat-to-profile mapping is added in M6. Recorded in `docs/decisions.md`.

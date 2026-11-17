@@ -23,7 +23,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from sqlalchemy.orm import Session
 
@@ -53,6 +53,9 @@ from heraldesk.platforms.base import (
     PlatformAdapter,
     PublishRequest,
 )
+
+if TYPE_CHECKING:
+    from heraldesk.telegram.notifier import NotificationService
 
 MAX_PUBLISH_ATTEMPTS: Final = 3
 DEFAULT_RETRY_BACKOFF_SECONDS: Final[tuple[int, ...]] = (60, 300)
@@ -276,6 +279,47 @@ def _record_failure(
     )
 
 
+def _profile_slug(session: Session, scope: ProfileScope) -> str | None:
+    try:
+        return ProfileRepository(session).require(scope).slug
+    except RecordNotFound:
+        return None
+
+
+def _notify_published(
+    notifier: NotificationService | None,
+    session: Session,
+    scope: ProfileScope,
+    item_id: int,
+    *,
+    now: datetime,
+) -> None:
+    if notifier is None:
+        return
+    item = ContentItemRepository(session).get(scope, item_id)
+    slug = _profile_slug(session, scope)
+    if item is None or slug is None:
+        return
+    notifier.notify_published(scope, slug=slug, item=item, now=now)
+
+
+def _notify_failed_final(
+    notifier: NotificationService | None,
+    session: Session,
+    scope: ProfileScope,
+    item_id: int,
+    *,
+    now: datetime,
+) -> None:
+    if notifier is None:
+        return
+    item = ContentItemRepository(session).get(scope, item_id)
+    slug = _profile_slug(session, scope)
+    if item is None or slug is None:
+        return
+    notifier.notify_failed_final(scope, slug=slug, item=item, now=now)
+
+
 def publish_item(
     session: Session,
     layout: paths.Layout,
@@ -288,6 +332,7 @@ def publish_item(
     actor: str = "system",
     trigger: PublishTrigger = "scheduler",
     retry_backoff_seconds: Sequence[int] = DEFAULT_RETRY_BACKOFF_SECONDS,
+    notifier: NotificationService | None = None,
 ) -> PublishOutcome:
     """Publish one content item once, recording success or a retryable failure.
 
@@ -352,7 +397,7 @@ def publish_item(
         account = _resolve_account(session, scope, item, cipher)
     except ContentError as exc:
         error = redactor.redact(str(exc))[:MAX_AUDIT_TEXT]
-        return _record_failure(
+        outcome = _record_failure(
             session,
             scope,
             item,
@@ -364,6 +409,9 @@ def publish_item(
             trigger=trigger,
             backoff_seconds=retry_backoff_seconds,
         )
+        if outcome.retry_at is None:
+            _notify_failed_final(notifier, session, scope, item.id, now=current)
+        return outcome
 
     redactor = SecretRegistry.from_environment(extra_values=account.credentials.values())
     body = redactor.redact(item.body)
@@ -390,7 +438,7 @@ def publish_item(
             f"no publisher adapter for platform '{item.platform}' in M5; "
             "see docs/platforms/README.md"
         )
-        return _record_failure(
+        outcome = _record_failure(
             session,
             scope,
             item,
@@ -402,6 +450,9 @@ def publish_item(
             trigger=trigger,
             backoff_seconds=retry_backoff_seconds,
         )
+        if outcome.retry_at is None:
+            _notify_failed_final(notifier, session, scope, item.id, now=current)
+        return outcome
 
     request = PublishRequest(
         content_item_id=item.id,
@@ -415,7 +466,7 @@ def publish_item(
     except Exception as exc:  # adapters must never crash the publisher
         message = redactor.redact(str(exc)).strip()
         error = (message or type(exc).__name__)[:MAX_AUDIT_TEXT]
-        return _record_failure(
+        outcome = _record_failure(
             session,
             scope,
             item,
@@ -427,6 +478,9 @@ def publish_item(
             trigger=trigger,
             backoff_seconds=retry_backoff_seconds,
         )
+        if outcome.retry_at is None:
+            _notify_failed_final(notifier, session, scope, item.id, now=current)
+        return outcome
 
     transition(
         session,
@@ -463,6 +517,7 @@ def publish_item(
             "body_sha256": _body_hash(body),
         },
     )
+    _notify_published(notifier, session, scope, item.id, now=current)
     return PublishOutcome(
         item_id=item.id,
         platform=item.platform,

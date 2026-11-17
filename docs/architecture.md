@@ -279,6 +279,8 @@ provider; cost recorded; daily cost cap works.
 
 **M6 Community and Analyst.** `reply_triage`, crisis escalation, metrics collection, `weekly_report`.
 *Accept:* test comments are classified and follow policy; weekly report is delivered.
+*Repository note (2026-11-17):* the first M6 pass implements Telegram notifications and inbox basics
+instead; `reply_triage`, metrics and `weekly_report` remain future work. See `docs/decisions.md`.
 
 **M7 Local web UI.** Approval queue, calendar, inbox, reports, profile and policy editors, audit, cost; password auth.
 *Accept:* the full approval flow works from the web; starting on a non-loopback host without a password is refused.

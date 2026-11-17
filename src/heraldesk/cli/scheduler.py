@@ -13,6 +13,7 @@ from heraldesk.cli.common import abort, console, session_for
 from heraldesk.core.crypto import CredentialCipher, CryptoError
 from heraldesk.domain.errors import ContentError
 from heraldesk.scheduler.runner import SchedulerEntry, SchedulerResult, run_scheduler
+from heraldesk.telegram.runtime import notifier_for
 
 scheduler_app = typer.Typer(
     no_args_is_help=True,
@@ -105,6 +106,7 @@ def execute_scheduler(*, dry_run: bool) -> SchedulerResult:
                 layout,
                 dry_run=dry_run,
                 cipher=cipher,
+                notifier=None if dry_run else notifier_for(session, layout),
             )
         except (ContentError, CryptoError) as exc:
             abort(str(exc))

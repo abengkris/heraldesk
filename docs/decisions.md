@@ -469,3 +469,83 @@ These answers close the open questions raised after the first full read of the s
   the `scheduler` group; new tests cover due-only selection, future items, all off switches, cancelled and
   expired items, `draft_only`, success, retries with backoff, manual re-queue, idempotency, dry-run zero
   writes, redaction of provider errors and credentials, `auto`/`auto_after_delay`, and the CLI transcript.
+
+## M6 implementation decisions (2026-11-17)
+
+- **M6 scope in this repository is Telegram notifications plus inbox basics.** The architecture
+  section 13 row for M6 still names Community and Analyst. The requested milestone is narrower and
+  deliberately does not implement `reply_triage`, crisis escalation, metrics collection or
+  `weekly_report`; those remain future work. No `heraldesk serve` or APScheduler wiring is added in
+  M6. The webhook and polling functions are callable stubs for the M7 server loop.
+- **M6 adds two tables in migration `0007`.** `telegram_messages` stores inbound messages
+  (`profile_id` nullable, `chat_id`, `sender_id`, redacted `text`, `command`, `content_item_id`,
+  `response`, `created_at`). `telegram_notifications` is the outbound ledger (`profile_id`
+  nullable, `event`, unique `idempotency_key`, `status` `sent|suppressed|failed`,
+  `message_preview`, masked `recipients`, `error`, `created_at`, `sent_at`). Bot tokens are not
+  stored in either table.
+- **Telegram bot tokens are encrypted with Fernet, never stored in `heraldesk.yaml` or SQLite
+  plaintext.** Resolution order is `HERALDESK_TELEGRAM_BOT_TOKEN` in the environment, then the same
+  key in `$HERALDESK_HOME/.env`, then `$HERALDESK_HOME/telegram.token` decrypted with `secret.key`.
+  `heraldesk telegram token set` writes the encrypted file with mode 600. `telegram token status`
+  prints only a fingerprint such as `****7890`. The raw token never reaches an audit payload, a
+  notification row, a log line or CLI output.
+- **Notifications are addressed to every id in `telegram.allowed_chat_ids`.** Zero recipients is a
+  suppressed event, not a crash. Chat ids are stored in full only in `telegram_messages` for
+  routing; audit payloads and CLI output use a partial mask such as `12***89`.
+- **Policy adds `notify: off | approvals_only | all` and defaults to `all`.** `off` mutes every
+  event, `approvals_only` keeps only `approval_requested`, and `all` also allows `published`,
+  `failed_final` and `killswitch`. Because YAML 1.1 reads an unquoted `off` as `False`, the parser
+  maps boolean `False` to `off` and `True` to `all`, so the documented `notify: off` spelling works.
+- **Muted events still create one notification row and one audit entry.** The row has
+  `status=suppressed` and a reason such as `notify mode 'off' mutes this event`, and the audit action
+  is `telegram.suppressed`. Writing nothing would let a later scheduler run decide to send an old
+  event; the ledger makes suppression final. Delivery is at-most-once: a `TelegramError` records
+  `status=failed` and is not retried automatically.
+- **Exact notification idempotency keys** (must remain stable):
+  - `telegram:approval_requested:profile=<profile_id>:item=<item_id>:approval=<approval_id>`
+  - `telegram:published:profile=<profile_id>:item=<item_id>:attempt=<publish_attempts>`
+  - `telegram:failed_final:profile=<profile_id>:item=<item_id>:attempt=<publish_attempts>:at=<epoch>`
+  - `telegram:killswitch:profile=<profile_id|global>:state=<on|off>:event=<audit_id>`
+
+  The `failed_final` key carries the failure timestamp so a later human re-queue that fails again is
+  a new event, while repeated scheduler sweeps of the same row are one event.
+- **Publish and final-failure notifications live in the publisher service.** `publish_item` accepts
+  an optional notifier and emits `published` after success and `failed_final` only when retries are
+  exhausted. Both `heraldesk publish <id>` (manual) and the scheduler go through that function, so
+  both paths notify and share the same idempotency keys. A second call cannot double-send because the
+  item already has an external id or is no longer due.
+- **`approval_requested` is emitted by the daily pipeline after `request_approval`.** Dry runs skip
+  it completely. The notification service is optional, so tests and offline runs without Telegram
+  continue to work.
+- **Kill-switch notifications are emitted only when the state actually changes.** Global
+  `heraldesk stop-all` uses the global kill-switch audit entry id as the event id; the per-profile
+  `heraldesk profile killswitch` command uses its latest audit entry id. Repeating a no-op command
+  does not send a second message.
+- **Inbound commands call the same domain services as the CLI.** `/approve <id>` and
+  `/reject <id> [reason]` call `domain.approvals.approve|reject` with `channel='telegram'`, so the
+  kill-switch gate, 72-hour expiry check, state machine and audit entries are identical to
+  `queue approve|reject`. `/queue` sweeps expired approvals and lists the queue. `/help`, `/start`
+  and unknown commands reply with deterministic help text and never raise.
+- **Only allowlisted chats are served.** A message from any other chat id is ignored before storage
+  or reply. `handle_update` resolves the profile from the content item for approve/reject; `/queue`
+  uses an optional profile hint from the calling webhook/poll stub, falls back to the single
+  registered profile, and otherwise replies with the list of profile slugs. This deliberately avoids
+  adding a chat-to-profile mapping to `heraldesk.yaml` in M6.
+- **Inbound text and replies are redacted before storage.** `telegram_messages.text` and `response`
+  pass through `SecretRegistry` with the bot token added as a known secret. Audit payloads carry
+  message ids, masked chat/sender ids, command, content item id, a SHA-256 of the redacted text and
+  its length, never the text itself. Audit actions are `telegram.received`, `telegram.command`,
+  `telegram.sent`, `telegram.suppressed`, `telegram.failed` and `telegram.token_set`.
+- **No new Telegram dependency is added.** The real adapter uses `urllib` for `sendMessage` and a
+  `getUpdates` polling stub and never puts the token in an exception or repr. Tests always use
+  `FakeTelegramAdapter`. `aiogram`/`python-telegram-bot` can replace the adapter in a later milestone
+  without changing the notifier or inbox.
+- **CLI surface:** `heraldesk telegram test`, `telegram send <profile> <text>`,
+  `telegram inbox list <profile> [--limit 20]`, plus the small `telegram token set|status` utility
+  needed to create and inspect the encrypted token file. `telegram test` and `telegram send` always
+  use the fake adapter and print redacted previews.
+- **Test updates:** revision expectations move from `0006` to `0007`; the Alembic table set gains
+  `telegram_messages` and `telegram_notifications`; the CLI group set gains `telegram`. New tests
+  cover one-send-per-event, mute modes, global and per-profile kill-switch notifications, both manual
+  and scheduler publishing, final failures, dry-run silence, token encryption and redaction, inbox
+  approve/reject/queue/help, expired approvals, allowlist refusal and chat-id masking.

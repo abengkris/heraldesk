@@ -42,6 +42,10 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
 - Edit queued content: `uv run heraldesk queue edit <id> --body "..."` or `--body-file <path>`
 - Publish one item now: `uv run heraldesk publish <id>`
 - Run the scheduler once: `uv run heraldesk scheduler run [--dry-run]` (alias: `uv run heraldesk run scheduler [--dry-run]`)
+- Test Telegram offline: `uv run heraldesk telegram test` (fake adapter, redacted preview)
+- Send a manual Telegram test message: `uv run heraldesk telegram send <slug> "text"` (fake adapter)
+- Show the Telegram inbox: `uv run heraldesk telegram inbox list <slug> [--limit 20]` (redacted)
+- Store or inspect the encrypted bot token: `uv run heraldesk telegram token set|status`
 - Show agent run traces and cost: `uv run heraldesk runs <slug>`
 - Halt everything: `uv run heraldesk stop-all` (`--off` clears the global kill switch)
 - Try a throwaway instance: `HERALDESK_HOME=$(mktemp -d) uv run heraldesk init`

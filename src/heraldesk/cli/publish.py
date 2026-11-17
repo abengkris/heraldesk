@@ -16,6 +16,7 @@ from heraldesk.domain.errors import ContentError
 from heraldesk.platforms import publish_adapter_for
 from heraldesk.platforms.base import PublishError
 from heraldesk.publisher import PublishStatus, publish_item
+from heraldesk.telegram.runtime import notifier_for
 
 MAX_PREVIEW = 120
 
@@ -63,6 +64,7 @@ def publish_command(
                 cipher=cipher,
                 actor="user",
                 trigger="manual",
+                notifier=notifier_for(session, layout),
             )
         except (ContentError, CryptoError) as exc:
             abort(str(exc))

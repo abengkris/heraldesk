@@ -8,6 +8,7 @@ import typer
 from rich.table import Table
 
 from heraldesk.cli.common import abort, console, session_for
+from heraldesk.core.audit import AuditService
 from heraldesk.core.locks import is_global_kill_switch_enabled
 from heraldesk.domain.errors import ProfileNotFoundError, ProfileValidationError
 from heraldesk.domain.profiles import (
@@ -21,6 +22,7 @@ from heraldesk.domain.profiles import (
     set_profile_kill_switch,
     set_profile_status,
 )
+from heraldesk.telegram.runtime import notifier_for
 
 profile_app = typer.Typer(
     no_args_is_help=True,
@@ -181,12 +183,22 @@ def killswitch_command(
     off: Annotated[bool, typer.Option("--off", help="Clear the per-profile kill switch.")] = False,
 ) -> None:
     """Engage or clear the per-profile kill switch."""
-    with session_for() as (_, session):
+    with session_for() as (layout, session):
         try:
             scope = resolve_scope(session, slug)
         except (ProfileNotFoundError, ProfileValidationError) as exc:
             abort(str(exc))
         summary, changed = set_profile_kill_switch(session, scope, not off)
+        if changed:
+            history = AuditService(session).history(scope, limit=1)
+            notifier = notifier_for(session, layout)
+            if history and notifier is not None:
+                notifier.notify_killswitch(
+                    scope,
+                    slug=summary.slug,
+                    enabled=not off,
+                    event_id=str(history[0].id),
+                )
     state = "engaged" if summary.kill_switch else "cleared"
     suffix = "" if changed else " (unchanged)"
     console.print(f"[bold]{summary.slug}[/bold] kill switch {state}{suffix}.")

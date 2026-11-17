@@ -61,6 +61,7 @@ from heraldesk.domain.profiles import ProfileDefinition
 from heraldesk.llm.types import LLMProvider
 from heraldesk.platforms.base import PlatformAdapter, constraints_for
 from heraldesk.quality import lint
+from heraldesk.telegram.notifier import NotificationService
 from heraldesk.tools.web_search import SearchError, WebSearch
 
 PIPELINE_NAME: Final = "daily_content"
@@ -183,6 +184,7 @@ class _DailyContentRunner:
         platforms: tuple[str, ...],
         account_by_platform: dict[str, int],
         redactor: SecretRegistry,
+        notifier: NotificationService | None,
     ) -> None:
         self._session = session
         self._layout = layout
@@ -197,6 +199,7 @@ class _DailyContentRunner:
         self._platforms = platforms
         self._account_by_platform = account_by_platform
         self._redactor = redactor
+        self._notifier = notifier
         self._ideas = ContentIdeaRepository(session)
         self._items = ContentItemRepository(session)
         self._pipeline_runs = PipelineRunRepository(session)
@@ -614,6 +617,16 @@ class _DailyContentRunner:
                 policy_mode=decision.mode.value,
             )
             working.approval_id = approval.id
+            if self._notifier is not None:
+                stored = self._items.get(self._scope, working.item_id)
+                if stored is not None:
+                    self._notifier.notify_approval_requested(
+                        self._scope,
+                        slug=self._definition.slug,
+                        item=stored,
+                        approval=approval,
+                        now=self._now,
+                    )
         return working
 
     def _create_item(
@@ -748,6 +761,7 @@ def run_daily_content(
     now: datetime | None = None,
     platforms: tuple[str, ...] | None = None,
     adapter: PlatformAdapter | None = None,
+    notifier: NotificationService | None = None,
 ) -> DailyContentResult:
     """Run the deterministic ``daily_content`` pipeline for one profile.
 
@@ -785,5 +799,6 @@ def run_daily_content(
         platforms=available,
         account_by_platform=account_by_platform,
         redactor=SecretRegistry.from_environment(),
+        notifier=notifier,
     )
     return runner.run()

@@ -6,6 +6,7 @@ import pytest
 
 from heraldesk.domain.errors import ProfileValidationError
 from heraldesk.domain.policy import (
+    NotifyMode,
     PolicyAction,
     PolicyMode,
     PolicyRisk,
@@ -36,6 +37,7 @@ def test_empty_policy_is_safe_by_default() -> None:
     assert policy.quiet_hours is None
     assert policy.max_posts_per_day == 3
     assert policy.disclose_ai is False
+    assert policy.notify is NotifyMode.ALL
 
 
 def test_full_policy_parses() -> None:
@@ -54,6 +56,13 @@ def test_full_policy_parses() -> None:
     assert policy.quiet_hours.start == "21:00"
     assert policy.quiet_hours.end == "07:00"
     assert policy.disclose_ai is True
+
+
+def test_notify_mode_parses_and_rejects_unknown_values() -> None:
+    assert parse_policy_yaml("notify: off\n").notify is NotifyMode.OFF
+    assert parse_policy_yaml("notify: approvals_only\n").notify is NotifyMode.APPROVALS_ONLY
+    with pytest.raises(ProfileValidationError, match=r"notify"):
+        parse_policy_yaml("notify: sometimes\n")
 
 
 def test_unknown_policy_field_is_rejected() -> None:

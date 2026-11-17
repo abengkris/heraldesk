@@ -56,6 +56,8 @@ quiet_hours:
   end: "07:00"
 max_posts_per_day: 3
 disclose_ai: false
+# Telegram notifications for this profile: all, approvals_only or off.
+notify: all
 """
 
 DEFAULT_BANNED_YAML = """\
