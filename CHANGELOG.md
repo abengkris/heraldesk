@@ -3,6 +3,19 @@
 All notable changes to Heraldesk are recorded here. The project follows a single
 `1.0.0` release that folds the M0-M9 implementation milestones together.
 
+## [Unreleased]
+
+### M10 - Real Nostr publishing
+
+- Added the NIP-01 kind 1 Nostr adapter with BIP-340 signing, configurable relays and
+  per-relay timeouts. One accepting relay is enough; failures reuse the publisher retry
+  and at-most-once rules.
+- Added `--credential-from-env`, `--label` and `--relay` to `heraldesk account add`, plus
+  `heraldesk account list` with a masked npub.
+- Added the `nostr` section to `heraldesk.yaml`, the optional `social_accounts.label`
+  column (migration `0010`), nsec/npub redaction and `AccountRef` credential hiding.
+- Documented the throwaway-key rule: Nostr events are immutable and cannot be deleted.
+
 ## [1.0.0] - 2026-11-17
 
 ### M0 - Foundation and packaging

@@ -1,15 +1,19 @@
 """Platform adapter registry.
 
-Only the fake adapter is implemented in M1-M5. ``account test`` exercises the fake adapter
-for every platform until real adapters land. The publisher treats every other platform as
-:class:`NotSupportedError` so no unverified API call can happen, and the reason is
-documented in ``docs/platforms/README.md``.
+``fake`` and ``nostr`` implement publishing. ``nostr`` signs NIP-01 kind 1 notes with the
+account's encrypted nsec and broadcasts them to relays. Every other platform stays
+:class:`NotSupportedError` so no unverified API call can happen; the reason is documented
+in ``docs/platforms/README.md``.
+
+``adapter_for`` is the offline account-check path: Nostr validates the key and relay list
+locally, every other platform keeps the fake adapter.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
+from heraldesk.config import ConfigError, load_config
 from heraldesk.platforms.base import (
     KNOWN_PLATFORMS,
     AccountRef,
@@ -20,6 +24,7 @@ from heraldesk.platforms.base import (
     PublishResult,
 )
 from heraldesk.platforms.fake import FakeAdapter
+from heraldesk.platforms.nostr import NostrAdapter
 
 __all__ = [
     "KNOWN_PLATFORMS",
@@ -32,16 +37,30 @@ __all__ = [
     "publish_adapter_for",
 ]
 
-_PUBLISH_ADAPTERS: dict[str, Callable[[], PlatformAdapter]] = {"fake": FakeAdapter}
+
+def _nostr_adapter() -> PlatformAdapter:
+    """Build a Nostr adapter from ``heraldesk.yaml`` relay defaults."""
+    try:
+        settings = load_config().nostr
+    except ConfigError as exc:
+        raise PublishError(f"cannot load the Nostr relay configuration: {exc}") from exc
+    return NostrAdapter(relays=settings.relays, timeout_seconds=settings.timeout_seconds)
+
+
+_PUBLISH_ADAPTERS: dict[str, Callable[[], PlatformAdapter]] = {
+    "fake": FakeAdapter,
+    "nostr": _nostr_adapter,
+}
 
 
 def adapter_for(platform: str) -> PlatformAdapter:
-    """Return the adapter used for an account check.
+    """Return the adapter used for an offline account check.
 
-    M1-M5 always returns :class:`FakeAdapter`, even for platforms whose real adapter is
-    not implemented yet. The CLI labels the result as a fake-adapter check.
+    Nostr validates the nsec and relay list without network I/O. Every other platform uses
+    :class:`FakeAdapter`; the CLI labels the result as a fake-adapter check.
     """
-    _ = platform
+    if platform.strip().lower() == "nostr":
+        return NostrAdapter()
     return FakeAdapter()
 
 
@@ -51,7 +70,7 @@ def publish_adapter_for(platform: str) -> PlatformAdapter:
     factory = _PUBLISH_ADAPTERS.get(key)
     if factory is None:
         raise NotSupportedError(
-            f"no publisher adapter for platform '{key}' in M5; "
+            f"no publisher adapter for platform '{key}'; "
             "see docs/platforms/README.md for the documented reason"
         )
     return factory()

@@ -158,6 +158,20 @@ def test_m8_inbox_triage_columns_exist(initialized: InitResult) -> None:
     assert "ix_telegram_messages_status" in indexes
 
 
+def test_m10_account_label_column(initialized: InitResult) -> None:
+    engine = build_engine(initialized.layout.db_path)
+    try:
+        with engine.connect() as connection:
+            inspector = inspect(connection)
+            columns = {
+                column["name"]: column for column in inspector.get_columns("social_accounts")
+            }
+    finally:
+        engine.dispose()
+    assert "label" in columns
+    assert columns["label"]["nullable"] is True
+
+
 def test_migration_scripts_are_present() -> None:
     directory = scripts_directory()
     assert (directory / "env.py").is_file()
@@ -170,6 +184,7 @@ def test_migration_scripts_are_present() -> None:
     assert list((directory / "versions").glob("0007*.py"))
     assert list((directory / "versions").glob("0008*.py"))
     assert list((directory / "versions").glob("0009*.py"))
+    assert list((directory / "versions").glob("0010*.py"))
 
 
 def test_downgrade_to_base_clears_the_revision(initialized: InitResult) -> None:

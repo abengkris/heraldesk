@@ -38,6 +38,13 @@ research:
   search_provider: auto
   timeout_seconds: 10
   max_results: 5
+nostr:
+  # Relay defaults for Nostr accounts. An account credential "relays" overrides this.
+  # Use a throwaway key only: Nostr events are immutable and cannot be deleted.
+  relays:
+    - wss://relay.damus.io
+    - wss://nos.lol
+  timeout_seconds: 10
 server:
   # Loopback only. Non-loopback binding is refused until authentication exists.
   host: 127.0.0.1

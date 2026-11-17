@@ -28,7 +28,16 @@ from heraldesk.domain.errors import (
     ProfileNotFoundError,
     UnknownPlatformError,
 )
-from heraldesk.platforms.base import KNOWN_PLATFORMS, AccountRef, PlatformAdapter
+from heraldesk.platforms.base import (
+    KNOWN_PLATFORMS,
+    AccountRef,
+    PlatformAdapter,
+    PublishError,
+)
+from heraldesk.platforms.nostr import npub_from_secret, parse_relay_list
+from heraldesk.platforms.nostr_keys import NostrKeyError, decode_nsec, is_npub, mask_npub
+
+MAX_LABEL_LENGTH = 120
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +51,36 @@ class AccountTestResult:
     detail: str
 
 
+def _nostr_handle(handle: str, credentials: Mapping[str, str]) -> str:
+    """Return the public npub for a Nostr account and validate the key material.
+
+    The nsec must never become the handle, a label or an audit value. A missing or
+    malformed key is an :class:`AccountError` whose message never echoes the key.
+    """
+    secret_value = credentials.get("nsec", "").strip()
+    if not secret_value:
+        raise AccountError(
+            "nostr accounts require an 'nsec' credential; pass it with "
+            "--credential-from-env so the key is never typed on the command line"
+        )
+    try:
+        secret = decode_nsec(secret_value)
+    except NostrKeyError as exc:
+        raise AccountError(f"invalid nostr nsec credential: {exc}") from exc
+
+    candidate = handle.strip()
+    if candidate.lower().startswith("nsec1"):
+        raise AccountError("handle must be the public npub, never the secret nsec")
+    if candidate and not is_npub(candidate):
+        raise AccountError("nostr handles must be a valid npub1... public key")
+    if "relays" in credentials:
+        try:
+            parse_relay_list(credentials["relays"])
+        except PublishError as exc:
+            raise AccountError(str(exc)) from exc
+    return candidate or npub_from_secret(secret)
+
+
 def add_account(
     session: Session,
     scope: ProfileScope,
@@ -50,9 +89,15 @@ def add_account(
     handle: str,
     credentials: Mapping[str, str],
     cipher: CredentialCipher,
+    label: str | None = None,
     actor: str = "user",
 ) -> SocialAccount:
-    """Encrypt credentials and add an account to the scoped profile."""
+    """Encrypt credentials and add an account to the scoped profile.
+
+    For ``nostr`` the handle is the public npub; it is derived from the nsec when omitted
+    and audited in masked form. The nsec itself only ever travels into the encrypted
+    credential blob.
+    """
     repository = SocialAccountRepository(session)
     try:
         ProfileRepository(session).require(scope)
@@ -63,9 +108,6 @@ def add_account(
     if normalized_platform not in KNOWN_PLATFORMS:
         known = ", ".join(sorted(KNOWN_PLATFORMS))
         raise UnknownPlatformError(f"unknown platform '{platform}'; known platforms: {known}")
-    normalized_handle = handle.strip()
-    if not normalized_handle:
-        raise AccountError("handle must not be empty")
 
     clean: dict[str, str] = {}
     for key, value in credentials.items():
@@ -78,23 +120,39 @@ def add_account(
     if not clean:
         raise AccountError("at least one credential is required")
 
+    normalized_handle = handle.strip()
+    if normalized_platform == "nostr":
+        normalized_handle = _nostr_handle(normalized_handle, clean)
+    if not normalized_handle:
+        raise AccountError("handle must not be empty")
+
+    normalized_label = (label or "").strip() or None
+    if normalized_label is not None and len(normalized_label) > MAX_LABEL_LENGTH:
+        raise AccountError(f"label must be at most {MAX_LABEL_LENGTH} characters")
+
     try:
         account = repository.add(
             scope,
             platform=normalized_platform,
             handle=normalized_handle,
+            label=normalized_label,
             credentials_encrypted=cipher.encrypt_json(clean),
         )
     except DuplicateRecord as exc:
         raise AccountExistsError(str(exc)) from exc
 
+    audit_handle = mask_npub(account.handle) if account.platform == "nostr" else account.handle
     AuditService(session).record(
         scope,
         actor=actor,
         action="account.added",
         entity="social_account",
         entity_id=account.id,
-        payload={"platform": account.platform, "handle": account.handle},
+        payload={
+            "platform": account.platform,
+            "handle": audit_handle,
+            "label": account.label,
+        },
     )
     return account
 

@@ -9,6 +9,7 @@ from typing import NoReturn
 
 import typer
 from rich.console import Console
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from heraldesk import paths
@@ -32,3 +33,10 @@ def session_for(home: Path | None = None) -> Iterator[tuple[paths.Layout, Sessio
             yield layout, session
     except DatabaseNotInitialized as exc:
         abort(str(exc))
+    except OperationalError as exc:
+        original = str(getattr(exc, "orig", exc))
+        if "no such column" in original or "no such table" in original:
+            abort(
+                "database schema is out of date; run 'heraldesk init' to apply pending migrations"
+            )
+        abort("database error; run 'heraldesk doctor' for details")

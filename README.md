@@ -8,8 +8,9 @@ queue and schedule social media content for accounts you manage. You approve; He
 does the legwork. It runs on your laptop or your own VPS. Your keys, your data.
 
 Heraldesk is CLI-first. The local web UI, REST `/api/v1` namespace, plugin loader and
-real Threads/Nostr/X/Facebook/Instagram/LinkedIn adapters are not part of 1.0.0. The fake
-platform adapter is the supported publishing path in this release.
+real Threads/X/Facebook/Instagram/LinkedIn adapters are not part of 1.0.0. The fake
+platform adapter is the offline publishing path. A real Nostr adapter was added after
+1.0.0; see [Nostr publishing](#nostr-publishing-post-100).
 
 ## What works in 1.0.0
 
@@ -22,6 +23,7 @@ platform adapter is the supported publishing path in this release.
 - Manual inbox triage: list, show, reply and ignore. No auto-reply and no AI-generated replies.
 - Deterministic weekly and monthly reports, with no LLM calls.
 - Backup and restore, doctor hardening, global and per-profile kill switches.
+- Real Nostr publishing (NIP-01 kind 1 notes) with a throwaway key; added after 1.0.0.
 - SQLite only. No Redis, Postgres, Node, telemetry or phone-home.
 
 ## Requirements
@@ -117,6 +119,42 @@ uv run heraldesk telegram inbox list acme
 
 Bot tokens are encrypted with `secret.key`. Only chat IDs in `telegram.allowed_chat_ids`
 are served.
+
+## Nostr publishing (post-1.0.0)
+
+Nostr is the first real platform adapter: one NIP-01 **kind 1** text note per approved
+content item, signed locally with BIP-340 Schnorr and broadcast to relays. It needs no
+app review and no username or password.
+
+> **Use a throwaway key.** Nostr events are immutable. Once a relay accepts an event it
+> cannot be deleted. Test with a throwaway key, check the event id on a public explorer,
+> then abandon the key.
+>
+> **Never paste an nsec into chat, a GitHub issue, a screenshot or a shell command.**
+> Keep it in an environment variable or a secure prompt. Heraldesk encrypts it with
+> `secret.key` and never prints it.
+
+```bash
+# In your own terminal. The nsec is read from the environment, not the command line.
+export NOSTR_NSEC_THROWAY='<throwaway nsec>'
+uv run heraldesk account add acme --platform nostr \
+    --credential-from-env NOSTR_NSEC_THROWAY --label throwaway
+
+# The npub is shown masked; the nsec is never shown.
+uv run heraldesk account list acme
+uv run heraldesk account test acme --platform nostr
+
+# Draft, approve and publish through the existing flow.
+uv run heraldesk run daily acme --dry-run
+uv run heraldesk queue list acme
+uv run heraldesk queue approve <id>
+uv run heraldesk publish <id>
+```
+
+Relays come from `nostr.relays` in `heraldesk.yaml` (defaults: `wss://relay.damus.io`,
+`wss://nos.lol`) or from `--relay` on the account. One relay accepting the event is
+enough; failures use the normal publisher retries. Details and the manual acceptance
+steps are in [docs/platforms/nostr.md](docs/platforms/nostr.md).
 
 ## Inbox triage
 

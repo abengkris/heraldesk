@@ -12,6 +12,7 @@ Each milestone is done only when its acceptance criteria pass and tests exist. D
 - [x] M7 Server and background jobs (FastAPI, scheduler sweep, Telegram polling; web UI and `/api/v1` deferred)
 - [x] M8 Community and analyst CLI (manual inbox triage, deterministic reports; plugin loader and extra adapters deferred)
 - [x] M9 v1.0.0 hardening and release docs (backup/restore, doctor checks, changelog, README; Docker/PyPI/plugin publishing deferred)
+- [x] M10 Real Nostr publishing (NIP-01 kind 1, throwaway key, CLI only; other real adapters, web UI and new LLM features deferred)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video generation,
 auto-DM outreach, scraping without official APIs.

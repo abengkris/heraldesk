@@ -8,28 +8,28 @@ publisher applies the content state machine, policy, retries and audit rules.
 | Platform | Account check | Publish | Notes |
 |---|---|---|---|
 | `fake` | yes | yes (M5) | Offline adapter used by tests and CI. See `fake.md`. |
-| `threads` | fake fallback | `NotSupportedError` in M5 | Real adapter deferred. |
-| `nostr` | fake fallback | `NotSupportedError` in M5 | Real adapter deferred. |
-| `x` | fake fallback | `NotSupportedError` in M5 | Planned for M8. |
-| `facebook` | fake fallback | `NotSupportedError` in M5 | Planned for M8. |
-| `instagram` | fake fallback | `NotSupportedError` in M5 | Planned for M8; needs Business account plus linked Page. |
-| `linkedin` | fake fallback | `NotSupportedError` in M5 | Planned for M8. |
+| `nostr` | yes (offline key check) | yes (M10) | Real NIP-01 kind 1 notes. See `nostr.md`. |
+| `threads` | fake fallback | `NotSupportedError` | Real adapter deferred. |
+| `x` | fake fallback | `NotSupportedError` | Real adapter deferred. |
+| `facebook` | fake fallback | `NotSupportedError` | Real adapter deferred. |
+| `instagram` | fake fallback | `NotSupportedError` | Real adapter deferred; needs Business account plus linked Page. |
+| `linkedin` | fake fallback | `NotSupportedError` | Real adapter deferred. |
 
-## Why Threads and Nostr return `NotSupportedError` in M5
+## Why the remaining adapters return `NotSupportedError`
 
-The M5 publisher is complete, but only the `fake` adapter is implemented. Threads and Nostr
-need platform app review, live credentials and API behaviour that cannot be verified
-offline in this milestone. Rather than guess at an API, `heraldesk.platforms.publish_adapter_for`
+The publisher is complete for `fake` and `nostr`. Threads, X, Facebook, Instagram and
+LinkedIn need platform app review, live credentials and API behaviour that cannot be
+verified offline. Rather than guess at an API, `heraldesk.platforms.publish_adapter_for`
 raises `NotSupportedError` with this message:
 
-> no publisher adapter for platform '<name>' in M5; see docs/platforms/README.md for the
+> no publisher adapter for platform '<name>'; see docs/platforms/README.md for the
 > documented reason
 
 The scheduler treats that as a normal `publish.failed` outcome: the attempt is recorded,
 the item enters the retry path and eventually stays `failed` with the reason visible in
 `heraldesk queue list`. This is a documented limitation, not a code failure, and matches
-the decision recorded in `docs/decisions.md` (M5 section) and `docs/open-questions.md`.
+the decision recorded in `docs/decisions.md`.
 
-Real adapters arrive in a later milestone (see `ROADMAP.md`, M8). They must implement the
-`PlatformAdapter` contract in `src/heraldesk/platforms/base.py`, including `publish()`,
-and document their real constraints in a new `docs/platforms/<name>.md`.
+Real adapters must implement the `PlatformAdapter` contract in
+`src/heraldesk/platforms/base.py`, including `publish()`, and document their real
+constraints in a new `docs/platforms/<name>.md`.

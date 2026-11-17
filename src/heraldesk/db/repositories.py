@@ -175,6 +175,7 @@ class SocialAccountRepository:
         handle: str,
         credentials_encrypted: str,
         status: str = "unverified",
+        label: str | None = None,
     ) -> SocialAccount:
         """Add an account to the scoped profile."""
         existing = self.find(scope, platform=platform, handle=handle)
@@ -186,6 +187,7 @@ class SocialAccountRepository:
             profile_id=scope.profile_id,
             platform=platform,
             handle=handle,
+            label=label,
             credentials_encrypted=credentials_encrypted,
             status=status,
         )

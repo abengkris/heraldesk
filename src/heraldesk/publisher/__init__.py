@@ -434,10 +434,7 @@ def publish_item(
     )
 
     if real_adapter is None:
-        error = (
-            f"no publisher adapter for platform '{item.platform}' in M5; "
-            "see docs/platforms/README.md"
-        )
+        error = f"no publisher adapter for platform '{item.platform}'; see docs/platforms/README.md"
         outcome = _record_failure(
             session,
             scope,

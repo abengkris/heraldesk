@@ -37,7 +37,11 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
 - Validate profile files: `uv run heraldesk profile reload [slug]`
 - Control a profile: `uv run heraldesk profile pause|resume|killswitch <slug>`
 - Add an account: `uv run heraldesk account add <slug> --platform fake --handle @name --credential token=...`
-- Test accounts offline: `uv run heraldesk account test <slug>` (fake adapter in M1)
+- Add a Nostr account (throwaway key only; the nsec is read from the environment, never typed):
+  `uv run heraldesk account add <slug> --platform nostr --credential-from-env NOSTR_NSEC_THROWAY [--label "throwaway"] [--relay wss://relay.example]`
+- List accounts with the Nostr npub masked: `uv run heraldesk account list <slug>`
+- Test accounts offline: `uv run heraldesk account test <slug>` (fake adapter) or
+  `uv run heraldesk account test <slug> --platform nostr` (local nsec and relay validation, no network)
 - Run the Writer once and record the trace: `uv run heraldesk agent run writer <slug> --idea "..."`
 - Run the daily content pipeline: `uv run heraldesk run daily <slug> [--dry-run]` (`--dry-run` writes nothing)
 - List the approval queue: `uv run heraldesk queue list <slug>`

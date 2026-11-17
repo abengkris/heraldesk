@@ -15,10 +15,11 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
+from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from pydantic_settings import (
     BaseSettings,
     DotEnvSettingsSource,
@@ -31,6 +32,10 @@ from heraldesk import paths
 
 _yaml_file: ContextVar[Path | None] = ContextVar("heraldesk_yaml_file", default=None)
 _dotenv_file: ContextVar[Path | None] = ContextVar("heraldesk_dotenv_file", default=None)
+
+# Default Nostr relays used when the account has no per-account relay override.
+DEFAULT_NOSTR_RELAYS: Final[tuple[str, ...]] = ("wss://relay.damus.io", "wss://nos.lol")
+DEFAULT_NOSTR_TIMEOUT_SECONDS: Final = 10.0
 
 
 class ConfigError(Exception):
@@ -92,6 +97,30 @@ class ResearchSettings(_Section):
     max_results: int = Field(default=5, ge=1, le=20)
 
 
+class NostrSettings(_Section):
+    """Nostr relay defaults. Accounts may override the list in their credentials."""
+
+    relays: list[str] = Field(default_factory=lambda: list(DEFAULT_NOSTR_RELAYS))
+    timeout_seconds: float = Field(default=DEFAULT_NOSTR_TIMEOUT_SECONDS, gt=0.0, le=60.0)
+
+    @field_validator("relays")
+    @classmethod
+    def _validate_relays(cls, value: list[str]) -> list[str]:
+        clean: list[str] = []
+        for relay in value:
+            parsed = urlsplit(relay.strip())
+            if parsed.scheme != "wss" or not parsed.hostname:
+                raise ValueError("each Nostr relay must be a wss:// URL")
+            if parsed.username is not None or parsed.password is not None:
+                raise ValueError("relay URLs must not contain credentials")
+            normalised = relay.strip().rstrip("/")
+            if normalised not in clean:
+                clean.append(normalised)
+        if not clean:
+            raise ValueError("nostr.relays must contain at least one wss:// relay")
+        return clean
+
+
 class Config(BaseSettings):
     """Validated global configuration."""
 
@@ -106,6 +135,7 @@ class Config(BaseSettings):
     version: Literal[1] = 1
     llm: LLMSettings = Field(default_factory=LLMSettings)
     research: ResearchSettings = Field(default_factory=ResearchSettings)
+    nostr: NostrSettings = Field(default_factory=NostrSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
 

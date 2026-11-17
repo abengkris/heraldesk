@@ -5,12 +5,11 @@ M5 adds publishing through :meth:`PlatformAdapter.publish`. Adapters never conta
 business logic and never receive credentials outside the adapter call.
 
 M2 adds provisional per-platform post limits used when building Writer prompts. Real
-adapters own the authoritative values from M5 onwards.
+adapters own the authoritative values.
 
-M5 ships only the fake adapter. Threads, Nostr, X, Facebook, Instagram and LinkedIn
-return :class:`NotSupportedError` with a documented reason: the publisher deliberately
-does not guess at platform APIs that cannot be verified offline. See
-``docs/platforms/README.md``.
+The fake adapter is the offline reference. The Nostr adapter is the only real adapter in
+M10; Threads, X, Facebook, Instagram and LinkedIn still return
+:class:`NotSupportedError` with a documented reason. See ``docs/platforms/README.md``.
 """
 
 from __future__ import annotations
@@ -24,11 +23,21 @@ KNOWN_PLATFORMS = frozenset({"fake", "threads", "nostr", "x", "facebook", "insta
 
 @dataclass(frozen=True, slots=True)
 class AccountRef:
-    """Decrypted account data handed to an adapter for one call."""
+    """Decrypted account data handed to an adapter for one call.
+
+    The representation hides credentials so an accidental ``repr`` in a log line cannot
+    print an API token or a Nostr nsec.
+    """
 
     platform: str
     handle: str
     credentials: Mapping[str, str]
+
+    def __repr__(self) -> str:
+        return (
+            f"AccountRef(platform={self.platform!r}, handle={self.handle!r}, "
+            "credentials=<redacted>)"
+        )
 
 
 @dataclass(frozen=True, slots=True)

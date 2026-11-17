@@ -20,7 +20,8 @@ REDACTED: Final = "[REDACTED]"
 MIN_SECRET_LENGTH = 8
 
 _SECRET_NAME_PATTERN = re.compile(
-    r"(api[_-]?key|apikey|access[_-]?key|private[_-]?key|secret|token|password)$",
+    r"(api[_-]?key|apikey|access[_-]?key|private[_-]?key|secret|token|password)$"
+    r"|(^|_)nsec(_|$)",
     re.IGNORECASE,
 )
 _SECRET_VALUE_PATTERNS: Final = (
@@ -31,6 +32,9 @@ _SECRET_VALUE_PATTERNS: Final = (
     re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"),
     # Bearer headers copied into a model reply.
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._-]{12,}"),
+    # Nostr secret keys (nsec) and public identifiers (npub) in logs and audit payloads.
+    re.compile(r"(?i)\bnsec1[02-9ac-hj-np-z]{58}\b"),
+    re.compile(r"(?i)\bnpub1[02-9ac-hj-np-z]{58}\b"),
 )
 
 

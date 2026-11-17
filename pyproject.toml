@@ -26,6 +26,8 @@ classifiers = [
 dependencies = [
   "alembic>=1.14",
   "apscheduler>=3.10,<4",
+  # BIP-340 Schnorr signing for the Nostr adapter (libsecp256k1 via cffi).
+  "coincurve>=21.0,<22",
   "cryptography>=43",
   "fastapi>=0.115",
   "litellm>=1.55",
@@ -38,6 +40,8 @@ dependencies = [
   "tzdata>=2024.1",
   "typer>=0.15",
   "uvicorn>=0.30",
+  # Async RFC 6455 client used to broadcast Nostr events to relays.
+  "websockets>=15,<18",
 ]
 
 [project.scripts]

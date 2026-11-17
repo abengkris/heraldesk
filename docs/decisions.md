@@ -719,3 +719,58 @@ These answers close the open questions raised after the first full read of the s
   migration, Telegram-token and reports checks; the CLI command set gains `backup` and `restore`; the serve
   background path gains a kill-switch regression. The schema and Alembic head remain `0009`; M9 adds no
   migration.
+
+## M10 implementation decisions (2026-11-17)
+
+- **M10 scope is one real adapter: Nostr, throwaway account only, CLI only.** The milestone proves Heraldesk can
+  publish for real instead of only through the fake adapter. Threads, Instagram, X, Facebook, LinkedIn, the web UI
+  and new LLM features stay out of scope, and M11 is not started.
+- **Nostr comes first because it needs no app review.** An account is a key pair plus relays, signing is
+  deterministic (BIP-340), and the relay protocol is public. That makes a real end-to-end proof possible without
+  waiting on a platform review, which was the reason M5 shipped a documented `NotSupported` result.
+- **Runtime dependencies added: `coincurve>=21.0,<22` and `websockets>=15,<18`.** `coincurve` exposes libsecp256k1
+  through cffi and provides BIP-340 `sign_schnorr` plus `PublicKeyXOnly`; the implementation is checked against the
+  official BIP-340 test vector. `websockets` is an async RFC 6455 client that matches the publisher's async adapter
+  call. Rejected alternatives: `nostr-sdk` (heavy Rust binding), `pynostr` (less maintained and pulls a larger
+  tree), `websocket-client` (synchronous, needs threads) and a hand-written Schnorr implementation (crypto
+  footgun). Both packages ship typed wheels for Linux, macOS and Windows, so `mypy --strict` and the Windows core
+  suite stay clean.
+- **Migration `0010` adds a nullable `social_accounts.label`.** `heraldesk account add --label` needs a real column
+  instead of a cosmetic CLI value, and `account list` shows it to distinguish throwaway keys from long-lived
+  accounts. The column is additive; no existing row or M0-M9 behaviour changes. The Alembic head moves to `0010`.
+- **Adapter location is `src/heraldesk/platforms/nostr.py` plus `nostr_keys.py`.** The codebase keeps one module per
+  platform under `platforms/`, not under `publisher/`. The keys module is pure standard library bech32 so key
+  validation does not depend on the relay client; the adapter module owns signing, event construction and relays.
+- **Event rules:** one NIP-01 kind 1 text note per content item; `created_at` is the publish time as a Unix
+  timestamp; `tags` is empty plus one `["t", tag]` per hashtag (lowercase, deduplicated, at most ten); the id is
+  the SHA-256 of `[0,pubkey,created_at,kind,tags,content]`; the signature is BIP-340 over that 32-byte id. Signing
+  uses a 32-byte zero auxiliary value, so the same input is deterministic and testable.
+- **Relay policy:** precedence is the account credential `relays` (set with `--relay`) over `nostr.relays` in
+  `heraldesk.yaml` over the defaults `wss://relay.damus.io` and `wss://nos.lol`. Only `wss://` URLs are accepted.
+  The adapter broadcasts concurrently and waits up to 10 seconds per relay for `["OK", <id>, true, ...]`.
+  **Success is at least one accepting relay**; one relay rejecting or timing out does not fail a publish another
+  relay accepted. Zero accepting relays raises a redacted `PublishError`, and the existing publisher retry and
+  at-most-once rules apply unchanged.
+- **At-most-once is inherited, not reimplemented.** The publisher still refuses to send an item that has an
+  `external_id`, and relays deduplicate identical event ids. A relay that accepted an event but lost its `OK` reply
+  remains the documented human-reconciliation case from R1/M5.
+- **The nsec is a credential, the npub is public.** `heraldesk account add --credential-from-env NAME` reads the key
+  from the environment and stores it only in the existing Fernet-encrypted credential blob. The handle is the npub;
+  an nsec supplied as a handle is rejected. `heraldesk account list`, audit payloads and errors show a masked npub
+  such as `npub1lycg5…q266`, never the full identifier or the key. `AccountRef.__repr__` now hides all credentials,
+  and `SecretRegistry` recognises `nsec1...`/`npub1...` shapes and `*_NSEC*` environment names.
+- **`account test --platform nostr` is offline.** It decodes the nsec, derives the npub and validates the relay
+  list without opening a socket. The fake adapter remains the check for every other platform.
+- **Throwaway warning is mandatory in the docs.** Nostr events are immutable and cannot be deleted, so the README and
+  `docs/platforms/nostr.md` tell the user to test with a throwaway key, verify the event id on a public explorer and
+  then abandon the key. The manual acceptance run uses the user's terminal only; the nsec is never requested in
+  chat, committed to the repository or shown in screenshots.
+- **No publisher, scheduler, autonomy or state-machine logic changes.** `publish_adapter_for` gains a `nostr` entry,
+  the stale "in M5" wording is removed from the missing-adapter error, and the fake path is untouched. The
+  publisher's existing retries, audit actions (`publish.requested|succeeded|failed`) and notification idempotency
+  keys are reused as they are.
+- **Tests:** `test_nostr_adapter.py` covers bech32/nsec/npub, the reference event id and signature, hashtag tags,
+  OK/NOT OK handling, timeouts, relay configuration and redaction. `test_publisher_nostr.py` covers publish, retry,
+  at-most-once, redacted final failure and the scheduler path. `test_cli_m10.py` covers account add/list/test,
+  publish success and failure, and proves the nsec and full npub never appear in CLI output or audit payloads.
+  Every relay call is mocked; pytest stays offline. Revision assertions move from `0009` to `0010`.

@@ -116,6 +116,7 @@ class SocialAccount(Base):
     )
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
     handle: Mapped[str] = mapped_column(String(200), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(120), nullable=True)
     credentials_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="unverified", server_default="unverified"
