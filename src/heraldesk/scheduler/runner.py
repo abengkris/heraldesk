@@ -2,8 +2,8 @@
 
 Heraldesk keeps scheduling state in SQLite, so one sweep is enough to resume after a
 restart: no job is stored only in memory and no item is published twice. ``heraldesk
-scheduler run`` executes one deterministic sweep; a future ``heraldesk serve`` will call
-the same function on a timer through APScheduler.
+scheduler run`` executes one deterministic sweep; ``heraldesk serve`` calls the same
+function on a 60-second timer through APScheduler.
 
 Precedence for every profile is fixed: global kill switch, per-profile kill switch,
 ``paused`` status, ``draft`` status, then the item's recorded ``publish_mode``. A

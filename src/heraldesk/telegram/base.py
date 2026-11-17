@@ -1,8 +1,8 @@
 """Telegram adapter contract for outbound notifications and the inbound stub.
 
-M6 only needs sending plus a polling/webhook stub. Tests use
-:class:`heraldesk.telegram.fake.FakeTelegramAdapter` and never touch the network.
-The real Bot API adapter lives in :mod:`heraldesk.telegram.bot_api`.
+The contract covers sending plus the polling/webhook intake used by ``heraldesk serve``.
+Tests use :class:`heraldesk.telegram.fake.FakeTelegramAdapter` and never touch the
+network. The real Bot API adapter lives in :mod:`heraldesk.telegram.bot_api`.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ class TelegramAdapter(Protocol):
         ...
 
     def poll_updates(self, offset: int | None = None) -> list[TelegramUpdate]:
-        """Return updates newer than *offset*. The live loop arrives in M7."""
+        """Return updates newer than *offset*, as accepted by the Bot API."""
         ...
 
 

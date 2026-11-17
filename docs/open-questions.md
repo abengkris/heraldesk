@@ -124,3 +124,24 @@ No open questions remain for M0. Later ambiguities are added here when their mil
   **RESOLVED 2026-11-17:** approve/reject resolve it from the content item; `/queue` uses an optional
   profile hint, then the single registered profile, otherwise replies with the profile list. No
   chat-to-profile mapping is added in M6. Recorded in `docs/decisions.md`.
+
+## Resolved during M7
+
+- [x] (2026-11-17, M7) **Telegram does not allow `getUpdates` while a webhook is registered. How can the
+  server support both?**
+  **RESOLVED 2026-11-17:** add `telegram.mode: polling | webhook`, default `polling`. Polling mode runs
+  the 10-second `getUpdates` job and keeps the webhook endpoint for local testing; webhook mode does not
+  register the poll job but keeps the endpoint. `telegram.enabled` remains the master switch. Recorded in
+  `docs/decisions.md`.
+- [x] (2026-11-17, M7) **Does M7 create an `apscheduler_jobs` table or use `SQLAlchemyJobStore`?**
+  **RESOLVED 2026-11-17: no.** Recurring triggers are static in-memory definitions and all durable work
+  stays in the existing business tables. This supersedes the earlier R5 wording. Recorded in
+  `docs/decisions.md`.
+- [x] (2026-11-17, M7) **May `heraldesk serve` bind a non-loopback host before password auth exists?**
+  **RESOLVED 2026-11-17: no.** Any non-loopback host is refused with a clear error. Remote access goes
+  through a local reverse proxy until the web UI milestone adds authentication. Recorded in
+  `docs/decisions.md`.
+- [x] (2026-11-17, M7) **What happens when the same Telegram update arrives twice?**
+  **RESOLVED 2026-11-17:** `telegram_messages.update_id` has a unique index and the inbox returns
+  `duplicate` without storing, replying or auditing. This covers webhook retries and polling replay
+  after a restart. Migration `0008` adds the column and index. Recorded in `docs/decisions.md`.

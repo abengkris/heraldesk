@@ -285,6 +285,15 @@ class AuditRepository:
         entries = self._session.scalars(query.order_by(AuditLog.id.desc()).limit(limit)).all()
         return list(entries)
 
+    def latest(self, scope: ProfileScope | None, *, action: str) -> AuditLog | None:
+        """Return the newest entry for *action* within the requested scope."""
+        query = select(AuditLog).where(AuditLog.action == action)
+        if scope is None:
+            query = query.where(AuditLog.profile_id.is_(None))
+        else:
+            query = query.where(AuditLog.profile_id == scope.profile_id)
+        return self._session.scalar(query.order_by(AuditLog.id.desc()).limit(1))
+
 
 class JobRepository:
     """Scoped access to the business jobs table. The scheduler arrives in M5."""
@@ -652,6 +661,15 @@ class ContentItemRepository:
         items = self._session.scalars(query.order_by(ContentItem.id.desc()).limit(limit)).all()
         return list(items)
 
+    def state_counts(self, scope: ProfileScope) -> dict[str, int]:
+        """Return how many scoped content items exist per state."""
+        rows = self._session.execute(
+            select(ContentItem.state, func.count(ContentItem.id))
+            .where(ContentItem.profile_id == scope.profile_id)
+            .group_by(ContentItem.state)
+        ).all()
+        return {str(state): int(count) for state, count in rows}
+
     def update_draft(
         self,
         scope: ProfileScope,
@@ -962,6 +980,25 @@ class ApprovalRepository:
         return approval
 
 
+class TelegramUpdateLocator:
+    """Resolve whether a Telegram ``update_id`` was already processed.
+
+    Telegram update ids are globally unique. This is the one unscoped Telegram query; it
+    returns only a boolean and never message text, chat ids or profile data. Callers still
+    store messages through the scoped :class:`TelegramMessageRepository`.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def exists(self, update_id: int) -> bool:
+        """Return ``True`` when *update_id* is already recorded."""
+        found = self._session.scalar(
+            select(TelegramMessage.id).where(TelegramMessage.update_id == update_id).limit(1)
+        )
+        return found is not None
+
+
 class TelegramMessageRepository:
     """Scoped storage for inbound Telegram messages.
 
@@ -983,10 +1020,12 @@ class TelegramMessageRepository:
         content_item_id: int | None,
         response: str | None,
         created_at: datetime | None = None,
+        update_id: int | None = None,
     ) -> TelegramMessage:
         """Store one already-redacted inbound message."""
         message = TelegramMessage(
             profile_id=None if scope is None else scope.profile_id,
+            update_id=update_id,
             chat_id=chat_id,
             sender_id=sender_id,
             text=text,

@@ -549,3 +549,73 @@ These answers close the open questions raised after the first full read of the s
   cover one-send-per-event, mute modes, global and per-profile kill-switch notifications, both manual
   and scheduler publishing, final failures, dry-run silence, token encryption and redaction, inbox
   approve/reject/queue/help, expired approvals, allowlist refusal and chat-id masking.
+
+## M7 implementation decisions (2026-11-17)
+
+- **M7 scope in this repository is the single-process server and background jobs.** The architecture
+  section 13 row for M7 names the local web UI. The requested milestone is narrower: `heraldesk serve`
+  with `GET /health`, `GET /status`, `POST /webhook/telegram`, the scheduler sweep and Telegram polling.
+  The web UI, password auth, content calendar, reports, inbox screens, `/api/v1` namespace, Community
+  replies/moderation, analytics dashboard and `weekly_report` remain future work. No M8 work is started.
+- **Runtime dependencies added:** `fastapi`, `uvicorn` (architecture section 2 names FastAPI + Uvicorn for
+  the API/web server) and `apscheduler>=3.10,<4` (architecture section 2 and R5). `httpx` is a dev
+  dependency because FastAPI's `TestClient` requires it. These are the only new dependencies in M7;
+  `jinja2` is not added because there is no web UI yet.
+- **`telegram.mode` is new config: `polling | webhook`, default `polling`.** Telegram refuses `getUpdates`
+  while a webhook is registered, so exactly one receive path may run in the background. In `polling` the
+  10-second poll job runs and the webhook endpoint still accepts local POSTs for testing; in `webhook`
+  the poll job is not registered and the endpoint handles updates. `telegram.enabled` remains the master
+  switch. The default keeps the documented M7 behaviour.
+- **Migration `0008` adds one column, not a table.** `telegram_messages.update_id` (nullable) has a unique
+  index `ix_telegram_messages_update_id`. Telegram retries webhooks and replays `getUpdates` after a
+  restart, so an already recorded update id returns `status="duplicate"` without storage, reply or audit.
+  `TelegramUpdateLocator` is a narrow unscoped lookup, documented like `ContentItemLocator`: it returns
+  only a boolean and never message text, chat ids or profile data.
+- **There is deliberately no `apscheduler_jobs` table or `SQLAlchemyJobStore`.** This supersedes the R5
+  wording that named a job store. The recurring triggers are static code (`publish sweep` every 60 s,
+  `telegram poll` every 10 s) and every unit of durable work already lives in the business tables
+  (content items, approvals, `telegram_notifications`). Persisting the triggers would add a second job
+  schema that can disagree with the code and can replay stale triggers after an upgrade; it would not add
+  restart safety. A restart recreates the triggers and an immediate first sweep resumes all overdue items,
+  which is the M5 stateless-sweep decision extended to the server.
+- **The first sweep runs immediately on start, then at the configured interval.** This makes a restart
+  recover overdue items without waiting a full minute. Intervals are constructor parameters (defaults
+  60 s and 10 s) so tests can use short intervals; they are not exposed in `heraldesk.yaml` in M7.
+  APScheduler jobs use `max_instances=1`, `coalesce=True` and `replace_existing=True`.
+- **Graceful shutdown is owned by Uvicorn and the FastAPI lifespan.** Uvicorn handles SIGINT/SIGTERM,
+  stops accepting requests, runs lifespan shutdown, which calls `BackgroundScheduler.shutdown(wait=True)`,
+  writes `serve.stopped`, and disposes the shared engine. `serve.started` records the Telegram active
+  flag, mode and intervals. No custom signal handler is installed, so one process has one shutdown path.
+- **The server uses one shared SQLite engine for its lifetime.** The CLI opens an engine per command; the
+  server opens one engine, hands out a session per request or job, commits on success, rolls back on
+  failure, and disposes on shutdown. WAL and the existing busy timeout handle the request and job threads.
+- **Binding is loopback-only until admin authentication exists.** `--host`, `server.host` and
+  `HERALDESK_SERVER__HOST` all go through the same check. Any non-loopback host is refused with a clear
+  error, satisfying the architecture section 10 safety rule and the M7 acceptance intent without shipping
+  a half-built password system. A reverse proxy on loopback is the supported remote setup for now.
+- **The API surface is exactly the three operational endpoints.** `GET /health` returns 200 with
+  `status`, `version` and `db.ok`/`db.revision`, or 503 when the database cannot be read or has no
+  schema revision. `GET /status`
+  returns profile metadata, per-profile and global queue counts (the states `queue list` shows, plus
+  `total`), the last global `scheduler.run` audit payload and Telegram state. It returns chat counts, not
+  chat ids. `POST /webhook/telegram` always answers 200 for valid JSON (including ignored, duplicate and
+  domain-error outcomes), never echoes the chat id or token, and returns only status/command/item/reply.
+  Invalid JSON and non-message payloads are ignored. Disabled Telegram ignores every webhook.
+- **Audit actions:** `serve.started`, `serve.stopped`, the existing `scheduler.run` (written by every real
+  background sweep, with counts only) and the existing `telegram.received`/`telegram.command` written by
+  the inbox for webhook and polled updates. No server audit payload contains a token, a body or a full
+  chat id.
+- **Logging policy:** the server logs job failures by exception type only. It never logs request bodies,
+  message text, tokens or full chat ids. Uvicorn's access log records method/path/status, and the webhook
+  path contains none of those values.
+- **`--no-web` is accepted for compatibility but is a no-op in M7.** There is no web UI yet; the API is
+  always mounted. `--no-telegram` disables polling and notifications for that process.
+- **The dry-run guarantee is preserved through the background path.** `BackgroundJobs.run_scheduler_once`
+  accepts `dry_run=True`, which calls the existing `run_scheduler` dry run: no state change, attempt
+  counter, audit row, adapter call or notification. There is no user-facing `serve --dry-run` flag; the
+  guarantee is covered by a test and by the existing `heraldesk scheduler run --dry-run` command.
+- **Test updates:** revision expectations move from `0007` to `0008`; the Alembic table set is unchanged,
+  but `telegram_messages` gains `update_id` and its unique index. The CLI `serve` stub tests are replaced
+  by help/loopback/init checks. New M7 tests cover health, status counts, webhook approve/allowlist/expiry,
+  token and chat-id leakage, background publishing exactly once, polling deduplication across a simulated
+  restart, graceful shutdown audit, dry-run silence and webhook mode disabling polling.

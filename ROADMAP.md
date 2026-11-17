@@ -9,7 +9,7 @@ Each milestone is done only when its acceptance criteria pass and tests exist. D
 - [x] M4 Approval flow and autonomy (Telegram deferred)
 - [x] M5 Scheduler and publisher (fake adapter; real Threads/Nostr adapters deferred with a documented `NotSupported` reason)
 - [x] M6 Telegram notifications and inbox basics (Community manager and analyst deferred; see `docs/decisions.md`)
-- [ ] M7 Local web UI
+- [x] M7 Server and background jobs (FastAPI, scheduler sweep, Telegram polling; web UI and `/api/v1` deferred)
 - [ ] M8 Plugins and more adapters
 - [ ] M9 v0.1.0 release (PyPI, Docker, docs)
 

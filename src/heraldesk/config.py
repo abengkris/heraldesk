@@ -72,9 +72,15 @@ class ServerSettings(_Section):
 
 
 class TelegramSettings(_Section):
-    """Telegram bot settings. Only allowlisted chat IDs are served."""
+    """Telegram bot settings. Only allowlisted chat IDs are served.
+
+    ``mode`` selects how ``heraldesk serve`` receives updates. Telegram refuses
+    ``getUpdates`` while a webhook is registered, so exactly one mode runs in the
+    background. The webhook endpoint stays available in both modes for local testing.
+    """
 
     enabled: bool = False
+    mode: Literal["polling", "webhook"] = "polling"
     allowed_chat_ids: list[int] = Field(default_factory=list)
 
 

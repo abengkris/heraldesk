@@ -284,6 +284,9 @@ instead; `reply_triage`, metrics and `weekly_report` remain future work. See `do
 
 **M7 Local web UI.** Approval queue, calendar, inbox, reports, profile and policy editors, audit, cost; password auth.
 *Accept:* the full approval flow works from the web; starting on a non-loopback host without a password is refused.
+*Repository note (2026-11-17):* the first M7 pass implements the single-process server instead: FastAPI
+`/health`, `/status` and `/webhook/telegram`, the APScheduler background sweeps and Telegram polling.
+The web UI, password auth and the `/api/v1` namespace remain future work. See `docs/decisions.md`.
 
 **M8 Plugins and more adapters.** Entry-point loader, plugin template, X, Facebook, Instagram, LinkedIn adapters.
 *Accept:* a sample third-party plugin is detected without touching core code.

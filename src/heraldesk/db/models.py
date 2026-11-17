@@ -3,7 +3,8 @@
 Tables owned by M1: profiles, social accounts, the audit log and the business jobs table.
 M2 adds ``agent_runs``. M3 adds ``pipeline_runs``, ``content_ideas`` and ``content_items``.
 M4 adds ``approvals``. M5 adds publisher metadata to ``content_items``. M6 adds
-``telegram_messages`` and ``telegram_notifications``. Metrics arrive later.
+``telegram_messages`` and ``telegram_notifications``. M7 adds the unique Telegram
+``update_id`` used by the server poller. Metrics arrive later.
 
 Every profile-owned table carries ``profile_id``. Access to those rows goes through
 :class:`heraldesk.db.scope.ProfileScope` in the repository layer.
@@ -479,12 +480,14 @@ class TelegramMessage(Base):
     __table_args__ = (
         Index("ix_telegram_messages_profile_id", "profile_id"),
         Index("ix_telegram_messages_created_at", "created_at"),
+        Index("ix_telegram_messages_update_id", "update_id", unique=True),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     profile_id: Mapped[int | None] = mapped_column(
         ForeignKey("profiles.id", ondelete="CASCADE"), nullable=True
     )
+    update_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chat_id: Mapped[int] = mapped_column(Integer, nullable=False)
     sender_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)

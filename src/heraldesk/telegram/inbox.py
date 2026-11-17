@@ -4,8 +4,9 @@ A message is stored only when its chat id is on the allowlist. Commands call the
 domain services as the CLI: approvals keep the kill-switch gate, the 72-hour expiry check
 and the audit entries, with ``channel='telegram'``.
 
-The webhook/polling plumbing is intentionally a stub. ``heraldesk serve`` will feed it in
-M7; tests call :func:`handle_update` directly with :class:`FakeTelegramAdapter`.
+``heraldesk serve`` feeds this module from the webhook endpoint and the background
+poller. Telegram can retry a webhook or replay ``getUpdates`` after a restart, so a
+recorded ``update_id`` is never processed twice.
 """
 
 from __future__ import annotations
@@ -22,7 +23,11 @@ from sqlalchemy.orm import Session
 from heraldesk import paths
 from heraldesk.core.audit import AuditService
 from heraldesk.core.redact import SecretRegistry
-from heraldesk.db.repositories import ProfileCatalog, TelegramMessageRepository
+from heraldesk.db.repositories import (
+    ProfileCatalog,
+    TelegramMessageRepository,
+    TelegramUpdateLocator,
+)
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.approvals import (
     approve,
@@ -146,6 +151,14 @@ def handle_update(
             reply=None,
         )
 
+    if update.update_id is not None and TelegramUpdateLocator(session).exists(update.update_id):
+        return InboxOutcome(
+            message_id=None,
+            command=None,
+            status="duplicate",
+            reply=None,
+        )
+
     current = datetime.now(UTC) if now is None else now
     redaction = redactor or SecretRegistry.from_environment()
     text = redaction.redact(update.text or "").strip()[:MAX_STORED_TEXT]
@@ -248,6 +261,7 @@ def handle_update(
         content_item_id=content_item_id,
         response=redacted_reply,
         created_at=current,
+        update_id=update.update_id,
     )
 
     AuditService(session).record(
@@ -306,7 +320,11 @@ def process_polling(
     now: datetime | None = None,
     offset: int | None = None,
 ) -> list[InboxOutcome]:
-    """Poll once and handle every update. The live loop is wired in M7."""
+    """Poll once and handle every update without tracking an offset.
+
+    The server uses :class:`heraldesk.telegram.poller.TelegramPoller`, which advances the
+    Bot API offset itself. This helper remains for direct, single-shot callers and tests.
+    """
     outcomes: list[InboxOutcome] = []
     for update in adapter.poll_updates(offset):
         outcomes.append(

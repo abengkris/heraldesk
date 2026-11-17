@@ -39,11 +39,13 @@ research:
   timeout_seconds: 10
   max_results: 5
 server:
-  # Loopback only by default. A non-loopback host requires authentication.
+  # Loopback only. Non-loopback binding is refused until authentication exists.
   host: 127.0.0.1
   port: 8000
 telegram:
   enabled: false
+  # polling: getUpdates every 10 s. webhook: no polling, POST /webhook/telegram.
+  mode: polling
   allowed_chat_ids: []
 """
 

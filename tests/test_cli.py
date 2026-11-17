@@ -57,24 +57,30 @@ def test_version_option() -> None:
     assert __version__ in result.output
 
 
-def test_serve_is_a_stub_that_exits_zero() -> None:
+def test_serve_help_lists_the_bind_options() -> None:
+    result = runner.invoke(app, ["serve", "--help"])
+    assert result.exit_code == 0
+    assert "--host" in result.output
+    assert "--port" in result.output
+    assert "--no-telegram" in result.output
+
+
+def test_serve_refuses_a_non_loopback_bind(initialized: InitResult) -> None:
+    result = runner.invoke(app, ["serve", "--host", "0.0.0.0"])
+    assert result.exit_code == 1
+    assert "loopback" in result.output
+
+
+def test_serve_fails_without_an_initialised_home(home: Path) -> None:
     result = runner.invoke(app, ["serve"])
-    assert result.exit_code == 0
-    assert "not implemented yet" in result.output
-
-
-def test_serve_accepts_documented_flags() -> None:
-    result = runner.invoke(
-        app,
-        ["serve", "--host", "127.0.0.1", "--port", "9000", "--no-web", "--no-telegram"],
-    )
-    assert result.exit_code == 0
+    assert result.exit_code == 1
+    assert "heraldesk init" in result.output
 
 
 def test_init_command_creates_and_reports(initialized: InitResult) -> None:
     result = runner.invoke(app, ["init"])
     assert result.exit_code == 0
-    assert "schema revision  0007" in result.output
+    assert "schema revision  0008" in result.output
 
 
 def test_init_command_never_prints_the_key(home: Path) -> None:

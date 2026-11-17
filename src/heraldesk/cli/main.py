@@ -1,8 +1,8 @@
 """Heraldesk command line interface.
 
-M0-M4 expose bootstrap, profile, account, off-switch, single-agent, daily pipeline,
-run-trace and approval-queue commands. Reports, the server and Telegram arrive in later
-milestones.
+The CLI exposes bootstrap, profile, account, off-switch, single-agent, daily pipeline,
+run-trace, approval-queue, publishing, scheduler and Telegram commands. M7 adds the
+single-process server, which runs the API, scheduler and Telegram bot together.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from heraldesk.cli.run import run_app
 from heraldesk.cli.runs import runs_command
 from heraldesk.cli.scheduler import scheduler_app
 from heraldesk.cli.telegram import telegram_app
+from heraldesk.config import ConfigError
 from heraldesk.core.audit import AuditService
 from heraldesk.core.bootstrap import BootstrapError, initialize
 from heraldesk.core.crypto import CryptoError
@@ -189,16 +190,32 @@ def stop_all_command(
 
 @app.command("serve")
 def serve_command(
-    host: Annotated[str | None, typer.Option(help="Bind address (reserved for M7).")] = None,
-    port: Annotated[int | None, typer.Option(help="Bind port (reserved for M7).")] = None,
+    host: Annotated[
+        str | None,
+        typer.Option("--host", help="Bind address. Defaults to server.host (127.0.0.1)."),
+    ] = None,
+    port: Annotated[
+        int | None,
+        typer.Option("--port", min=1, max=65535, help="Bind port. Defaults to server.port (8000)."),
+    ] = None,
     no_web: Annotated[
-        bool, typer.Option("--no-web", help="Disable the web UI (reserved).")
+        bool,
+        typer.Option(
+            "--no-web",
+            help="Accepted for compatibility; M7 exposes the API only (no web UI yet).",
+        ),
     ] = False,
     no_telegram: Annotated[
-        bool, typer.Option("--no-telegram", help="Disable Telegram (reserved).")
+        bool,
+        typer.Option("--no-telegram", help="Disable Telegram polling and notifications."),
     ] = False,
 ) -> None:
-    """Run the server. Not implemented yet."""
-    _ = (host, port, no_web, no_telegram)
-    console.print("heraldesk serve is not implemented yet.")
-    console.print("M0 ships the CLI bootstrap only; the server arrives in M7.")
+    """Run the API, scheduler and Telegram bot in one process."""
+    _ = no_web
+    # Imported lazily so ordinary CLI commands do not pay for the web stack.
+    from heraldesk.server.run import ServerError, run_server
+
+    try:
+        run_server(host=host, port=port, enable_telegram=not no_telegram)
+    except (ConfigError, ServerError) as exc:
+        abort(str(exc))

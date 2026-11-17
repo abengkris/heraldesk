@@ -27,7 +27,9 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
 - Run the core cross-platform subset (what Windows CI runs): `uv run pytest -m core`
 - Lint/format: `uv run ruff check . && uv run ruff format .`
 - Type check: `uv run mypy src/heraldesk`
-- Run app: `uv run heraldesk serve` (M0 stub)
+- Run the single-process server: `uv run heraldesk serve [--host 127.0.0.1] [--port 8000] [--no-telegram]`
+  (API at `/health`, `/status` and `/webhook/telegram`; scheduler sweep every 60 s; Telegram polling every 10 s
+  when `telegram.enabled` and `telegram.mode: polling`)
 - Initialise an instance: `uv run heraldesk init`
 - Diagnose an instance offline: `uv run heraldesk doctor` (network checks are opt-in with `--online`)
 - Create a profile skeleton: `uv run heraldesk profile new <slug> --name "Name" --type company --timezone UTC --languages en,id`

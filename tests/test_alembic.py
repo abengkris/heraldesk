@@ -102,6 +102,9 @@ def test_m6_telegram_tables_and_columns_exist(initialized: InitResult) -> None:
             message_columns = {
                 column["name"] for column in inspector.get_columns("telegram_messages")
             }
+            message_indexes = {
+                index["name"]: index for index in inspector.get_indexes("telegram_messages")
+            }
             notification_columns = {
                 column["name"] for column in inspector.get_columns("telegram_notifications")
             }
@@ -112,6 +115,7 @@ def test_m6_telegram_tables_and_columns_exist(initialized: InitResult) -> None:
         engine.dispose()
     assert {
         "profile_id",
+        "update_id",
         "chat_id",
         "sender_id",
         "text",
@@ -120,6 +124,7 @@ def test_m6_telegram_tables_and_columns_exist(initialized: InitResult) -> None:
         "response",
         "created_at",
     } <= message_columns
+    assert message_indexes["ix_telegram_messages_update_id"]["unique"]
     assert {
         "profile_id",
         "event",
@@ -144,6 +149,7 @@ def test_migration_scripts_are_present() -> None:
     assert list((directory / "versions").glob("0005*.py"))
     assert list((directory / "versions").glob("0006*.py"))
     assert list((directory / "versions").glob("0007*.py"))
+    assert list((directory / "versions").glob("0008*.py"))
 
 
 def test_downgrade_to_base_clears_the_revision(initialized: InitResult) -> None:

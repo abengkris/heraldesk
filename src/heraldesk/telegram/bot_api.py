@@ -1,8 +1,9 @@
 """Minimal Telegram Bot API adapter.
 
 M6 deliberately avoids adding ``aiogram`` or ``python-telegram-bot``. Only
-``sendMessage`` and the ``getUpdates`` polling stub are implemented with the standard
-library. ``heraldesk serve`` will drive polling in M7.
+``sendMessage`` and the ``getUpdates`` polling call are implemented with the standard
+library. ``heraldesk serve`` drives polling through
+:class:`heraldesk.telegram.poller.TelegramPoller`.
 
 The token is held in memory only. It never appears in a repr, log line, exception or
 audit entry, and API failures are reported without the request URL.
@@ -89,7 +90,7 @@ class BotApiTelegramAdapter:
         return TelegramSendResult(chat_id=chat_id, message_id=message_id)
 
     def poll_updates(self, offset: int | None = None) -> list[TelegramUpdate]:
-        """Fetch the next batch of updates. The live loop is wired in M7."""
+        """Fetch the next batch of updates, honouring the Bot API offset."""
         fields = {"timeout": "0"}
         if offset is not None:
             fields["offset"] = str(offset)

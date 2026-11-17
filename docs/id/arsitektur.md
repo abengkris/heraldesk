@@ -297,6 +297,9 @@ APScheduler + tabel `jobs` persisten, adapter `threads` dan `nostr`, idempotensi
 **M7: Web UI lokal**
 Antrean approval, kalender, inbox, laporan, editor profil dan kebijakan, audit, biaya; auth password.
 *Penerimaan:* seluruh alur approval dapat dilakukan dari web; start dengan host non-loopback tanpa password ditolak.
+*Catatan repositori (2026-11-17):* pass M7 pertama mengimplementasikan server satu proses: FastAPI
+`/health`, `/status` dan `/webhook/telegram`, sweep latar APScheduler dan polling Telegram. Web UI,
+auth password dan namespace `/api/v1` tetap pekerjaan berikutnya. Lihat `docs/decisions.md`.
 
 **M8: Plugin dan adapter tambahan**
 Loader entry points, template plugin, adapter X, Facebook, Instagram, LinkedIn.

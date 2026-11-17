@@ -28,6 +28,7 @@ def test_defaults_without_a_config_file(home: Path) -> None:
     assert config.server.port == 8000
     assert config.llm.max_daily_cost_usd == 5.0
     assert config.telegram.enabled is False
+    assert config.telegram.mode == "polling"
     assert config.telegram.allowed_chat_ids == []
 
 
@@ -43,6 +44,7 @@ server:
   port: 9000
 telegram:
   enabled: true
+  mode: webhook
   allowed_chat_ids: [42]
 """,
     )
@@ -51,6 +53,7 @@ telegram:
     assert config.llm.max_daily_cost_usd == 2.5
     assert config.server.port == 9000
     assert config.telegram.enabled is True
+    assert config.telegram.mode == "webhook"
     assert config.telegram.allowed_chat_ids == [42]
 
 

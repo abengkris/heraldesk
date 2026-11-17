@@ -25,7 +25,9 @@ classifiers = [
 ]
 dependencies = [
   "alembic>=1.14",
+  "apscheduler>=3.10,<4",
   "cryptography>=43",
+  "fastapi>=0.115",
   "litellm>=1.55",
   "pydantic-settings>=2.6",
   "python-dotenv>=1.0",
@@ -35,6 +37,7 @@ dependencies = [
   # Provides the IANA timezone database where the OS has none (Windows, minimal containers).
   "tzdata>=2024.1",
   "typer>=0.15",
+  "uvicorn>=0.30",
 ]
 
 [project.scripts]
@@ -47,6 +50,7 @@ Documentation = "https://github.com/abengkris/heraldesk/blob/main/docs/architect
 
 [dependency-groups]
 dev = [
+  "httpx>=0.27",
   "mypy>=1.14",
   "pytest>=8.3",
   "ruff>=0.8",
