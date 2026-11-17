@@ -1,9 +1,9 @@
 # Changelog
 
-All notable changes to Heraldesk are recorded here. The project follows a single
-`1.0.0` release that folds the M0-M9 implementation milestones together.
+All notable changes to Heraldesk are recorded here. The `1.0.0` release folded the
+M0-M9 implementation milestones together; `1.1.0` adds the first real platform adapter.
 
-## [Unreleased]
+## [1.1.0] - 2026-11-17
 
 ### M10 - Real Nostr publishing
 
@@ -14,6 +14,8 @@ All notable changes to Heraldesk are recorded here. The project follows a single
   `heraldesk account list` with a masked npub.
 - Added the `nostr` section to `heraldesk.yaml`, the optional `social_accounts.label`
   column (migration `0010`), nsec/npub redaction and `AccountRef` credential hiding.
+- Added `coincurve` (BIP-340 Schnorr signing) and `websockets` (relay transport) as
+  runtime dependencies, with `uv.lock` updated.
 - Documented the throwaway-key rule: Nostr events are immutable and cannot be deleted.
 
 ## [1.0.0] - 2026-11-17
