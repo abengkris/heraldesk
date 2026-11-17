@@ -56,3 +56,29 @@ No open questions remain for M0. Later ambiguities are added here when their mil
 - [x] (2026-11-16, M3) **May the fake platform fallback create a `social_accounts` row?**
   **RESOLVED 2026-11-16: no.** The fallback exists only in memory so `profile new` plus
   `run daily` works offline; accounts are never auto-created.
+
+## Resolved during M4
+
+- [x] (2026-11-16, M4) **Is `auto_publish` a new policy key or a mode value?**
+  **RESOLVED 2026-11-16: a mode value.** `default_mode: auto_publish` and
+  `{ action: post, risk: low, mode: auto_publish }` are valid. There is no second top-level
+  `mode` key. `auto` and `auto_after_delay` remain parseable but are treated as
+  `require_approval` until M5. Recorded in `docs/decisions.md`.
+- [x] (2026-11-16, M4) **Does `queue approve|reject|edit <id>` take a content item id or an approval id?**
+  **RESOLVED 2026-11-16: the content item id shown by `queue list`.** A narrow
+  `ContentItemLocator` resolves the owning profile from the globally unique item id; all
+  content reads and writes remain scoped. Recorded in `docs/decisions.md`.
+- [x] (2026-11-16, M4) **May a `draft` profile approve content?**
+  **RESOLVED 2026-11-16: yes.** Approval is a human internal decision, not publishing.
+  Global kill switch, per-profile kill switch and `paused` still refuse. Publishing remains
+  gated by M5. Recorded in `docs/decisions.md`.
+- [x] (2026-11-16, M4) **Which states accept a human edit?**
+  **RESOLVED 2026-11-16:** only `blocked`, `rejected`, `needs_review`, `approved` and
+  `pending_approval`. `drafted` and `reviewed` are transient pipeline states, not
+  user-holdable states, so edits on them are illegal in M4. `scheduled`, `published`,
+  `cancelled` and `failed` are also illegal. Recorded in `docs/decisions.md`.
+- [x] (2026-11-16, M4) **How is the 72-hour approval expiry triggered without a scheduler?**
+  **RESOLVED 2026-11-16: opportunistically by `heraldesk queue list`.** Approve/reject/edit
+  refuse a stale approval and leave the database untouched; the next `queue list` cancels
+  the item and marks the approval expired. The M5 scheduler will add a periodic sweep.
+  Recorded in `docs/decisions.md`.

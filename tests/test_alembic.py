@@ -27,6 +27,7 @@ def test_m1_schema_creates_the_core_domain_tables(initialized: InitResult) -> No
         "pipeline_runs",
         "content_ideas",
         "content_items",
+        "approvals",
     }
 
 
@@ -43,6 +44,7 @@ def test_m1_profile_owned_tables_have_profile_id(initialized: InitResult) -> Non
                 "pipeline_runs",
                 "content_ideas",
                 "content_items",
+                "approvals",
             ):
                 columns = {column["name"] for column in inspector.get_columns(table)}
                 assert "profile_id" in columns
@@ -73,6 +75,7 @@ def test_migration_scripts_are_present() -> None:
     assert list((directory / "versions").glob("0002*.py"))
     assert list((directory / "versions").glob("0003*.py"))
     assert list((directory / "versions").glob("0004*.py"))
+    assert list((directory / "versions").glob("0005*.py"))
 
 
 def test_downgrade_to_base_clears_the_revision(initialized: InitResult) -> None:

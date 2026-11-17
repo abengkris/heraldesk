@@ -47,7 +47,8 @@ VOICE_SUFFIXES = frozenset({".md", ".txt"})
 DEFAULT_POLICY_YAML = """\
 # Autonomy policy. Safe by default: every action needs a human.
 # Rule matching: most specific (action + risk + intents) first, then file order,
-# then default_mode. Modes: draft_only, require_approval, auto, auto_after_delay.
+# then default_mode. M4 modes: draft_only, require_approval, auto_publish.
+# auto and auto_after_delay are reserved for the M5 scheduler.
 default_mode: draft_only
 rules: []
 quiet_hours:

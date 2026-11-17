@@ -4,9 +4,10 @@ A content item changes state only through :func:`transition`. The legal edges ar
 explicit so a pipeline can never invent a shortcut, and every accepted change is written
 to the append-only audit log.
 
-M3 deliberately keeps ``blocked``, ``rejected``, ``published``, ``cancelled`` and
-``needs_review`` terminal. The approval service in M4 adds the human-edit path from
-``blocked``/``rejected`` back to ``drafted``.
+M4 opens the human-edit paths: ``blocked``, ``rejected`` and ``needs_review`` can move
+back to ``drafted`` for Compliance re-evaluation, and ``approved`` can move back to
+``pending_approval`` after an edit. Only ``published`` and ``cancelled`` are truly
+terminal.
 """
 
 from __future__ import annotations
@@ -66,6 +67,7 @@ LEGAL_TRANSITIONS: Final[dict[ContentState, frozenset[ContentState]]] = {
     ContentState.APPROVED: frozenset(
         {
             ContentState.SCHEDULED,
+            ContentState.PENDING_APPROVAL,
             ContentState.CANCELLED,
         }
     ),
@@ -83,18 +85,21 @@ LEGAL_TRANSITIONS: Final[dict[ContentState, frozenset[ContentState]]] = {
             ContentState.CANCELLED,
         }
     ),
-    ContentState.NEEDS_REVIEW: frozenset({ContentState.CANCELLED}),
+    ContentState.NEEDS_REVIEW: frozenset(
+        {
+            ContentState.DRAFTED,
+            ContentState.CANCELLED,
+        }
+    ),
     ContentState.PUBLISHED: frozenset(),
-    ContentState.BLOCKED: frozenset(),
-    ContentState.REJECTED: frozenset(),
+    ContentState.BLOCKED: frozenset({ContentState.DRAFTED}),
+    ContentState.REJECTED: frozenset({ContentState.DRAFTED}),
     ContentState.CANCELLED: frozenset(),
 }
 
 TERMINAL_STATES: Final[frozenset[ContentState]] = frozenset(
     {
         ContentState.PUBLISHED,
-        ContentState.BLOCKED,
-        ContentState.REJECTED,
         ContentState.CANCELLED,
     }
 )

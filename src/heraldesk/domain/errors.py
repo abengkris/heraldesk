@@ -41,3 +41,23 @@ class ContentItemNotFoundError(ContentError):
 
 class IllegalContentTransition(ContentError):
     """The requested state change is not allowed by the content state machine."""
+
+
+class ApprovalError(DomainError):
+    """An approval operation cannot be completed."""
+
+
+class ApprovalNotFoundError(ApprovalError):
+    """No open approval exists for the requested content item."""
+
+
+class ApprovalStateError(ApprovalError):
+    """The content item or approval is not in a state that allows the operation."""
+
+
+class ApprovalExpiredError(ApprovalStateError):
+    """The pending approval is older than its 72-hour window."""
+
+
+class ApprovalBlockedError(ApprovalError):
+    """A kill switch or a paused profile forbids approving content."""

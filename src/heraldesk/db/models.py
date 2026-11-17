@@ -2,7 +2,7 @@
 
 Tables owned by M1: profiles, social accounts, the audit log and the business jobs table.
 M2 adds ``agent_runs``. M3 adds ``pipeline_runs``, ``content_ideas`` and ``content_items``.
-Approvals, inbox and metrics arrive later.
+M4 adds ``approvals``. Inbox and metrics arrive later.
 
 Every profile-owned table carries ``profile_id``. Access to those rows goes through
 :class:`heraldesk.db.scope.ProfileScope` in the repository layer.
@@ -372,3 +372,75 @@ class ContentItem(Base):
         onupdate=utcnow,
         server_default=func.now(),
     )
+
+
+APPROVAL_STATES = (
+    "pending",
+    "approved",
+    "rejected",
+    "expired",
+)
+
+
+class Approval(Base):
+    """One approval request and its outcome for a content item.
+
+    A content item may be approved, edited and sent back for approval more than once, so
+    ``approvals`` keeps one row per request. The partial unique index
+    ``uq_approvals_pending_item`` guarantees at most one pending request per item.
+    """
+
+    __tablename__ = "approvals"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('pending','approved','rejected','expired')",
+            name="ck_approvals_state",
+        ),
+        CheckConstraint(
+            "decision IS NULL OR decision IN ('approve','reject','edit')",
+            name="ck_approvals_decision",
+        ),
+        CheckConstraint(
+            "channel IN ('web','telegram','cli')",
+            name="ck_approvals_channel",
+        ),
+        Index("ix_approvals_profile_id", "profile_id"),
+        Index("ix_approvals_content_item_id", "content_item_id"),
+        Index("ix_approvals_state", "state"),
+        Index(
+            "uq_approvals_pending_item",
+            "content_item_id",
+            unique=True,
+            sqlite_where=text("state = 'pending'"),
+            postgresql_where=text("state = 'pending'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    content_item_id: Mapped[int] = mapped_column(
+        ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False
+    )
+    state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending"
+    )
+    decision: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    edited_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    channel: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="cli", server_default="cli"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+        server_default=func.now(),
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

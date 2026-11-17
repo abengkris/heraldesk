@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from heraldesk.core.audit import AuditService
 from heraldesk.db.models import (
     AgentRun,
+    Approval,
     AuditLog,
     ContentIdea,
     ContentItem,
@@ -18,11 +19,13 @@ from heraldesk.db.models import (
 )
 from heraldesk.db.repositories import (
     AgentRunRepository,
+    ApprovalRepository,
     ContentIdeaRepository,
     ContentItemRepository,
     PipelineRunRepository,
     SocialAccountRepository,
 )
+from heraldesk.domain.profiles import ProfileDefinition, load_profile
 from heraldesk.llm.fake import FakeLLM, json_fixture
 from heraldesk.pipelines.daily_content import DailyContentError, run_daily_content
 from heraldesk.tools.web_search import FakeWebSearch
@@ -42,12 +45,13 @@ def run_pipeline(
     *,
     now: datetime = NOW,
     dry_run: bool = False,
+    definition: ProfileDefinition | None = None,
 ):
     return run_daily_content(
         db_session,
         setup.layout,
         setup.scope,
-        setup.definition,
+        definition or setup.definition,
         provider=provider,
         search=FakeWebSearch(),
         model=provider.default_model,
@@ -55,6 +59,12 @@ def run_pipeline(
         dry_run=dry_run,
         now=now,
     )
+
+
+def with_policy(setup: ProfileSetup, text: str) -> ProfileDefinition:
+    """Write a replacement policy.yaml and return the reloaded definition."""
+    (setup.definition.path / "policy.yaml").write_text(text, encoding="utf-8")
+    return load_profile(setup.definition.path)
 
 
 def test_pipeline_end_to_end_records_everything(profile_setup: ProfileSetup, db_session) -> None:
@@ -77,6 +87,12 @@ def test_pipeline_end_to_end_records_everything(profile_setup: ProfileSetup, db_
     assert items[0].idea_id is not None
     assert items[0].risk_level == "low"
 
+    approvals = ApprovalRepository(db_session).list(profile_setup.scope)
+    assert len(approvals) == 1
+    assert approvals[0].content_item_id == items[0].id
+    assert approvals[0].state == "pending"
+    assert summary.approval_id == approvals[0].id
+
     ideas = ContentIdeaRepository(db_session).list(profile_setup.scope)
     assert len(ideas) == 1
     assert ideas[0].title == IDEA_TITLE
@@ -95,7 +111,12 @@ def test_pipeline_end_to_end_records_everything(profile_setup: ProfileSetup, db_
     actions = {
         entry.action for entry in AuditService(db_session).history(profile_setup.scope, limit=1000)
     }
-    assert {"pipeline.started", "pipeline.succeeded", "content.state_changed"} <= actions
+    assert {
+        "pipeline.started",
+        "pipeline.succeeded",
+        "content.state_changed",
+        "approval.requested",
+    } <= actions
 
     # The fake platform fallback must not create an account row.
     assert SocialAccountRepository(db_session).list(profile_setup.scope) == []
@@ -105,14 +126,14 @@ def test_dry_run_writes_nothing(profile_setup: ProfileSetup, db_session) -> None
     db_session.commit()
     before = {
         model.__tablename__: db_session.scalar(select(func.count()).select_from(model))
-        for model in (PipelineRun, ContentIdea, ContentItem, AgentRun, AuditLog)
+        for model in (PipelineRun, ContentIdea, ContentItem, Approval, AgentRun, AuditLog)
     }
 
     result = run_pipeline(db_session, profile_setup, FakeLLM(), dry_run=True)
 
     after = {
         model.__tablename__: db_session.scalar(select(func.count()).select_from(model))
-        for model in (PipelineRun, ContentIdea, ContentItem, AgentRun, AuditLog)
+        for model in (PipelineRun, ContentIdea, ContentItem, Approval, AgentRun, AuditLog)
     }
     assert before == after
     assert result.dry_run is True
@@ -253,6 +274,69 @@ def test_pipeline_output_never_contains_a_secret(profile_setup: ProfileSetup, db
     assert secret not in json.dumps([run.output for run in runs])
     audits = AuditService(db_session).history(profile_setup.scope, limit=1000)
     assert secret not in json.dumps([entry.payload for entry in audits])
+
+
+def test_require_approval_creates_a_pending_approval(
+    profile_setup: ProfileSetup, db_session
+) -> None:
+    definition = with_policy(profile_setup, "default_mode: require_approval\n")
+    result = run_pipeline(db_session, profile_setup, FakeLLM(), definition=definition)
+
+    assert result.items[0].state == "pending_approval"
+    approvals = ApprovalRepository(db_session).list(profile_setup.scope)
+    assert len(approvals) == 1
+    assert approvals[0].state == "pending"
+
+    requested = [
+        entry
+        for entry in AuditService(db_session).history(profile_setup.scope, limit=1000)
+        if entry.action == "approval.requested"
+    ]
+    assert requested
+    assert requested[-1].payload["policy_mode"] == "require_approval"
+
+
+def test_auto_publish_low_risk_schedules_without_an_approval(
+    profile_setup: ProfileSetup, db_session
+) -> None:
+    definition = with_policy(profile_setup, "default_mode: auto_publish\n")
+    result = run_pipeline(db_session, profile_setup, FakeLLM(), definition=definition)
+
+    assert result.items[0].state == "scheduled"
+    item = ContentItemRepository(db_session).list(profile_setup.scope)[0]
+    assert item.state == "scheduled"
+    assert item.scheduled_at is not None
+    assert ApprovalRepository(db_session).list(profile_setup.scope) == []
+
+
+def test_auto_publish_high_risk_still_waits_for_a_human(
+    profile_setup: ProfileSetup, db_session
+) -> None:
+    provider = FakeLLM(
+        role_responses={
+            "compliance": [
+                json_fixture(
+                    {
+                        "risk_level": "high",
+                        "reasons": ["Potentially misleading comparison."],
+                        "fixes": ["Soften the claim."],
+                    }
+                )
+            ]
+        }
+    )
+    definition = with_policy(profile_setup, "default_mode: auto_publish\n")
+    result = run_pipeline(
+        db_session,
+        profile_setup,
+        provider,
+        definition=definition,
+    )
+
+    assert result.items[0].state == "pending_approval"
+    approvals = ApprovalRepository(db_session).list(profile_setup.scope)
+    assert len(approvals) == 1
+    assert approvals[0].state == "pending"
 
 
 def test_strategist_failure_marks_the_pipeline_failed(

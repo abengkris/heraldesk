@@ -6,7 +6,7 @@ Each milestone is done only when its acceptance criteria pass and tests exist. D
 - [x] M1 Core domain (profiles from files, accounts, audit log, kill switch, ProfileScope)
 - [x] M2 LLM layer and agent runtime (fake provider, cost tracking)
 - [x] M3 `daily_content` pipeline with fake publisher
-- [ ] M4 Approval flow and Telegram
+- [x] M4 Approval flow and autonomy (Telegram deferred)
 - [ ] M5 Scheduler, publisher, Threads and Nostr adapters
 - [ ] M6 Community manager and analyst
 - [ ] M7 Local web UI

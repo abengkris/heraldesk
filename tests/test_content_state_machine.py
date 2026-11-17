@@ -63,24 +63,27 @@ def test_every_illegal_transition_raises_and_leaves_the_state_alone(
             assert repository.get(profile_setup.scope, item.id).state == source.value
 
 
-def test_terminal_states_cannot_move_in_m3(profile_setup: ProfileSetup, db_session) -> None:
-    for state in (
-        ContentState.BLOCKED,
-        ContentState.REJECTED,
-        ContentState.PUBLISHED,
-        ContentState.CANCELLED,
-    ):
+def test_only_published_and_cancelled_are_terminal(profile_setup: ProfileSetup, db_session) -> None:
+    for state in (ContentState.PUBLISHED, ContentState.CANCELLED):
         item = make_item(db_session, profile_setup, state)
         assert not can_transition(state, ContentState.DRAFTED)
         with pytest.raises(IllegalContentTransition):
             transition(db_session, profile_setup.scope, item.id, ContentState.DRAFTED)
 
 
-def test_edit_paths_stay_closed_until_m4(profile_setup: ProfileSetup, db_session) -> None:
-    for state in (ContentState.BLOCKED, ContentState.REJECTED):
+def test_human_edit_paths_are_open_in_m4(profile_setup: ProfileSetup, db_session) -> None:
+    for state in (
+        ContentState.BLOCKED,
+        ContentState.REJECTED,
+        ContentState.NEEDS_REVIEW,
+    ):
         item = make_item(db_session, profile_setup, state)
-        with pytest.raises(IllegalContentTransition):
-            transition(db_session, profile_setup.scope, item.id, ContentState.DRAFTED)
+        updated = transition(db_session, profile_setup.scope, item.id, ContentState.DRAFTED)
+        assert updated.state == ContentState.DRAFTED.value
+
+    item = make_item(db_session, profile_setup, ContentState.APPROVED)
+    updated = transition(db_session, profile_setup.scope, item.id, ContentState.PENDING_APPROVAL)
+    assert updated.state == ContentState.PENDING_APPROVAL.value
 
 
 def test_cancelled_edges_from_failed_and_needs_review(

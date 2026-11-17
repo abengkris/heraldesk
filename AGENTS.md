@@ -37,6 +37,9 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
 - Test accounts offline: `uv run heraldesk account test <slug>` (fake adapter in M1)
 - Run the Writer once and record the trace: `uv run heraldesk agent run writer <slug> --idea "..."`
 - Run the daily content pipeline: `uv run heraldesk run daily <slug> [--dry-run]` (`--dry-run` writes nothing)
+- List the approval queue: `uv run heraldesk queue list <slug>`
+- Approve or reject queued content: `uv run heraldesk queue approve <id>`, `uv run heraldesk queue reject <id> [--reason "..."]`
+- Edit queued content: `uv run heraldesk queue edit <id> --body "..."` or `--body-file <path>`
 - Show agent run traces and cost: `uv run heraldesk runs <slug>`
 - Halt everything: `uv run heraldesk stop-all` (`--off` clears the global kill switch)
 - Try a throwaway instance: `HERALDESK_HOME=$(mktemp -d) uv run heraldesk init`

@@ -2,13 +2,14 @@
 
 Flow is deterministic: Strategist slots, Researcher ideas, a 60-day duplicate check,
 Writer drafts per slot/platform, an optional deterministic visual placeholder, lint,
-Compliance, then the M3 approval state.
+Compliance, then the M4 autonomy engine.
 
-M3 hardcodes ``draft_only``: every item that passes Compliance goes to
-``pending_approval`` and nothing is auto-approved. The autonomy engine arrives in M4.
+``draft_only`` and ``require_approval`` create a pending approval. ``auto_publish`` with
+low risk and a passing Compliance check moves the item through ``approved`` to
+``scheduled``. There is still no scheduler or publisher in M4.
 
 ``dry_run=True`` performs the whole simulation but writes nothing: no pipeline run, idea,
-content item, agent run or audit entry. Only the returned result is printed.
+content item, approval, agent run or audit entry. Only the returned result is printed.
 """
 
 from __future__ import annotations
@@ -51,7 +52,10 @@ from heraldesk.db.repositories import (
     SocialAccountRepository,
 )
 from heraldesk.db.scope import ProfileScope
+from heraldesk.domain.approvals import request_approval
+from heraldesk.domain.autonomy import AutonomyDecision, decide
 from heraldesk.domain.content import ContentState, can_transition, transition
+from heraldesk.domain.policy import PolicyAction
 from heraldesk.domain.profiles import ProfileDefinition
 from heraldesk.llm.types import LLMProvider
 from heraldesk.platforms.base import PlatformAdapter, constraints_for
@@ -80,6 +84,7 @@ class DraftSummary:
     risk_level: str | None
     body: str
     reason: str | None = None
+    approval_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +111,7 @@ class _WorkingDraft:
     risk_level: str | None = None
     risk_notes: str | None = None
     reason: str | None = None
+    approval_id: int | None = None
 
     def summary(self) -> DraftSummary:
         return DraftSummary(
@@ -115,6 +121,7 @@ class _WorkingDraft:
             risk_level=self.risk_level,
             body=self.body,
             reason=self.reason,
+            approval_id=self.approval_id,
         )
 
 
@@ -572,8 +579,38 @@ class _DailyContentRunner:
             )
             return working
 
-        # M3 hardcodes draft_only: even low risk waits for a human in M4.
-        self._set_state(working, ContentState.PENDING_APPROVAL)
+        decision = decide(
+            self._definition.policy,
+            action=PolicyAction.POST,
+            risk_level=assessment.risk_level,
+            compliance_passed=True,
+        )
+        if decision.decision is AutonomyDecision.AUTO_APPROVE:
+            self._set_state(working, ContentState.PENDING_APPROVAL, decision.reason)
+            self._set_state(
+                working,
+                ContentState.APPROVED,
+                "auto_publish: low risk and Compliance passed",
+            )
+            self._set_state(
+                working,
+                ContentState.SCHEDULED,
+                "auto_publish: low risk and Compliance passed",
+            )
+            working.reason = decision.reason
+            return working
+
+        self._set_state(working, ContentState.PENDING_APPROVAL, decision.reason)
+        if not self._dry_run and working.item_id is not None:
+            approval = request_approval(
+                self._session,
+                self._scope,
+                working.item_id,
+                now=self._now,
+                actor="system",
+                policy_mode=decision.mode.value,
+            )
+            working.approval_id = approval.id
         return working
 
     def _create_item(

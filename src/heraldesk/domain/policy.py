@@ -1,9 +1,12 @@
 """Pydantic schemas for ``policy.yaml`` and ``banned.yaml``.
 
-The autonomy policy is parsed in M1; the engine that applies it arrives in M4. Rule
-matching is documented here for users and will be implemented when the engine lands:
-most specific (action + risk + intent) first, then first match in file order, then
-``default_mode``.
+The autonomy policy is parsed in M1 and applied by the M4 engine in
+:mod:`heraldesk.domain.autonomy`. Rule matching is most specific
+(action + risk + intent) first, then first match in file order, then ``default_mode``.
+
+M4 implements ``draft_only``, ``require_approval`` and ``auto_publish``. The existing
+``auto`` and ``auto_after_delay`` values stay valid YAML for the M5 scheduler, but the
+M4 engine treats them as ``require_approval``.
 """
 
 from __future__ import annotations
@@ -21,10 +24,16 @@ _TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 class PolicyMode(StrEnum):
-    """How much freedom a profile gives an action."""
+    """How much freedom a profile gives an action.
+
+    ``auto`` and ``auto_after_delay`` are reserved for the M5 scheduler. The M4 engine
+    deliberately treats them as ``require_approval`` so no draft is auto-approved
+    before the scheduler exists.
+    """
 
     DRAFT_ONLY = "draft_only"
     REQUIRE_APPROVAL = "require_approval"
+    AUTO_PUBLISH = "auto_publish"
     AUTO = "auto"
     AUTO_AFTER_DELAY = "auto_after_delay"
 

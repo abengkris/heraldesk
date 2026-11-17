@@ -42,6 +42,8 @@ def test_full_policy_parses() -> None:
     policy = parse_policy_yaml(FULL_POLICY, source="acme/policy.yaml")
     assert policy.default_mode is PolicyMode.DRAFT_ONLY
     assert len(policy.rules) == 5
+    assert PolicyMode("auto_publish") is PolicyMode.AUTO_PUBLISH
+    assert parse_policy_yaml("default_mode: auto_publish\n").default_mode is PolicyMode.AUTO_PUBLISH
     first = policy.rules[0]
     assert first.action is PolicyAction.POST
     assert first.risk is PolicyRisk.LOW

@@ -1,7 +1,8 @@
 """Heraldesk command line interface.
 
-M0-M3 expose bootstrap, profile, account, off-switch, single-agent, daily pipeline and
-run-trace commands. Queues, reports and the server arrive in later milestones.
+M0-M4 expose bootstrap, profile, account, off-switch, single-agent, daily pipeline,
+run-trace and approval-queue commands. Reports, the server and Telegram arrive in later
+milestones.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from heraldesk.cli.account import account_app
 from heraldesk.cli.agent import agent_app
 from heraldesk.cli.common import abort, console, session_for
 from heraldesk.cli.profile import profile_app
+from heraldesk.cli.queue import queue_app
 from heraldesk.cli.run import run_app
 from heraldesk.cli.runs import runs_command
 from heraldesk.core.audit import AuditService
@@ -38,6 +40,7 @@ app.add_typer(profile_app, name="profile")
 app.add_typer(account_app, name="account")
 app.add_typer(agent_app, name="agent")
 app.add_typer(run_app, name="run")
+app.add_typer(queue_app, name="queue")
 app.command("runs")(runs_command)
 
 

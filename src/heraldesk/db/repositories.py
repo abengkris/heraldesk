@@ -8,6 +8,7 @@ profile file content.
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from heraldesk.db.models import (
     AgentRun,
+    Approval,
     AuditLog,
     ContentIdea,
     ContentItem,
@@ -684,3 +686,170 @@ class ContentItemRepository:
         item.updated_at = utcnow()
         self._session.flush()
         return item
+
+
+class ContentItemLocator:
+    """Resolve a globally unique content item id to its profile scope.
+
+    This is the one unscoped content query. It returns only the owning profile id, never
+    content, so callers must still use scoped repositories for every read and write. The
+    CLI uses it for ``queue approve|reject|edit <id>``, which deliberately has no profile
+    argument because content item ids are globally unique.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def scope_for_content_item(self, item_id: int) -> ProfileScope | None:
+        """Return the scope that owns *item_id*, or ``None`` when it does not exist."""
+        profile_id = self._session.scalar(
+            select(ContentItem.profile_id).where(ContentItem.id == item_id)
+        )
+        if profile_id is None:
+            return None
+        return ProfileScope(profile_id)
+
+
+class ApprovalRepository:
+    """Scoped storage for approval requests and decisions."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(
+        self,
+        scope: ProfileScope,
+        *,
+        content_item_id: int,
+        expires_at: datetime,
+        channel: str = "cli",
+        edited_body: str | None = None,
+        created_at: datetime | None = None,
+    ) -> Approval:
+        """Insert one pending approval for a scoped content item."""
+        item = ContentItemRepository(self._session).get(scope, content_item_id)
+        if item is None:
+            raise RecordNotFound(
+                f"content item {content_item_id} does not exist for profile {scope.profile_id}"
+            )
+        if self.pending_for_item(scope, content_item_id) is not None:
+            raise DuplicateRecord(f"content item {content_item_id} already has a pending approval")
+        approval = Approval(
+            profile_id=scope.profile_id,
+            content_item_id=content_item_id,
+            state="pending",
+            channel=channel,
+            edited_body=edited_body,
+            expires_at=expires_at,
+        )
+        if created_at is not None:
+            approval.created_at = created_at
+        self._session.add(approval)
+        self._session.flush()
+        return approval
+
+    def get(self, scope: ProfileScope, approval_id: int) -> Approval | None:
+        """Return one approval only when it belongs to the scoped profile."""
+        return self._session.scalar(
+            select(Approval).where(
+                Approval.id == approval_id,
+                Approval.profile_id == scope.profile_id,
+            )
+        )
+
+    def pending_for_item(self, scope: ProfileScope, content_item_id: int) -> Approval | None:
+        """Return the open approval for a scoped content item, if any."""
+        return self._session.scalar(
+            select(Approval).where(
+                Approval.profile_id == scope.profile_id,
+                Approval.content_item_id == content_item_id,
+                Approval.state == "pending",
+            )
+        )
+
+    def latest_for_item(self, scope: ProfileScope, content_item_id: int) -> Approval | None:
+        """Return the newest approval for a scoped content item, whatever its state."""
+        return self._session.scalar(
+            select(Approval)
+            .where(
+                Approval.profile_id == scope.profile_id,
+                Approval.content_item_id == content_item_id,
+            )
+            .order_by(Approval.id.desc())
+        )
+
+    def list(
+        self,
+        scope: ProfileScope,
+        *,
+        states: tuple[str, ...] | None = None,
+        limit: int = 200,
+    ) -> list[Approval]:
+        """Return approvals of the scoped profile, newest first."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        query = select(Approval).where(Approval.profile_id == scope.profile_id)
+        if states is not None:
+            query = query.where(Approval.state.in_(states))
+        approvals = self._session.scalars(query.order_by(Approval.id.desc()).limit(limit)).all()
+        return list(approvals)
+
+    def stale_pending(self, scope: ProfileScope, *, before: datetime) -> builtins.list[Approval]:
+        """Return pending approvals whose expiry is older than *before*."""
+        approvals = self._session.scalars(
+            select(Approval)
+            .where(
+                Approval.profile_id == scope.profile_id,
+                Approval.state == "pending",
+                Approval.expires_at < before,
+            )
+            .order_by(Approval.id)
+        ).all()
+        return builtins.list(approvals)
+
+    def update_decision(
+        self,
+        scope: ProfileScope,
+        approval_id: int,
+        *,
+        state: str,
+        decision: str | None,
+        reason: str | None,
+        edited_body: str | None,
+        decided_at: datetime,
+        channel: str,
+    ) -> Approval | None:
+        """Store a final decision or expiry for one scoped approval."""
+        approval = self.get(scope, approval_id)
+        if approval is None:
+            return None
+        approval.state = state
+        approval.decision = decision
+        approval.reason = reason
+        if edited_body is not None:
+            approval.edited_body = edited_body
+        approval.decided_at = decided_at
+        approval.channel = channel
+        approval.updated_at = utcnow()
+        self._session.flush()
+        return approval
+
+    def touch_pending(
+        self,
+        scope: ProfileScope,
+        approval_id: int,
+        *,
+        edited_body: str,
+        expires_at: datetime,
+    ) -> Approval | None:
+        """Record an edit on a pending approval and restart its expiry window."""
+        approval = self.get(scope, approval_id)
+        if approval is None:
+            return None
+        if approval.state != "pending":
+            return None
+        approval.edited_body = edited_body
+        approval.expires_at = expires_at
+        approval.updated_at = utcnow()
+        self._session.flush()
+        return approval

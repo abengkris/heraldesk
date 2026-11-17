@@ -327,3 +327,72 @@ These answers close the open questions raised after the first full read of the s
   the missing-prompt test now uses a role that still has no prompt (`analyst`). New M3 tests cover every legal and
   illegal state transition, lint accept/reject cases, 60-day dedupe, dry-run zero writes, pipeline end to end,
   Compliance fail-closed, SSRF rejection and secret redaction.
+
+## M4 implementation decisions (2026-11-16)
+
+- **M4 adds exactly one table, `approvals`, in migration `0005`.** Columns follow architecture section 4 plus the
+  requested lifecycle: `id`, `profile_id`, `content_item_id`, `state` (`pending|approved|rejected|expired`),
+  `decision` (`approve|reject|edit`, nullable), `edited_body`, `reason`, `decided_at`, `channel`
+  (`web|telegram|cli`), `created_at`, `updated_at`, `expires_at`. `profile_id` is denormalized from the content item
+  so approval queries never rely on a join.
+- **One pending approval per content item is enforced twice.** A partial unique index
+  `uq_approvals_pending_item` covers `content_item_id WHERE state = 'pending'` on SQLite and PostgreSQL, and
+  `ApprovalRepository` rejects a second pending row in the application. The service is idempotent, so a repeated
+  request for the same item returns the existing row. Historical rows stay in the table after approval, rejection or
+  expiry; a later edit that reopens an item creates a new request.
+- **`decision` stores only `approve` or `reject`.** An edit is recorded through `edited_body` and the
+  `approval.edited` audit entry because an edit does not decide the request: it either stays pending or reopens it.
+  `expired` rows leave `decision` NULL.
+- **The M4 autonomy vocabulary is exactly `draft_only`, `require_approval` and `auto_publish`.** `auto_publish` is a
+  new `PolicyMode`. The existing `auto` and `auto_after_delay` values stay valid YAML for the M5 scheduler, but the
+  M4 engine deliberately treats them as `require_approval` and says so in the decision reason. No draft is
+  auto-approved before the scheduler exists.
+- **`default_mode` remains the policy key.** M4 does not add a second top-level `mode` key, because that would
+  duplicate `default_mode` and make M0-M3 profile files ambiguous. Rule matching is unchanged from R2: most specific
+  (rules with matching `intents`) first, then file order, then `default_mode`.
+- **Both `draft_only` and `require_approval` create a pending approval row.** The M4 difference is the recorded policy
+  mode and the future scheduling rule: `draft_only` never auto-schedules, while `require_approval` may schedule after
+  approval in M5. Both are `pending_approval` in M4, and the invariant "one open approval per pending item" applies
+  to both.
+- **`auto_publish` only auto-approves low risk after Compliance passed.** The pipeline moves the item through
+  `pending_approval -> approved -> scheduled` in one transaction. Medium risk, high risk, a blocked assessment, a
+  missing risk level or a failed Compliance check falls back to `pending_approval` plus an approval row. No approval
+  row is created for the auto-published path.
+- **CLI ids are content item ids.** `queue approve|reject|edit <id>` refers to the id shown by `queue list`, not an
+  approval id. Because content item ids are globally unique, `ContentItemLocator` is a narrow global exception to
+  `ProfileScope`: it selects only `content_items.profile_id` and returns a scope. Every content read and write after
+  that still goes through a scoped repository.
+- **Kill-switch precedence for approval is global > per-profile > `paused` > policy.** `queue approve` refuses with
+  `global_kill_switch`, `profile_kill_switch` or `profile_paused` before any write. `reject` and `edit` remain
+  available while halted because they cannot publish anything. A profile in `draft` status may be approved in M4:
+  approval is an internal human decision, not publishing, and M5 still gates publishing on an active profile.
+- **Human edit paths are strict in M4.** User edits are allowed only for `blocked`, `rejected`, `needs_review`,
+  `approved` and `pending_approval`:
+  - `blocked`, `rejected`, `needs_review` -> `drafted` (risk and risk notes are cleared so Compliance must
+    re-evaluate);
+  - `approved` -> `pending_approval` with a new pending approval row;
+  - `pending_approval` stays pending, updates the body and restarts the 72-hour expiry window.
+  `drafted` and `reviewed` are transient pipeline states, not user-holdable states, so an edit on them is illegal in
+  M4. `scheduled`, `published`, `cancelled` and `failed` are also illegal edit targets. Every state change goes
+  through `domain.content.transition()`; a same-state pending edit updates the body and approved `edited_body` only.
+- **The content state machine opens the M4 human edges.** `blocked`, `rejected` and `needs_review` can move to
+  `drafted`; `approved` can move back to `pending_approval`. Only `published` and `cancelled` are truly terminal.
+  The pipeline itself still never reopens an item, so only the approval service can exercise these edges.
+- **Approval expiry is 72 hours from `expires_at` and is opportunistic in M4.** There is no scheduler yet, so
+  `heraldesk queue list` sweeps stale pending approvals, moves the item to `cancelled` through `transition()` and
+  marks the approval `expired`. `approve`, `reject` and `edit` refuse a stale approval with `ApprovalExpiredError`
+  without writing anything; the next `queue list` performs the cancellation. The M5 scheduler will own a periodic
+  sweep.
+- **Approval payloads, audit entries and CLI output are redacted.** Edited bodies and rejection reasons pass through
+  `SecretRegistry` before persistence. Audit entries contain metadata only: ids, states, risk, channel, body SHA-256,
+  body length and a truncated redacted reason. They never contain the full body. CLI output redacts again and prints
+  only a body preview.
+- **Audit actions for M4:** `approval.requested`, `approval.approved`, `approval.rejected`, `approval.edited`,
+  `approval.expired`, in addition to the existing `content.state_changed`. Auto-published items are visible through
+  their `content.state_changed` entries because they pass through the same state machine.
+- **No Telegram, scheduler, publisher or real posting is added in M4.** The architecture M4 item that mentions
+  Telegram is deferred; the CLI approval flow is the only interface in this milestone.
+- **Test updates:** revision expectations move from `0004` to `0005`; the CLI command surface gains the `queue`
+  group; the Alembic table set gains `approvals`. New M4 tests cover the full autonomy matrix, approve/reject/edit
+  happy and illegal paths, all three human reopen edges, 72-hour expiry, kill-switch refusal, profile isolation,
+  audit coverage and secret redaction.

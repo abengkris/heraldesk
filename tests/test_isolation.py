@@ -12,7 +12,10 @@ from sqlalchemy.orm import Session
 from heraldesk.core.bootstrap import InitResult
 from heraldesk.core.crypto import CredentialCipher
 from heraldesk.db.repositories import (
+    ApprovalRepository,
     AuditRepository,
+    ContentItemLocator,
+    ContentItemRepository,
     JobRepository,
     ProfileRepository,
     SocialAccountRepository,
@@ -92,7 +95,14 @@ def test_jobs_are_invisible_across_scopes(
 
 
 def test_every_scoped_repository_method_takes_scope_first() -> None:
-    classes = (ProfileRepository, SocialAccountRepository, AuditRepository, JobRepository)
+    classes = (
+        ProfileRepository,
+        SocialAccountRepository,
+        AuditRepository,
+        JobRepository,
+        ContentItemRepository,
+        ApprovalRepository,
+    )
     for cls in classes:
         for name, method in inspect.getmembers(cls, inspect.isfunction):
             if name.startswith("_"):
@@ -101,6 +111,33 @@ def test_every_scoped_repository_method_takes_scope_first() -> None:
             assert parameters, f"{cls.__name__}.{name} has no parameters"
             assert parameters[0] == "self"
             assert parameters[1] == "scope", f"{cls.__name__}.{name} must take scope first"
+
+
+def test_approvals_are_invisible_across_scopes(
+    db_session: Session, make_definition: MakeDefinition
+) -> None:
+    alpha = make_scope(db_session, make_definition("alpha"))
+    beta = make_scope(db_session, make_definition("beta"))
+    item = ContentItemRepository(db_session).add(
+        alpha,
+        platform="fake",
+        body="alpha item",
+        state="pending_approval",
+    )
+    approval = ApprovalRepository(db_session).add(
+        alpha,
+        content_item_id=item.id,
+        expires_at=datetime.now(UTC),
+    )
+    repository = ApprovalRepository(db_session)
+
+    assert repository.get(alpha, approval.id) is not None
+    assert repository.get(beta, approval.id) is None
+    assert repository.pending_for_item(beta, item.id) is None
+    assert repository.list(beta) == []
+
+    assert ContentItemLocator(db_session).scope_for_content_item(item.id) == alpha
+    assert ContentItemLocator(db_session).scope_for_content_item(9999) is None
 
 
 def test_profile_repository_reads_only_the_scoped_profile(

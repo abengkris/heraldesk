@@ -11,7 +11,14 @@ from typer.testing import CliRunner
 from heraldesk.cli.main import app
 from heraldesk.core.bootstrap import InitResult
 from heraldesk.db.engine import build_engine
-from heraldesk.db.models import AgentRun, AuditLog, ContentIdea, ContentItem, PipelineRun
+from heraldesk.db.models import (
+    AgentRun,
+    Approval,
+    AuditLog,
+    ContentIdea,
+    ContentItem,
+    PipelineRun,
+)
 from heraldesk.db.session import session_factory
 
 pytestmark = pytest.mark.core
@@ -30,7 +37,14 @@ def counts(initialized: InitResult) -> dict[str, int]:
     try:
         return {
             model.__tablename__: session.scalar(select(func.count()).select_from(model))
-            for model in (PipelineRun, ContentIdea, ContentItem, AgentRun, AuditLog)
+            for model in (
+                PipelineRun,
+                ContentIdea,
+                ContentItem,
+                Approval,
+                AgentRun,
+                AuditLog,
+            )
         }
     finally:
         session.close()
@@ -61,6 +75,7 @@ def test_persisted_run_creates_drafts_and_traces(initialized: InitResult) -> Non
     assert after["pipeline_runs"] == 1
     assert after["content_ideas"] == 1
     assert after["content_items"] == 1
+    assert after["approvals"] == 1
     assert after["agent_runs"] == 4
 
 
