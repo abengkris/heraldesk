@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -13,6 +14,12 @@ from heraldesk.core.bootstrap import InitResult
 
 runner = CliRunner()
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def _plain_output(text: str) -> str:
+    """Strip ANSI codes and collapse Rich's line wrapping into single spaces."""
+    return " ".join(_ANSI_ESCAPE.sub("", text).split())
 
 
 def test_command_surface_is_init_doctor_serve_profile_account_stop_all() -> None:
@@ -60,9 +67,13 @@ def test_version_option() -> None:
 def test_serve_help_lists_the_bind_options() -> None:
     result = runner.invoke(app, ["serve", "--help"])
     assert result.exit_code == 0
-    assert "--host" in result.output
-    assert "--port" in result.output
-    assert "--no-telegram" in result.output
+    output = _plain_output(result.output).lower()
+    assert "host" in output
+    assert "port" in output
+    # Help strings prove the options exist even when Rich wraps the option names.
+    assert "bind address" in output
+    assert "bind port" in output
+    assert "disable telegram polling" in output
 
 
 def test_serve_refuses_a_non_loopback_bind(initialized: InitResult) -> None:
