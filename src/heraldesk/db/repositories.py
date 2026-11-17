@@ -661,6 +661,29 @@ class ContentItemRepository:
         items = self._session.scalars(query.order_by(ContentItem.id.desc()).limit(limit)).all()
         return list(items)
 
+    def list_between(
+        self,
+        scope: ProfileScope,
+        *,
+        start: datetime,
+        end: datetime,
+        limit: int = 10_000,
+    ) -> builtins.list[ContentItem]:
+        """Return scoped content items created in ``[start, end)``, newest first."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        items = self._session.scalars(
+            select(ContentItem)
+            .where(
+                ContentItem.profile_id == scope.profile_id,
+                ContentItem.created_at >= start,
+                ContentItem.created_at < end,
+            )
+            .order_by(ContentItem.created_at.desc(), ContentItem.id.desc())
+            .limit(limit)
+        ).all()
+        return list(items)
+
     def state_counts(self, scope: ProfileScope) -> dict[str, int]:
         """Return how many scoped content items exist per state."""
         rows = self._session.execute(
@@ -1049,6 +1072,84 @@ class TelegramMessageRepository:
             .limit(limit)
         ).all()
         return list(messages)
+
+
+class InboxRepository:
+    """Cross-profile manual-triage view over ``telegram_messages``.
+
+    The M8 ``heraldesk inbox`` commands intentionally have no profile argument, so this is
+    a documented narrow exception to the scoped-repository rule, like
+    :class:`GlobalCostRepository`. It touches only ``telegram_messages`` and returns only
+    inbox rows; every other profile-owned table still goes through :class:`ProfileScope`.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list(self, *, status: str, limit: int = 20) -> list[TelegramMessage]:
+        """Return newest messages with *status* across every profile, newest first."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        messages = self._session.scalars(
+            select(TelegramMessage)
+            .where(TelegramMessage.status == status)
+            .order_by(TelegramMessage.id.desc())
+            .limit(limit)
+        ).all()
+        return list(messages)
+
+    def get(self, item_id: int) -> TelegramMessage | None:
+        """Return one inbox message by id, regardless of its profile link."""
+        return self._session.scalar(select(TelegramMessage).where(TelegramMessage.id == item_id))
+
+    def status_counts(self, *, since: datetime, until: datetime) -> dict[str, int]:
+        """Count inbox messages created in ``[since, until)`` grouped by triage status."""
+        rows = self._session.execute(
+            select(TelegramMessage.status, func.count(TelegramMessage.id))
+            .where(
+                TelegramMessage.created_at >= since,
+                TelegramMessage.created_at < until,
+            )
+            .group_by(TelegramMessage.status)
+        ).all()
+        counts = {"pending": 0, "handled": 0, "ignored": 0}
+        for status, count in rows:
+            counts[str(status)] = int(count)
+        return counts
+
+    def mark_handled(
+        self,
+        item_id: int,
+        *,
+        response: str,
+        triaged_at: datetime,
+    ) -> TelegramMessage | None:
+        """Mark one inbox message handled and store its redacted outbound reply."""
+        message = self.get(item_id)
+        if message is None:
+            return None
+        message.status = "handled"
+        message.response = response
+        message.triaged_at = triaged_at
+        self._session.flush()
+        return message
+
+    def mark_ignored(
+        self,
+        item_id: int,
+        *,
+        reason: str,
+        triaged_at: datetime,
+    ) -> TelegramMessage | None:
+        """Mark one inbox message ignored with a reason."""
+        message = self.get(item_id)
+        if message is None:
+            return None
+        message.status = "ignored"
+        message.ignore_reason = reason
+        message.triaged_at = triaged_at
+        self._session.flush()
+        return message
 
 
 class TelegramNotificationRepository:

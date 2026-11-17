@@ -469,11 +469,23 @@ TELEGRAM_NOTIFICATION_STATUSES = (
 )
 
 
+TELEGRAM_MESSAGE_STATUSES = (
+    "pending",
+    "handled",
+    "ignored",
+)
+
+
 class TelegramMessage(Base):
     """One inbound Telegram message, stored redacted.
 
     ``profile_id`` is nullable because a message can arrive before its command links it
     to a profile or content item. The text is already redacted when it reaches this table.
+
+    M8 adds manual triage fields: ``status`` starts as ``pending`` and becomes ``handled``
+    or ``ignored`` through the top-level ``heraldesk inbox`` commands. ``response`` holds
+    the latest redacted outbound reply. The raw text never leaves this table through audit
+    payloads or CLI output.
     """
 
     __tablename__ = "telegram_messages"
@@ -481,6 +493,7 @@ class TelegramMessage(Base):
         Index("ix_telegram_messages_profile_id", "profile_id"),
         Index("ix_telegram_messages_created_at", "created_at"),
         Index("ix_telegram_messages_update_id", "update_id", unique=True),
+        Index("ix_telegram_messages_status", "status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -496,6 +509,11 @@ class TelegramMessage(Base):
         ForeignKey("content_items.id", ondelete="SET NULL"), nullable=True
     )
     response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending"
+    )
+    triaged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ignore_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
     )

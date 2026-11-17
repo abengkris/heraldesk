@@ -619,3 +619,57 @@ These answers close the open questions raised after the first full read of the s
   by help/loopback/init checks. New M7 tests cover health, status counts, webhook approve/allowlist/expiry,
   token and chat-id leakage, background publishing exactly once, polling deduplication across a simulated
   restart, graceful shutdown audit, dry-run silence and webhook mode disabling polling.
+
+## M8 implementation decisions (2026-11-17)
+
+- **M8 scope in this repository is the manual CLI inbox and deterministic reports.** The architecture
+  section 13 row for M8 names plugin loading and extra platform adapters. The requested milestone is
+  narrower: `heraldesk inbox` triage and `heraldesk report weekly|monthly`, both CLI only. There is no
+  web UI, no auto-reply, no AI-generated reply, no sentiment moderation and no Instagram/Facebook API.
+  The plugin work and real extra adapters remain future work.
+- **Migration `0009` is an M8 schema revision, not the M9 release milestone.** It adds three columns to
+  the existing M6 table `telegram_messages`: `status` (`pending|handled|ignored`, NOT NULL, default
+  `pending`), `triaged_at` (nullable) and `ignore_reason` (nullable `spam|off-topic|other`), plus
+  `ix_telegram_messages_status`. No inbox table and no social account is created. The model default and
+  the DB server default keep M6 inserts working unchanged.
+- **The cross-profile inbox view is one documented exception to `ProfileScope`.** The required CLI has
+  no profile argument, and M6 stores messages with a nullable `profile_id` before a command links them.
+  `InboxRepository` reads and updates only `telegram_messages`, returns no other profile table and is
+  documented like `GlobalCostRepository`. All content and cost queries in reports still use
+  `ProfileScope` per registered profile.
+- **A human owns every reply.** `inbox reply` refuses missing items, empty or whitespace-only text, and
+  items already `handled` or `ignored`. It sends one message through the existing Telegram adapter
+  to the original `chat_id`, and only after a successful send marks the item `handled`, stores the
+  redacted response and sets `triaged_at`. A provider error leaves the item `pending`.
+- **Replies use the configured Bot API adapter in production and the fake adapter in tests.** Resolution
+  requires `telegram.enabled` and a token; otherwise the command fails clearly instead of pretending to
+  deliver. Tests inject `FakeTelegramAdapter` and never touch the network. The reply body is redacted
+  before sending and before storage, and the CLI preview uses the stored redacted response.
+- **Ignore reason is bounded to `spam`, `off-topic` and `other`, defaulting to `other`.** `ignore` does
+  not send anything; it records the reason and `triaged_at` and moves the item to `ignored`.
+- **Audit actions:** `inbox.listed`, `inbox.shown`, `inbox.replied`, `inbox.ignored` and
+  `report.generated`. Inbox payloads contain ids, status, command, masked chat/sender ids, reply length
+  and SHA-256, never the reply or inbox text. `report.generated` contains period, period type, path and
+  aggregate counts, never report bodies.
+- **Reports are instance-wide and deterministic.** `report weekly` accepts strict `YYYY-Www` ISO weeks
+  (Monday 00:00 UTC to next Monday) and `report monthly` accepts strict `YYYY-MM` months; both default
+  to the current UTC period. Files are `$HERALDESK_HOME/reports/weekly-YYYY-Www.md` and
+  `monthly-YYYY-MM.md`. `reports/` is created on demand and is not added to `DATA_SUBDIRS`, so `init`
+  and `doctor` behaviour is unchanged.
+- **Report metrics use the `created_at` cohort, not audit events.** Total created, approved, published,
+  failed, approval rate, publish failures, top published posts and inbox status counts all select rows
+  created inside the period. "Approved" means an item whose current state is `approved`, `scheduled` or
+  `published` (it reached approval). Approval rate is approved divided by created, `0.0%` when the
+  period is empty. Cost is the sum of `agent_runs.cost_usd` for runs started inside the period. No
+  audit-log event counting is used.
+- **No-data periods still generate a report with zeros.** Ordering is newest-first with id as the
+  tie-breaker; failure and post previews are truncated and redacted. The file contains no generation
+  timestamp, so the same database state always produces byte-identical output and repeat runs are
+  idempotent.
+- **No new dependencies are added.** The implementation uses the existing SQLAlchemy models, Telegram
+  adapter, audit service, redaction registry and Typer/Rich CLI.
+- **Test updates:** revision expectations move from `0008` to `0009`; the CLI group set gains `inbox`
+  and `report`; the Alembic table set is unchanged. New tests cover status filtering and limits, show,
+  reply success and failure, already-triaged refusal, ignore reasons, unlinked messages, report period
+  boundaries, created-at cohort metrics, failure/post limits, zero-data reports, byte-identical repeat
+  runs, redaction and every new CLI command.

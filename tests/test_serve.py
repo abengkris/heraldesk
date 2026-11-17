@@ -201,7 +201,7 @@ def test_health_reports_version_and_database(initialized: InitResult) -> None:
     assert body["status"] == "ok"
     assert body["version"] == __version__
     assert body["db"]["ok"] is True
-    assert body["db"]["revision"] == "0008"
+    assert body["db"]["revision"] == "0009"
 
 
 def test_status_reports_profiles_and_queue_counts(

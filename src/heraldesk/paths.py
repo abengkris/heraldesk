@@ -21,6 +21,7 @@ KEY_FILENAME = "secret.key"
 KILLSWITCH_FILENAME = "killswitch"
 ENV_FILENAME = ".env"
 TELEGRAM_TOKEN_FILENAME = "telegram.token"
+REPORTS_DIRNAME = "reports"
 
 
 class LayoutError(Exception):
@@ -66,6 +67,11 @@ class Layout:
     def telegram_token_path(self) -> Path:
         """Optional Fernet-encrypted Telegram bot token (mode 600)."""
         return self.home / TELEGRAM_TOKEN_FILENAME
+
+    @property
+    def reports(self) -> Path:
+        """Directory for generated weekly and monthly reports (created on demand)."""
+        return self.home / REPORTS_DIRNAME
 
     @property
     def subdirs(self) -> tuple[Path, ...]:

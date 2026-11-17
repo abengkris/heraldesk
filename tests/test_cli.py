@@ -34,6 +34,8 @@ def test_command_surface_is_init_doctor_serve_profile_account_stop_all() -> None
         "queue",
         "scheduler",
         "telegram",
+        "inbox",
+        "report",
     }
 
 
@@ -54,6 +56,8 @@ def test_help_lists_the_commands() -> None:
         "publish",
         "scheduler",
         "telegram",
+        "inbox",
+        "report",
     ):
         assert command in result.output
 
@@ -91,7 +95,7 @@ def test_serve_fails_without_an_initialised_home(home: Path) -> None:
 def test_init_command_creates_and_reports(initialized: InitResult) -> None:
     result = runner.invoke(app, ["init"])
     assert result.exit_code == 0
-    assert "schema revision  0008" in result.output
+    assert "schema revision  0009" in result.output
 
 
 def test_init_command_never_prints_the_key(home: Path) -> None:

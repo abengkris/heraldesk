@@ -139,6 +139,25 @@ def test_m6_telegram_tables_and_columns_exist(initialized: InitResult) -> None:
     assert "ix_telegram_notifications_profile_id" in notification_indexes
 
 
+def test_m8_inbox_triage_columns_exist(initialized: InitResult) -> None:
+    engine = build_engine(initialized.layout.db_path)
+    try:
+        with engine.connect() as connection:
+            inspector = inspect(connection)
+            columns = {
+                column["name"]: column for column in inspector.get_columns("telegram_messages")
+            }
+            indexes = {index["name"] for index in inspector.get_indexes("telegram_messages")}
+    finally:
+        engine.dispose()
+    assert {"status", "triaged_at", "ignore_reason"} <= set(columns)
+    assert columns["status"]["nullable"] is False
+    assert "pending" in str(columns["status"]["default"])
+    assert columns["triaged_at"]["nullable"] is True
+    assert columns["ignore_reason"]["nullable"] is True
+    assert "ix_telegram_messages_status" in indexes
+
+
 def test_migration_scripts_are_present() -> None:
     directory = scripts_directory()
     assert (directory / "env.py").is_file()
@@ -150,6 +169,7 @@ def test_migration_scripts_are_present() -> None:
     assert list((directory / "versions").glob("0006*.py"))
     assert list((directory / "versions").glob("0007*.py"))
     assert list((directory / "versions").glob("0008*.py"))
+    assert list((directory / "versions").glob("0009*.py"))
 
 
 def test_downgrade_to_base_clears_the_revision(initialized: InitResult) -> None:

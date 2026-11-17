@@ -48,6 +48,11 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
 - Send a manual Telegram test message: `uv run heraldesk telegram send <slug> "text"` (fake adapter)
 - Show the Telegram inbox: `uv run heraldesk telegram inbox list <slug> [--limit 20]` (redacted)
 - Store or inspect the encrypted bot token: `uv run heraldesk telegram token set|status`
+- Triage the manual inbox: `uv run heraldesk inbox list [--status pending|handled|ignored] [--limit N]`,
+  `uv run heraldesk inbox show <id>`, `uv run heraldesk inbox reply <id> --text "..."`,
+  `uv run heraldesk inbox ignore <id> [--reason spam|off-topic|other]`
+- Generate deterministic reports: `uv run heraldesk report weekly [--week YYYY-Www]`,
+  `uv run heraldesk report monthly [--month YYYY-MM]` (written to `$HERALDESK_HOME/reports/`)
 - Show agent run traces and cost: `uv run heraldesk runs <slug>`
 - Halt everything: `uv run heraldesk stop-all` (`--off` clears the global kill switch)
 - Try a throwaway instance: `HERALDESK_HOME=$(mktemp -d) uv run heraldesk init`
