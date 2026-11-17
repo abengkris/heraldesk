@@ -82,3 +82,23 @@ No open questions remain for M0. Later ambiguities are added here when their mil
   refuse a stale approval and leave the database untouched; the next `queue list` cancels
   the item and marks the approval expired. The M5 scheduler will add a periodic sweep.
   Recorded in `docs/decisions.md`.
+
+## Resolved during M5
+
+- [x] (2026-11-17, M5) **Is the scheduler an APScheduler daemon or a one-shot sweep?**
+  **RESOLVED 2026-11-17: a one-shot sweep in M5.** `heraldesk scheduler run` performs one deterministic
+  pass over SQLite state. APScheduler wiring moves to the milestone that implements `heraldesk serve`
+  (M7), because `serve` is still a stub. Durability and no-double-post follow from the database state,
+  not from an in-memory job store. Recorded in `docs/decisions.md`.
+- [x] (2026-11-17, M5) **Do Threads and Nostr get real adapters in M5?**
+  **RESOLVED 2026-11-17: no.** Only `fake` implements `publish`. Every other platform raises
+  `NotSupportedError` with a reason documented in `docs/platforms/README.md`; the scheduler records it as
+  a normal `publish.failed`. This matches R1: app review and unverifiable platform behaviour are not code
+  failures. Recorded in `docs/decisions.md`.
+- [x] (2026-11-17, M5) **How many publish attempts, and what is the backoff?**
+  **RESOLVED 2026-11-17: three attempts total (one initial plus two retries) with 60 s then 300 s
+  backoff.** Attempts and the redacted error are stored on `content_items`; exhausted items stay `failed`
+  until `heraldesk publish <id>` re-queues them. Recorded in `docs/decisions.md`.
+- [x] (2026-11-17, M5) **Does the scheduler publish `draft_only` items after a human approves them?**
+  **RESOLVED 2026-11-17: no.** `draft_only` means manual publishing only. After approval the item stays
+  `approved`; `heraldesk publish <id>` is the only way out. Recorded in `docs/decisions.md`.

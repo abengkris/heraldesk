@@ -1,14 +1,18 @@
-"""The M4 autonomy policy engine.
+"""The autonomy policy engine.
 
 The engine is deterministic and side-effect free. It maps a profile's parsed policy and
-a Compliance risk level to one of two M4 outcomes:
+a Compliance risk level to one of two outcomes:
 
 * ``pending_approval``: create an approval request and wait for a human.
-* ``auto_approve``: move the item through ``approved`` to ``scheduled`` immediately.
+* ``auto_approve``: the item may move through ``approved`` to ``scheduled`` immediately.
 
-Only ``draft_only``, ``require_approval`` and ``auto_publish`` are implemented. The
-M5 scheduler modes ``auto`` and ``auto_after_delay`` are deliberately downgraded to
-``require_approval`` so no draft can be auto-approved before the scheduler exists.
+M4 implemented ``draft_only``, ``require_approval`` and ``auto_publish``. M5 completes the
+vocabulary: ``auto`` publishes as soon as the item is approved, and ``auto_after_delay``
+schedules it after the rule's ``delay_minutes`` so the user still has a cancellation
+window. A ``default_mode: auto_after_delay`` without a rule uses 30 minutes.
+
+Compliance always gates every mode: an item that did not pass Compliance can never be
+auto-approved, even under ``auto`` or ``auto_after_delay``.
 """
 
 from __future__ import annotations
@@ -17,7 +21,15 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-from heraldesk.domain.policy import AutonomyPolicy, PolicyAction, PolicyMode, PolicyRisk
+from heraldesk.domain.policy import (
+    AutonomyPolicy,
+    PolicyAction,
+    PolicyMode,
+    PolicyRisk,
+    PolicyRule,
+)
+
+DEFAULT_AUTO_AFTER_DELAY_MINUTES: Final = 30
 
 
 class AutonomyDecision(StrEnum):
@@ -29,14 +41,12 @@ class AutonomyDecision(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class AutonomyResult:
-    """One engine decision plus the mode and reason behind it."""
+    """One engine decision plus the mode, delay and reason behind it."""
 
     mode: PolicyMode
     decision: AutonomyDecision
     reason: str
-
-
-_DEFERRED_MODES: Final = frozenset({PolicyMode.AUTO, PolicyMode.AUTO_AFTER_DELAY})
+    delay_minutes: int = 0
 
 
 def _risk_or_none(risk_level: str | None) -> PolicyRisk | None:
@@ -46,6 +56,36 @@ def _risk_or_none(risk_level: str | None) -> PolicyRisk | None:
         return PolicyRisk(risk_level)
     except ValueError:
         return None
+
+
+def _matching_rules(
+    policy: AutonomyPolicy,
+    *,
+    action: PolicyAction,
+    risk: PolicyRisk,
+    intent: str | None,
+) -> list[PolicyRule]:
+    return [
+        rule
+        for rule in policy.rules
+        if rule.action is action
+        and rule.risk is risk
+        and (not rule.intents or (intent is not None and intent in rule.intents))
+    ]
+
+
+def _winning_rule(
+    policy: AutonomyPolicy,
+    *,
+    action: PolicyAction,
+    risk: PolicyRisk,
+    intent: str | None,
+) -> PolicyRule | None:
+    matching = _matching_rules(policy, action=action, risk=risk, intent=intent)
+    for rule in matching:
+        if rule.intents:
+            return rule
+    return matching[0] if matching else None
 
 
 def resolve_mode(
@@ -60,18 +100,9 @@ def resolve_mode(
     Rules with a non-empty ``intents`` list are more specific than rules without one.
     Among equal specificity the first rule in file order wins.
     """
-    matching = [
-        rule
-        for rule in policy.rules
-        if rule.action is action
-        and rule.risk is risk
-        and (not rule.intents or (intent is not None and intent in rule.intents))
-    ]
-    for rule in matching:
-        if rule.intents:
-            return rule.mode
-    if matching:
-        return matching[0].mode
+    rule = _winning_rule(policy, action=action, risk=risk, intent=intent)
+    if rule is not None:
+        return rule.mode
     return policy.default_mode
 
 
@@ -83,10 +114,10 @@ def decide(
     compliance_passed: bool,
     intent: str | None = None,
 ) -> AutonomyResult:
-    """Apply the M4 autonomy matrix to one draft.
+    """Apply the autonomy matrix to one draft.
 
     ``compliance_passed`` must be false for any item Compliance blocked. A draft that
-    fails Compliance can never be auto-approved, even in ``auto_publish`` mode.
+    fails Compliance can never be auto-approved, even in ``auto`` modes.
     """
     risk = _risk_or_none(risk_level)
     if risk is None:
@@ -97,12 +128,36 @@ def decide(
         )
 
     mode = resolve_mode(policy, action=action, risk=risk, intent=intent)
+    rule = _winning_rule(policy, action=action, risk=risk, intent=intent)
 
-    if mode in _DEFERRED_MODES:
+    if mode is PolicyMode.AUTO:
+        if compliance_passed:
+            return AutonomyResult(
+                mode=mode,
+                decision=AutonomyDecision.AUTO_APPROVE,
+                reason="auto: Compliance passed; publishing without human approval",
+            )
         return AutonomyResult(
             mode=mode,
             decision=AutonomyDecision.PENDING_APPROVAL,
-            reason=f"mode {mode.value} is reserved for M5; treated as require_approval",
+            reason="auto requires a passing Compliance check",
+        )
+
+    if mode is PolicyMode.AUTO_AFTER_DELAY:
+        if not compliance_passed:
+            return AutonomyResult(
+                mode=mode,
+                decision=AutonomyDecision.PENDING_APPROVAL,
+                reason="auto_after_delay requires a passing Compliance check",
+            )
+        delay = DEFAULT_AUTO_AFTER_DELAY_MINUTES
+        if rule is not None and rule.mode is PolicyMode.AUTO_AFTER_DELAY:
+            delay = max(1, rule.delay_minutes)
+        return AutonomyResult(
+            mode=mode,
+            decision=AutonomyDecision.AUTO_APPROVE,
+            reason=f"auto_after_delay: publishing in {delay} minutes unless cancelled",
+            delay_minutes=delay,
         )
 
     if mode is PolicyMode.AUTO_PUBLISH:

@@ -1,12 +1,11 @@
 """Approval requests, human decisions, edits and expiry.
 
-Every M4 content item in ``pending_approval`` has exactly one open row in ``approvals``.
+Every content item in ``pending_approval`` has exactly one open row in ``approvals``.
 The service is the only caller that changes those rows, and every content state change
 still goes through :func:`heraldesk.domain.content.transition`.
 
-Expiry is opportunistic in M4: there is no scheduler yet, so ``queue list`` sweeps
-pending approvals whose 72-hour window has elapsed and cancels the affected items. The
-M5 scheduler will own a periodic sweep.
+M4 swept stale approvals opportunistically from ``queue list``. M5 keeps that safety net
+and also owns a periodic sweep in the scheduler.
 """
 
 from __future__ import annotations
@@ -55,6 +54,15 @@ QUEUE_STATES: Final[tuple[str, ...]] = (
     ContentState.BLOCKED.value,
     ContentState.REJECTED.value,
     ContentState.NEEDS_REVIEW.value,
+    ContentState.FAILED.value,
+)
+SCHEDULED_AFTER_APPROVAL: Final = frozenset(
+    {
+        "require_approval",
+        "auto",
+        "auto_publish",
+        "auto_after_delay",
+    }
 )
 
 ApprovalChannel = Literal["web", "telegram", "cli"]
@@ -310,6 +318,26 @@ def approve(
     if decided is None:
         raise ApprovalNotFoundError(f"approval {approval.id} disappeared during approval")
 
+    to_state = updated.state
+    if item.publish_mode in SCHEDULED_AFTER_APPROVAL:
+        delay_minutes = item.publish_delay_minutes or 0
+        if item.publish_mode == "auto_after_delay":
+            schedule_at = current + timedelta(minutes=max(1, delay_minutes))
+            reason = f"approved via {channel}; auto_after_delay window of {delay_minutes} minutes"
+        else:
+            schedule_at = current
+            reason = f"approved via {channel}; scheduled for the next publisher run"
+        updated = transition(
+            session,
+            scope,
+            item.id,
+            ContentState.SCHEDULED,
+            actor=actor,
+            reason=reason,
+            schedule_at=schedule_at,
+        )
+        to_state = updated.state
+
     AuditService(session).record(
         scope,
         actor=actor,
@@ -320,7 +348,7 @@ def approve(
             "approval_id": approval.id,
             "content_item_id": item.id,
             "from_state": ContentState.PENDING_APPROVAL.value,
-            "to_state": ContentState.APPROVED.value,
+            "to_state": to_state,
             "risk_level": item.risk_level,
             "channel": channel,
             "body_sha256": _body_hash(item.body),
@@ -330,7 +358,7 @@ def approve(
         approval_id=approval.id,
         content_item_id=item.id,
         from_state=ContentState.PENDING_APPROVAL.value,
-        to_state=updated.state,
+        to_state=to_state,
         approval_state=ApprovalState.APPROVED.value,
         risk_level=item.risk_level,
         reason=None,
@@ -624,6 +652,8 @@ def list_queue(
         pending = repository.pending_for_item(scope, item.id)
         latest = pending if pending is not None else repository.latest_for_item(scope, item.id)
         reason = _redact(latest.reason) if latest is not None else None
+        if reason is None and item.state == ContentState.FAILED.value and item.last_error:
+            reason = _redact(item.last_error)
         if reason is None and item.risk_notes:
             reason = _redact(item.risk_notes)
         if reason is not None:

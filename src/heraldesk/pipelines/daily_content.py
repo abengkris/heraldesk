@@ -4,9 +4,10 @@ Flow is deterministic: Strategist slots, Researcher ideas, a 60-day duplicate ch
 Writer drafts per slot/platform, an optional deterministic visual placeholder, lint,
 Compliance, then the M4 autonomy engine.
 
-``draft_only`` and ``require_approval`` create a pending approval. ``auto_publish`` with
-low risk and a passing Compliance check moves the item through ``approved`` to
-``scheduled``. There is still no scheduler or publisher in M4.
+``draft_only`` and ``require_approval`` create a pending approval. ``auto``,
+``auto_after_delay`` and ``auto_publish`` move the item through ``approved`` to
+``scheduled``; the scheduler publishes it when due. ``auto_after_delay`` keeps the
+cancellation window recorded in ``publish_delay_minutes``.
 
 ``dry_run=True`` performs the whole simulation but writes nothing: no pipeline run, idea,
 content item, approval, agent run or audit entry. Only the returned result is printed.
@@ -55,7 +56,7 @@ from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.approvals import request_approval
 from heraldesk.domain.autonomy import AutonomyDecision, decide
 from heraldesk.domain.content import ContentState, can_transition, transition
-from heraldesk.domain.policy import PolicyAction
+from heraldesk.domain.policy import PolicyAction, PolicyMode
 from heraldesk.domain.profiles import ProfileDefinition
 from heraldesk.llm.types import LLMProvider
 from heraldesk.platforms.base import PlatformAdapter, constraints_for
@@ -585,17 +586,19 @@ class _DailyContentRunner:
             risk_level=assessment.risk_level,
             compliance_passed=True,
         )
+        delay_minutes = (
+            decision.delay_minutes if decision.mode is PolicyMode.AUTO_AFTER_DELAY else None
+        )
+        self._set_publish_policy(working, decision.mode.value, delay_minutes)
         if decision.decision is AutonomyDecision.AUTO_APPROVE:
             self._set_state(working, ContentState.PENDING_APPROVAL, decision.reason)
-            self._set_state(
-                working,
-                ContentState.APPROVED,
-                "auto_publish: low risk and Compliance passed",
-            )
+            self._set_state(working, ContentState.APPROVED, decision.reason)
+            schedule_at = self._now + timedelta(minutes=decision.delay_minutes)
             self._set_state(
                 working,
                 ContentState.SCHEDULED,
-                "auto_publish: low risk and Compliance passed",
+                decision.reason,
+                schedule_at=schedule_at,
             )
             working.reason = decision.reason
             return working
@@ -646,6 +649,8 @@ class _DailyContentRunner:
         working: _WorkingDraft,
         target: ContentState,
         reason: str | None = None,
+        *,
+        schedule_at: datetime | None = None,
     ) -> None:
         if self._dry_run:
             if not can_transition(working.state, target):
@@ -665,10 +670,26 @@ class _DailyContentRunner:
             target,
             actor="system",
             reason=reason,
+            schedule_at=schedule_at,
         )
         working.state = target
         if reason:
             working.reason = reason
+
+    def _set_publish_policy(
+        self,
+        working: _WorkingDraft,
+        mode: str,
+        delay_minutes: int | None,
+    ) -> None:
+        if self._dry_run or working.item_id is None:
+            return
+        self._items.set_publish_policy(
+            self._scope,
+            working.item_id,
+            mode=mode,
+            delay_minutes=delay_minutes,
+        )
 
     def _load_recent_texts(self) -> list[str]:
         since = self._now - timedelta(days=DEDUPE_WINDOW_DAYS)

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from heraldesk.db.models import (
@@ -686,6 +686,111 @@ class ContentItemRepository:
         item.updated_at = utcnow()
         self._session.flush()
         return item
+
+    def set_publish_policy(
+        self,
+        scope: ProfileScope,
+        item_id: int,
+        *,
+        mode: str | None,
+        delay_minutes: int | None,
+    ) -> ContentItem | None:
+        """Store the autonomy decision that governs how this item is published."""
+        item = self.get(scope, item_id)
+        if item is None:
+            return None
+        item.publish_mode = mode
+        item.publish_delay_minutes = delay_minutes
+        item.updated_at = utcnow()
+        self._session.flush()
+        return item
+
+    def set_scheduled_at(
+        self,
+        scope: ProfileScope,
+        item_id: int,
+        *,
+        scheduled_at: datetime | None,
+    ) -> ContentItem | None:
+        """Set the due time used by the scheduler, including retry backoff."""
+        item = self.get(scope, item_id)
+        if item is None:
+            return None
+        item.scheduled_at = scheduled_at
+        item.updated_at = utcnow()
+        self._session.flush()
+        return item
+
+    def record_publish_attempt(
+        self,
+        scope: ProfileScope,
+        item_id: int,
+        *,
+        attempts: int,
+        error: str | None,
+    ) -> ContentItem | None:
+        """Store the durable attempt count and the redacted provider error."""
+        item = self.get(scope, item_id)
+        if item is None:
+            return None
+        item.publish_attempts = attempts
+        item.last_error = error
+        item.updated_at = utcnow()
+        self._session.flush()
+        return item
+
+    def mark_published(
+        self,
+        scope: ProfileScope,
+        item_id: int,
+        *,
+        external_id: str,
+        published_at: datetime,
+    ) -> ContentItem | None:
+        """Store the platform id and publication time of a successful post."""
+        item = self.get(scope, item_id)
+        if item is None:
+            return None
+        item.external_id = external_id
+        item.published_at = published_at
+        item.last_error = None
+        item.updated_at = utcnow()
+        self._session.flush()
+        return item
+
+    def due_for_publish(
+        self,
+        scope: ProfileScope,
+        *,
+        now: datetime,
+        max_attempts: int,
+    ) -> builtins.list[ContentItem]:
+        """Return scoped items the scheduler may publish or retry at *now*.
+
+        A due item is either ``scheduled``, or ``failed`` with attempts left and a retry
+        time that has arrived. Cancelled, future and exhausted items never appear.
+        """
+        query = (
+            select(ContentItem)
+            .where(
+                ContentItem.profile_id == scope.profile_id,
+                or_(
+                    and_(
+                        ContentItem.state == "scheduled",
+                        ContentItem.scheduled_at.is_not(None),
+                        ContentItem.scheduled_at <= now,
+                    ),
+                    and_(
+                        ContentItem.state == "failed",
+                        ContentItem.publish_attempts < max_attempts,
+                        ContentItem.scheduled_at.is_not(None),
+                        ContentItem.scheduled_at <= now,
+                    ),
+                ),
+            )
+            .order_by(ContentItem.scheduled_at, ContentItem.id)
+        )
+        return list(self._session.scalars(query).all())
 
 
 class ContentItemLocator:

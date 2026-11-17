@@ -154,6 +154,85 @@ def test_approve_illegal_states(profile_setup: ProfileSetup, db_session: Session
         approve(db_session, profile_setup.layout, profile_setup.scope, approved.id, now=NOW)
 
 
+def test_approve_schedules_a_require_approval_item(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item = make_item(db_session, profile_setup)
+    ContentItemRepository(db_session).set_publish_policy(
+        profile_setup.scope,
+        item.id,
+        mode="require_approval",
+        delay_minutes=None,
+    )
+    request_approval(db_session, profile_setup.scope, item.id, now=NOW)
+
+    outcome = approve(
+        db_session,
+        profile_setup.layout,
+        profile_setup.scope,
+        item.id,
+        now=NOW,
+    )
+
+    assert outcome.to_state == "scheduled"
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item.id)
+    assert stored is not None
+    assert stored.state == "scheduled"
+    assert as_utc(stored.scheduled_at) == NOW
+
+
+def test_approve_honours_the_auto_after_delay_window(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item = make_item(db_session, profile_setup)
+    ContentItemRepository(db_session).set_publish_policy(
+        profile_setup.scope,
+        item.id,
+        mode="auto_after_delay",
+        delay_minutes=30,
+    )
+    request_approval(db_session, profile_setup.scope, item.id, now=NOW)
+
+    outcome = approve(
+        db_session,
+        profile_setup.layout,
+        profile_setup.scope,
+        item.id,
+        now=NOW,
+    )
+
+    assert outcome.to_state == "scheduled"
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item.id)
+    assert stored is not None
+    assert as_utc(stored.scheduled_at) == NOW + timedelta(minutes=30)
+
+
+def test_approve_keeps_draft_only_items_manual(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item = make_item(db_session, profile_setup)
+    ContentItemRepository(db_session).set_publish_policy(
+        profile_setup.scope,
+        item.id,
+        mode="draft_only",
+        delay_minutes=None,
+    )
+    request_approval(db_session, profile_setup.scope, item.id, now=NOW)
+
+    outcome = approve(
+        db_session,
+        profile_setup.layout,
+        profile_setup.scope,
+        item.id,
+        now=NOW,
+    )
+
+    assert outcome.to_state == "approved"
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item.id)
+    assert stored is not None
+    assert stored.state == "approved"
+
+
 def test_reject_happy_path_redacts_the_reason(
     profile_setup: ProfileSetup, db_session: Session
 ) -> None:

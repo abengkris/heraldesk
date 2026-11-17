@@ -7,7 +7,7 @@ Each milestone is done only when its acceptance criteria pass and tests exist. D
 - [x] M2 LLM layer and agent runtime (fake provider, cost tracking)
 - [x] M3 `daily_content` pipeline with fake publisher
 - [x] M4 Approval flow and autonomy (Telegram deferred)
-- [ ] M5 Scheduler, publisher, Threads and Nostr adapters
+- [x] M5 Scheduler and publisher (fake adapter; real Threads/Nostr adapters deferred with a documented `NotSupported` reason)
 - [ ] M6 Community manager and analyst
 - [ ] M7 Local web UI
 - [ ] M8 Plugins and more adapters

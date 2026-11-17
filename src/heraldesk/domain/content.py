@@ -12,6 +12,7 @@ terminal.
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Final
 
@@ -131,11 +132,15 @@ def transition(
     *,
     actor: str = "system",
     reason: str | None = None,
+    schedule_at: datetime | None = None,
 ) -> ContentItem:
     """Move one scoped content item to *to_state* or raise.
 
     This is the only function that changes ``content_items.state``. A rejected transition
     leaves the row untouched and writes no audit entry.
+
+    When moving to ``scheduled``, *schedule_at* sets the due time the scheduler uses. It
+    lets the M5 publisher requeue a failed item with backoff without a second write path.
     """
     destination = parse_state(to_state)
     repository = ContentItemRepository(session)
@@ -154,7 +159,7 @@ def transition(
     item.state = destination.value
     item.updated_at = utcnow()
     if destination is ContentState.SCHEDULED:
-        item.scheduled_at = item.scheduled_at or utcnow()
+        item.scheduled_at = schedule_at or item.scheduled_at or utcnow()
     if destination is ContentState.PUBLISHED:
         item.published_at = item.published_at or utcnow()
     session.flush()

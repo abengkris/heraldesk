@@ -306,6 +306,43 @@ def test_auto_publish_low_risk_schedules_without_an_approval(
     item = ContentItemRepository(db_session).list(profile_setup.scope)[0]
     assert item.state == "scheduled"
     assert item.scheduled_at is not None
+    assert item.publish_mode == "auto_publish"
+    assert ApprovalRepository(db_session).list(profile_setup.scope) == []
+
+
+def test_auto_mode_schedules_immediately(profile_setup: ProfileSetup, db_session) -> None:
+    definition = with_policy(profile_setup, "default_mode: auto\n")
+    result = run_pipeline(db_session, profile_setup, FakeLLM(), definition=definition)
+
+    assert result.items[0].state == "scheduled"
+    item = ContentItemRepository(db_session).list(profile_setup.scope)[0]
+    assert item.state == "scheduled"
+    assert item.publish_mode == "auto"
+    assert item.publish_delay_minutes is None
+    scheduled_at = item.scheduled_at
+    assert scheduled_at is not None
+    if scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=UTC)
+    assert scheduled_at == NOW
+    assert ApprovalRepository(db_session).list(profile_setup.scope) == []
+
+
+def test_auto_after_delay_records_the_cancellation_window(
+    profile_setup: ProfileSetup, db_session
+) -> None:
+    definition = with_policy(profile_setup, "default_mode: auto_after_delay\n")
+    result = run_pipeline(db_session, profile_setup, FakeLLM(), definition=definition)
+
+    assert result.items[0].state == "scheduled"
+    item = ContentItemRepository(db_session).list(profile_setup.scope)[0]
+    assert item.state == "scheduled"
+    assert item.publish_mode == "auto_after_delay"
+    assert item.publish_delay_minutes == 30
+    scheduled_at = item.scheduled_at
+    assert scheduled_at is not None
+    if scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=UTC)
+    assert scheduled_at == NOW + timedelta(minutes=30)
     assert ApprovalRepository(db_session).list(profile_setup.scope) == []
 
 

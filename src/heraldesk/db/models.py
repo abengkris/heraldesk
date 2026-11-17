@@ -2,7 +2,8 @@
 
 Tables owned by M1: profiles, social accounts, the audit log and the business jobs table.
 M2 adds ``agent_runs``. M3 adds ``pipeline_runs``, ``content_ideas`` and ``content_items``.
-M4 adds ``approvals``. Inbox and metrics arrive later.
+M4 adds ``approvals``. M5 adds publisher metadata to ``content_items``. Inbox and metrics
+arrive later.
 
 Every profile-owned table carries ``profile_id``. Access to those rows goes through
 :class:`heraldesk.db.scope.ProfileScope` in the repository layer.
@@ -333,6 +334,7 @@ class ContentItem(Base):
         Index("ix_content_items_profile_id", "profile_id"),
         Index("ix_content_items_state", "state"),
         Index("ix_content_items_created_at", "created_at"),
+        Index("ix_content_items_due", "state", "scheduled_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -356,6 +358,12 @@ class ContentItem(Base):
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    publish_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    publish_delay_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    publish_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("content_items.id", ondelete="SET NULL"), nullable=True
     )

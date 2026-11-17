@@ -1,18 +1,23 @@
 """Platform adapter contract.
 
-M1 only needs credential validation so that ``heraldesk account test`` can run offline.
-Publishing, interaction fetching and metrics are added in M5. Adapters never contain
+M1 needs credential validation so that ``heraldesk account test`` can run offline.
+M5 adds publishing through :meth:`PlatformAdapter.publish`. Adapters never contain
 business logic and never receive credentials outside the adapter call.
 
 M2 adds provisional per-platform post limits used when building Writer prompts. Real
 adapters own the authoritative values from M5 onwards.
+
+M5 ships only the fake adapter. Threads, Nostr, X, Facebook, Instagram and LinkedIn
+return :class:`NotSupportedError` with a documented reason: the publisher deliberately
+does not guess at platform APIs that cannot be verified offline. See
+``docs/platforms/README.md``.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 KNOWN_PLATFORMS = frozenset({"fake", "threads", "nostr", "x", "facebook", "instagram", "linkedin"})
 
@@ -26,13 +31,57 @@ class AccountRef:
     credentials: Mapping[str, str]
 
 
+@dataclass(frozen=True, slots=True)
+class PublishRequest:
+    """One post handed to an adapter.
+
+    ``idempotency_key`` is Heraldesk's own stable key for the content item. Adapters use
+    it when the platform supports idempotency, and tests use it to prove that a retry
+    cannot double-post.
+    """
+
+    content_item_id: int
+    platform: str
+    body: str
+    idempotency_key: str
+    media: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class PublishResult:
+    """What the platform returned after accepting a post."""
+
+    external_id: str
+    url: str | None = None
+
+
+class PublishError(Exception):
+    """Raised when a platform rejects or fails a publish call.
+
+    The publisher redacts the message before it reaches the database, the audit log or
+    the CLI. Adapters must never include credentials in the message.
+    """
+
+
+class NotSupportedError(PublishError):
+    """Raised when an adapter cannot publish on its platform.
+
+    M5 uses this for every platform whose real adapter is not implemented yet, and for
+    platform features that require app review. It is never a code failure.
+    """
+
+
 class PlatformAdapter(Protocol):
-    """The M1 subset of the platform adapter protocol."""
+    """The subset of the platform contract Heraldesk needs in M1 and M5."""
 
     platform: str
 
     async def validate_credentials(self, account: AccountRef) -> bool:
         """Return ``True`` when the platform accepts the supplied credentials."""
+        ...
+
+    async def publish(self, account: AccountRef, request: PublishRequest) -> PublishResult:
+        """Publish one item and return the platform's external id."""
         ...
 
 
@@ -41,7 +90,7 @@ class PlatformConstraints:
     """What one platform accepts in a single post.
 
     These values are provisional metadata for prompt building, not publishing logic. Each
-    real adapter replaces them with its own ``constraints()`` in M5.
+    real adapter replaces them with its own ``constraints()`` in a later milestone.
     """
 
     platform: str

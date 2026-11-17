@@ -68,6 +68,28 @@ def test_m1_profile_owned_tables_have_profile_id(initialized: InitResult) -> Non
     assert runs_profile_id["nullable"] is False
 
 
+def test_m5_publisher_columns_exist(initialized: InitResult) -> None:
+    engine = build_engine(initialized.layout.db_path)
+    try:
+        with engine.connect() as connection:
+            columns = {
+                column["name"]: column
+                for column in inspect(connection).get_columns("content_items")
+            }
+            indexes = {index["name"] for index in inspect(connection).get_indexes("content_items")}
+    finally:
+        engine.dispose()
+    for name in (
+        "publish_mode",
+        "publish_delay_minutes",
+        "publish_attempts",
+        "last_error",
+    ):
+        assert name in columns
+    assert columns["publish_attempts"]["nullable"] is False
+    assert "ix_content_items_due" in indexes
+
+
 def test_migration_scripts_are_present() -> None:
     directory = scripts_directory()
     assert (directory / "env.py").is_file()
@@ -76,6 +98,7 @@ def test_migration_scripts_are_present() -> None:
     assert list((directory / "versions").glob("0003*.py"))
     assert list((directory / "versions").glob("0004*.py"))
     assert list((directory / "versions").glob("0005*.py"))
+    assert list((directory / "versions").glob("0006*.py"))
 
 
 def test_downgrade_to_base_clears_the_revision(initialized: InitResult) -> None:

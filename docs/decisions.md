@@ -396,3 +396,76 @@ These answers close the open questions raised after the first full read of the s
   group; the Alembic table set gains `approvals`. New M4 tests cover the full autonomy matrix, approve/reject/edit
   happy and illegal paths, all three human reopen edges, 72-hour expiry, kill-switch refusal, profile isolation,
   audit coverage and secret redaction.
+
+## M5 implementation decisions (2026-11-17)
+
+- **M5 adds no new table.** Migration `0006` adds four columns to `content_items` and one index:
+  `publish_mode` (`draft_only|require_approval|auto|auto_after_delay|auto_publish`),
+  `publish_delay_minutes`, `publish_attempts` (NOT NULL, default 0) and `last_error` (redacted).
+  `ix_content_items_due` covers `(state, scheduled_at)`. The content state machine is unchanged;
+  `approved -> scheduled`, `scheduled -> published`, `scheduled -> failed` and `failed -> scheduled`
+  already existed from M3/M4.
+- **The scheduler is a stateless, idempotent sweep over SQLite state, not an APScheduler daemon yet.**
+  `heraldesk scheduler run` (and the alias `heraldesk run scheduler`) selects due items, publishes them and
+  exits. APScheduler wiring is deferred to the milestone that implements `heraldesk serve` (M7), because
+  `serve` is still a stub and a background scheduler cannot be exercised by the CLI acceptance tests.
+  This still satisfies the M5 acceptance criteria: no job lives only in memory, so restarting the process
+  loses nothing, and publishing is guarded against double-posting.
+- **Publishing state is durable and at-most-once at the database level.** An item with `external_id`
+  is never sent again. Adapters also receive `heraldesk:content:<id>` as the idempotency key. The fake
+  adapter returns the first result for a repeated key, which is how the retry tests prove that a retry
+  cannot double-post. Human reconciliation remains the fallback for a provider that accepted a post but
+  lost its response, as decided in R1.
+- **Retries are one initial attempt plus two retries.** A provider failure moves `scheduled -> failed`,
+  stores a redacted error in `last_error`, and sets `scheduled_at` to the retry time. The default backoff
+  is 60 seconds then 300 seconds. The scheduler's due query also selects `failed` items whose attempt
+  count is below three and whose retry time has arrived; it moves them `failed -> scheduled` and tries
+  again. After the third failure the item stays `failed` with no retry time until a human runs
+  `heraldesk publish <id>`, which resets the counter and tries once more.
+- **M5 implements `auto` and `auto_after_delay`.** `auto` auto-approves an item after Compliance passes
+  and schedules it immediately. `auto_after_delay` schedules it after the matching rule's
+  `delay_minutes`, or 30 minutes when the mode comes from `default_mode`; the delay is stored in
+  `publish_delay_minutes` so the cancellation window survives restarts. Compliance still gates both
+  modes. `draft_only` keeps its M1 meaning: a human may approve it, but the scheduler never
+  auto-publishes it; only `heraldesk publish <id>` can.
+- **Approval schedules the item and records the policy mode on the item.** The pipeline stores the
+  autonomy decision in `content_items.publish_mode` when the item reaches `pending_approval`. Approving a
+  `require_approval`, `auto`, `auto_publish` or `auto_after_delay` item moves it to `scheduled` with the
+  right due time. Items with no recorded mode (created before M5 or by tests) stay `approved` after
+  approval and are published only by the manual command. This is the safe default for legacy rows.
+- **Kill-switch precedence is global > per-profile > paused > draft > item policy.** The scheduler checks
+  the global marker file, `profiles.kill_switch`, `profiles.status` and finally the item's
+  `publish_mode`. A `draft` profile never publishes even though M4 allowed it to approve, matching the M4
+  decision that publishing is gated on an active profile.
+- **Expired approvals block publishing twice.** The scheduler runs the M4 expiry sweep for every profile
+  before selecting items, so stale pending approvals cancel their items. The publisher also refuses an
+  item whose latest approval is `pending`, `rejected` or `expired`; this is belt-and-braces for a row that
+  reached `scheduled` through an older code path.
+- **`scheduler run --dry-run` writes nothing at all.** It performs no expiry sweep, state change, attempt
+  increment, audit entry or adapter call. It only lists the due items and the reasons a real run would
+  skip them. This follows the M3 `run daily --dry-run` rule.
+- **Audit actions and payloads.** `publish.requested`, `publish.succeeded`, `publish.failed` are recorded
+  per item, and one global `scheduler.run` entry records counts only. Payloads carry ids, platform, attempt,
+  trigger, mode, body SHA-256/length, retry decision and a truncated redacted error. They never contain a
+  body, credential or raw provider response.
+- **Redaction covers bodies, errors and credentials.** The publisher redacts the outbound body, the
+  provider error, and every decrypted credential value for that account before anything is stored in
+  `content_items.last_error`, the audit log or CLI output. Known token shapes (`sk-...`, bearer headers)
+  are scrubbed even when the value is unknown.
+- **CLI surface:** `heraldesk publish <id>` publishes one `approved`, `scheduled` or `failed` item and
+  exits 1 on failure; `heraldesk scheduler run [--dry-run]` publishes the global due set. `queue list`
+  now also shows `failed` items so a human can find and re-queue them.
+- **No real platform adapter is added in M5.** Only `fake` implements `publish`. Threads, Nostr, X,
+  Facebook, Instagram and LinkedIn raise `NotSupportedError` from `publish_adapter_for`; the scheduler
+  records that as a normal `publish.failed` with a documented reason. **Reason and location:** real
+  adapters are deferred because they need app review, live credentials and platform-specific API
+  behaviour that cannot be verified offline in this milestone. The user-facing reason is documented in
+  `docs/platforms/README.md` (and summarised in this entry); the error message points there. No new
+  adapter code is added in M5.
+- **M5 acceptance adjustment:** "a scheduled post appears on a test account" is satisfied with the fake
+  adapter. A real Threads/Nostr post is not claimed in this milestone; the documented `NotSupported`
+  result is the honest outcome, matching the R1 decision that app review delays are not code failures.
+- **Test updates:** revision expectations move from `0005` to `0006`; the CLI surface gains `publish` and
+  the `scheduler` group; new tests cover due-only selection, future items, all off switches, cancelled and
+  expired items, `draft_only`, success, retries with backoff, manual re-queue, idempotency, dry-run zero
+  writes, redaction of provider errors and credentials, `auto`/`auto_after_delay`, and the CLI transcript.

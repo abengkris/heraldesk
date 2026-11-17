@@ -85,17 +85,56 @@ def test_auto_publish_anything_else_waits_for_a_human(risk: str | None, passed: 
     assert result.decision is AutonomyDecision.PENDING_APPROVAL
 
 
-def test_m5_modes_are_deferred_to_require_approval() -> None:
-    for mode in (PolicyMode.AUTO, PolicyMode.AUTO_AFTER_DELAY):
-        result = decide(
-            policy(mode),
-            action=PolicyAction.POST,
-            risk_level="low",
-            compliance_passed=True,
-        )
-        assert result.mode is mode
-        assert result.decision is AutonomyDecision.PENDING_APPROVAL
-        assert "M5" in result.reason
+def test_auto_publishes_after_compliance() -> None:
+    result = decide(
+        policy(PolicyMode.AUTO),
+        action=PolicyAction.POST,
+        risk_level="low",
+        compliance_passed=True,
+    )
+    assert result.mode is PolicyMode.AUTO
+    assert result.decision is AutonomyDecision.AUTO_APPROVE
+    assert result.delay_minutes == 0
+
+
+def test_auto_requires_passing_compliance() -> None:
+    result = decide(
+        policy(PolicyMode.AUTO),
+        action=PolicyAction.POST,
+        risk_level="low",
+        compliance_passed=False,
+    )
+    assert result.mode is PolicyMode.AUTO
+    assert result.decision is AutonomyDecision.PENDING_APPROVAL
+    assert "Compliance" in result.reason
+
+
+def test_auto_after_delay_uses_the_rule_delay() -> None:
+    parsed = policy(
+        PolicyMode.REQUIRE_APPROVAL,
+        "  - { action: post, risk: low, mode: auto_after_delay, delay_minutes: 45 }\n",
+    )
+    result = decide(
+        parsed,
+        action=PolicyAction.POST,
+        risk_level="low",
+        compliance_passed=True,
+    )
+    assert result.mode is PolicyMode.AUTO_AFTER_DELAY
+    assert result.decision is AutonomyDecision.AUTO_APPROVE
+    assert result.delay_minutes == 45
+
+
+def test_auto_after_delay_default_mode_uses_thirty_minutes() -> None:
+    result = decide(
+        policy(PolicyMode.AUTO_AFTER_DELAY),
+        action=PolicyAction.POST,
+        risk_level="low",
+        compliance_passed=True,
+    )
+    assert result.mode is PolicyMode.AUTO_AFTER_DELAY
+    assert result.decision is AutonomyDecision.AUTO_APPROVE
+    assert result.delay_minutes == 30
 
 
 def test_rule_overrides_default_mode_by_risk() -> None:

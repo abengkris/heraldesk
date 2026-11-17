@@ -129,3 +129,19 @@ def daily_command(
         )
         for note in result.notes:
             console.print(f"[yellow]note:[/yellow] {note}")
+
+
+@run_app.command("scheduler")
+def scheduler_command(
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="List what would publish without writing anything.",
+        ),
+    ] = False,
+) -> None:
+    """Run the scheduler once. Alias of ``heraldesk scheduler run``."""
+    from heraldesk.cli.scheduler import execute_scheduler
+
+    execute_scheduler(dry_run=dry_run)
