@@ -266,6 +266,10 @@ def test_webhook_approve_works(
     app = make_app(initialized, telegram_enabled=True, adapter=adapter)
 
     with TestClient(app) as client:
+        # The immediate sweep on startup must finish before the approval, otherwise it
+        # can publish the just-scheduled item and the state assertion below becomes
+        # timing dependent.
+        assert wait_for(lambda: "scheduler.run" in global_actions(initialized.layout))
         response = client.post(
             "/webhook/telegram",
             json=webhook_payload(f"/approve {item_id}", update_id=21),
