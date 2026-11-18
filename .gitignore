@@ -20,6 +20,9 @@ secret.key
 data/
 backups/
 logs/
+reports/
+*.zip
+ANSWERS-BEFORE-M0.md
 
 # Editors / OS
 .vscode/
