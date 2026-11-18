@@ -1,9 +1,10 @@
 # Changelog
 
 All notable changes to Heraldesk are recorded here. The `1.0.0` release folded the
-M0-M9 implementation milestones together; `1.1.0` adds the first real platform adapter.
+M0-M9 implementation milestones together; `1.1.0` adds the first real platform adapter;
+`1.2.0` adds the local Web UI + REST API.
 
-## [Unreleased]
+## [1.2.0] - 2026-11-18
 
 ### M11 - Local Web UI and REST API
 

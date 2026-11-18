@@ -2,17 +2,17 @@
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.1.0.** Heraldesk runs a small deterministic team of AI roles (strategist,
+**Version 1.2.0.** Heraldesk runs a small deterministic team of AI roles (strategist,
 researcher, writer, designer, community manager, analyst, compliance) that draft, review,
 queue and schedule social media content for accounts you manage. You approve; Heraldesk
 does the legwork. It runs on your laptop or your own VPS. Your keys, your data.
 
-Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.1.0. The plugin
-loader and real Threads/X/Facebook/Instagram/LinkedIn adapters are not part of 1.1.0. The
+Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. The plugin
+loader and real Threads/X/Facebook/Instagram/LinkedIn adapters are not part of 1.2.0. The
 fake platform adapter is the offline publishing path. A real Nostr adapter was added in
 1.1.0; see [Nostr publishing](#nostr-publishing).
 
-## What works in 1.1.0
+## What works in 1.2.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -35,7 +35,7 @@ fake platform adapter is the offline publishing path. A real Nostr adapter was a
 
 ## Install from source
 
-The 1.1.0 release is installed from the repository. PyPI publishing and Docker images are
+The 1.2.0 release is installed from the repository. PyPI publishing and Docker images are
 not part of this release.
 
 ```bash
