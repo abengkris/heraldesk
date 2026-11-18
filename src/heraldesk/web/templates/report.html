@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ label }} report · Heraldesk{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ label }} report</h1>
+    <p class="muted">Rendered from {{ filename }}. HTML is sanitized.</p>
+  </div>
+  <a class="button" href="/reports/download/{{ filename }}">Download .md</a>
+</div>
+
+<article class="card markdown">
+  {{ html|safe }}
+</article>
+{% endblock %}

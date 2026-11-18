@@ -13,6 +13,7 @@ Each milestone is done only when its acceptance criteria pass and tests exist. D
 - [x] M8 Community and analyst CLI (manual inbox triage, deterministic reports; plugin loader and extra adapters deferred)
 - [x] M9 v1.0.0 hardening and release docs (backup/restore, doctor checks, changelog, README; Docker/PyPI/plugin publishing deferred)
 - [x] M10 Real Nostr publishing (NIP-01 kind 1, throwaway key, CLI only; other real adapters, web UI and new LLM features deferred)
+- [x] M11 Local Web UI and REST API (Jinja2 + HTMX, single-admin auth, loopback-first; no multi-user or remote deployment automation)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video generation,
 auto-DM outreach, scraping without official APIs.

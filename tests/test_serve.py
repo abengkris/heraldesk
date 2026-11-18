@@ -34,6 +34,8 @@ pytestmark = pytest.mark.core
 
 CHAT_ID = 123456789
 TOKEN = "123456789:AAHfakeTelegramTokenValue1234567890"
+ADMIN_TOKEN = "test-admin-token"
+AUTH_HEADERS = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 def write_config(
@@ -85,6 +87,7 @@ def make_app(
             config=config,
             telegram_adapter=adapter,
             telegram_token=token,
+            admin_token=ADMIN_TOKEN,
             scheduler_interval_seconds=scheduler_interval,
             poll_interval_seconds=poll_interval,
         )
@@ -238,7 +241,7 @@ def test_status_reports_profiles_and_queue_counts(
 
     app = make_app(initialized)
     with TestClient(app) as client:
-        response = client.get("/status")
+        response = client.get("/status", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     body = response.json()
@@ -389,7 +392,7 @@ def test_background_scheduler_publishes_a_due_item_once(
         )
         time.sleep(0.8)
         assert client.get("/health").status_code == 200
-        status = client.get("/status").json()
+        status = client.get("/status", headers=AUTH_HEADERS).json()
         assert status["scheduler"]["last_run_at"] is not None
         assert status["scheduler"]["last_run"]["payload"]["profiles_checked"] == 1
 

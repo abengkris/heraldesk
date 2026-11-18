@@ -3,6 +3,22 @@
 All notable changes to Heraldesk are recorded here. The `1.0.0` release folded the
 M0-M9 implementation milestones together; `1.1.0` adds the first real platform adapter.
 
+## [Unreleased]
+
+### M11 - Local Web UI and REST API
+
+- Added a Jinja2 + HTMX Web UI with dashboard, approval queue, inbox triage, reports and
+  profiles. HTMX and CSS are vendored; there is no Node build.
+- Added the authenticated `/api/v1` JSON API for status, queue, approvals, inbox, reports
+  and manual publishing. Web/API actions reuse the existing domain services and audit log.
+- Added single-admin authentication: `HERALDESK_ADMIN_TOKEN` or a secret.key-derived
+  token, signed HttpOnly session cookies, CSRF on every UI POST, login rate limiting and
+  Bearer-only API access.
+- Added loopback-by-default remote hardening: `--allow-remote` requires an explicit token
+  and `HERALDESK_TRUST_PROXY=1` behind HTTPS; Secure cookies and query-token rejection.
+- Added `heraldesk admin token [--show]`, `--no-web`, and Markdown report sanitization.
+- New dependencies: `jinja2`, `python-multipart`, `markdown`, `bleach`.
+
 ## [1.1.0] - 2026-11-17
 
 ### M10 - Real Nostr publishing

@@ -1,0 +1,38 @@
+<tr id="inbox-{{ item.id }}">
+  <td><strong>#{{ item.id }}</strong></td>
+  <td>{{ item.profile_slug or "—" }}</td>
+  <td>
+    <div class="nowrap">{{ item.chat }}</div>
+    <div class="muted small">{{ item.sender }}</div>
+  </td>
+  <td class="preview">
+    {{ item.preview }}
+    {% if item.command %}<div class="muted small">Command: {{ item.command }}</div>{% endif %}
+    {% if error %}<div class="alert error small" role="alert">{{ error }}</div>{% endif %}
+  </td>
+  <td>
+    <div class="stack tight">
+      <form method="post" action="/inbox/{{ item.id }}/reply"
+            hx-post="/inbox/{{ item.id }}/reply"
+            hx-target="closest tr" hx-swap="outerHTML">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="sr-only" for="reply-{{ item.id }}">Reply text</label>
+        <textarea id="reply-{{ item.id }}" name="text" rows="2" maxlength="4000"
+                  placeholder="Reply" required></textarea>
+        <button type="submit" class="button primary">Reply</button>
+      </form>
+      <form method="post" action="/inbox/{{ item.id }}/ignore"
+            hx-post="/inbox/{{ item.id }}/ignore"
+            hx-target="closest tr" hx-swap="outerHTML">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="sr-only" for="ignore-{{ item.id }}">Ignore reason</label>
+        <select id="ignore-{{ item.id }}" name="reason">
+          <option value="spam">Spam</option>
+          <option value="off-topic">Off-topic</option>
+          <option value="other" selected>Other</option>
+        </select>
+        <button type="submit" class="button">Ignore</button>
+      </form>
+    </div>
+  </td>
+</tr>

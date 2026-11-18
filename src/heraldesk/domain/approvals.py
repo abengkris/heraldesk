@@ -285,6 +285,7 @@ def approve(
     *,
     actor: str = "user",
     channel: ApprovalChannel = "cli",
+    comment: str | None = None,
     now: datetime | None = None,
 ) -> ApprovalOutcome:
     """Approve one pending item. Refuses while a kill switch or pause is active."""
@@ -351,6 +352,7 @@ def approve(
             "to_state": to_state,
             "risk_level": item.risk_level,
             "channel": channel,
+            "comment": _audit_text(_redact(comment)),
             "body_sha256": _body_hash(item.body),
         },
     )

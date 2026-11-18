@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Heraldesk{% endblock %}
+{% block content %}
+<section class="card narrow" aria-labelledby="login-title">
+  <h1 id="login-title">Sign in</h1>
+  <p class="muted">Enter the admin token from <code>HERALDESK_ADMIN_TOKEN</code> or the derived local token.</p>
+  {% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/login" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="token">Admin token</label>
+    <input id="token" name="token" type="password" autocomplete="current-password" required autofocus>
+    <button type="submit" class="button primary">Sign in</button>
+  </form>
+  <p class="muted small">The token is only sent to this local server. It is never placed in the URL.</p>
+</section>
+{% endblock %}

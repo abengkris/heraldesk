@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Heraldesk{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <p class="muted">Approvals, inbox and reports at a glance.</p>
+  </div>
+</div>
+
+<section class="grid" aria-label="Counts">
+  <a class="card stat" href="/queue">
+    <span class="stat-label">Pending approval</span>
+    <strong class="stat-value">{{ counts.queue.pending_approval }}</strong>
+  </a>
+  <a class="card stat" href="/queue">
+    <span class="stat-label">Scheduled</span>
+    <strong class="stat-value">{{ counts.queue.scheduled }}</strong>
+  </a>
+  <a class="card stat" href="/inbox">
+    <span class="stat-label">Inbox pending</span>
+    <strong class="stat-value">{{ counts.inbox.pending }}</strong>
+  </a>
+  <a class="card stat" href="/queue">
+    <span class="stat-label">Failed publishes</span>
+    <strong class="stat-value">{{ counts.queue.failed }}</strong>
+  </a>
+  <a class="card stat" href="/profiles">
+    <span class="stat-label">Profiles</span>
+    <strong class="stat-value">{{ counts.profiles }}</strong>
+  </a>
+</section>
+
+<section class="card" aria-labelledby="latest-report">
+  <h2 id="latest-report">Latest report</h2>
+  {% if last_report %}
+  <p>
+    <a href="/reports/view/{{ last_report.filename }}">{{ last_report.kind }} {{ last_report.label }}</a>
+    <span class="muted small">· {{ last_report.size }} bytes</span>
+  </p>
+  {% else %}
+  <p class="muted">No report has been generated yet. <a href="/reports">Generate one</a>.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -19,7 +19,7 @@ The full design is in `docs/architecture.md`. Read it before writing code.
 
 ## Tech stack
 Python 3.12, FastAPI, SQLAlchemy 2 + Alembic (SQLite WAL), APScheduler, LiteLLM, Typer + Rich,
-Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
+Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv.
 
 ## Commands (keep this section up to date as the project grows)
 - Install dev deps: `uv sync`
@@ -27,9 +27,13 @@ Jinja2 + HTMX + Tailwind (prebuilt CSS), pytest, ruff, mypy, uv.
 - Run the core cross-platform subset (what Windows CI runs): `uv run pytest -m core`
 - Lint/format: `uv run ruff check . && uv run ruff format .`
 - Type check: `uv run mypy src/heraldesk`
-- Run the single-process server: `uv run heraldesk serve [--host 127.0.0.1] [--port 8000] [--no-telegram]`
-  (API at `/health`, `/status` and `/webhook/telegram`; scheduler sweep every 60 s; Telegram polling every 10 s
-  when `telegram.enabled` and `telegram.mode: polling`)
+- Run the single-process server: `uv run heraldesk serve [--host 127.0.0.1] [--port 8000] [--no-web] [--no-telegram]`
+  (Web UI at `/`, JSON API at `/api/v1`, public liveness at `/health`; scheduler sweep every 60 s; Telegram
+  polling every 10 s when `telegram.enabled` and `telegram.mode: polling`)
+- Show the admin token source/fingerprint: `uv run heraldesk admin token` (`--show` prints the raw secret only
+  when explicitly requested; never log or screenshot it)
+- Allow a non-loopback bind only behind HTTPS: `uv run heraldesk serve --host 0.0.0.0 --allow-remote` with an
+  explicit `HERALDESK_ADMIN_TOKEN` and `HERALDESK_TRUST_PROXY=1`; the default remains `127.0.0.1`
 - Initialise an instance: `uv run heraldesk init`
 - Diagnose an instance offline: `uv run heraldesk doctor` (database migration head, config, `secret.key`,
   Telegram token when enabled, writability and reports directory; network checks are opt-in with `--online`)

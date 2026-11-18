@@ -860,6 +860,28 @@ class ContentItemLocator:
         return ProfileScope(profile_id)
 
 
+class ApprovalLocator:
+    """Resolve a globally unique approval id to its scope and content item.
+
+    This is the narrow unscoped approval read used by the authenticated Web/API layer,
+    which receives approval ids in its URLs. It returns ids only; every state change still
+    goes through :class:`ApprovalRepository` and the scoped domain service.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def resolve(self, approval_id: int) -> tuple[ProfileScope, int] | None:
+        """Return ``(scope, content_item_id)`` or ``None`` when the approval is missing."""
+        row = self._session.execute(
+            select(Approval.profile_id, Approval.content_item_id).where(Approval.id == approval_id)
+        ).first()
+        if row is None:
+            return None
+        profile_id, content_item_id = row
+        return ProfileScope(int(profile_id)), int(content_item_id)
+
+
 class ApprovalRepository:
     """Scoped storage for approval requests and decisions."""
 
@@ -1113,6 +1135,18 @@ class InboxRepository:
                 TelegramMessage.created_at < until,
             )
             .group_by(TelegramMessage.status)
+        ).all()
+        counts = {"pending": 0, "handled": 0, "ignored": 0}
+        for status, count in rows:
+            counts[str(status)] = int(count)
+        return counts
+
+    def count_by_status(self) -> dict[str, int]:
+        """Count every inbox message by triage status, with zeros for empty statuses."""
+        rows = self._session.execute(
+            select(TelegramMessage.status, func.count(TelegramMessage.id)).group_by(
+                TelegramMessage.status
+            )
         ).all()
         counts = {"pending": 0, "handled": 0, "ignored": 0}
         for status, count in rows:

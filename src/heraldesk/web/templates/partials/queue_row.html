@@ -1,0 +1,34 @@
+<tr id="queue-{{ entry.approval_id }}">
+  <td>
+    <strong>#{{ entry.approval_id }}</strong>
+    <div class="muted small">item {{ entry.content_item_id }}</div>
+  </td>
+  <td>{{ entry.profile_slug }}</td>
+  <td>{{ entry.platform }}</td>
+  <td>{{ entry.risk_level or "unknown" }}</td>
+  <td class="preview">
+    {{ entry.preview }}
+    {% if entry.reason %}<div class="muted small">Reason: {{ entry.reason }}</div>{% endif %}
+    {% if error %}<div class="alert error small" role="alert">{{ error }}</div>{% endif %}
+  </td>
+  <td class="nowrap">{{ entry.expires_at.strftime("%Y-%m-%d %H:%M UTC") if entry.expires_at else "—" }}</td>
+  <td>
+    <div class="actions">
+      <form method="post" action="/queue/{{ entry.approval_id }}/approve"
+            hx-post="/queue/{{ entry.approval_id }}/approve"
+            hx-target="closest tr" hx-swap="outerHTML">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="button primary">Approve</button>
+      </form>
+      <form method="post" action="/queue/{{ entry.approval_id }}/reject"
+            hx-post="/queue/{{ entry.approval_id }}/reject"
+            hx-target="closest tr" hx-swap="outerHTML" class="reject-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="sr-only" for="reason-{{ entry.approval_id }}">Reject reason</label>
+        <input id="reason-{{ entry.approval_id }}" name="reason" type="text" maxlength="500"
+               placeholder="Reason" required>
+        <button type="submit" class="button danger">Reject</button>
+      </form>
+    </div>
+  </td>
+</tr>

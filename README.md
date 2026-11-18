@@ -2,17 +2,17 @@
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.0.0.** Heraldesk runs a small deterministic team of AI roles (strategist,
+**Version 1.1.0.** Heraldesk runs a small deterministic team of AI roles (strategist,
 researcher, writer, designer, community manager, analyst, compliance) that draft, review,
 queue and schedule social media content for accounts you manage. You approve; Heraldesk
 does the legwork. It runs on your laptop or your own VPS. Your keys, your data.
 
-Heraldesk is CLI-first. The local web UI, REST `/api/v1` namespace, plugin loader and
-real Threads/X/Facebook/Instagram/LinkedIn adapters are not part of 1.0.0. The fake
-platform adapter is the offline publishing path. A real Nostr adapter was added after
-1.0.0; see [Nostr publishing](#nostr-publishing-post-100).
+Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.1.0. The plugin
+loader and real Threads/X/Facebook/Instagram/LinkedIn adapters are not part of 1.1.0. The
+fake platform adapter is the offline publishing path. A real Nostr adapter was added in
+1.1.0; see [Nostr publishing](#nostr-publishing).
 
-## What works in 1.0.0
+## What works in 1.1.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -23,7 +23,8 @@ platform adapter is the offline publishing path. A real Nostr adapter was added 
 - Manual inbox triage: list, show, reply and ignore. No auto-reply and no AI-generated replies.
 - Deterministic weekly and monthly reports, with no LLM calls.
 - Backup and restore, doctor hardening, global and per-profile kill switches.
-- Real Nostr publishing (NIP-01 kind 1 notes) with a throwaway key; added after 1.0.0.
+- Real Nostr publishing (NIP-01 kind 1 notes) with a throwaway key.
+- Local Web UI and authenticated `/api/v1` for queue, inbox, reports and profiles.
 - SQLite only. No Redis, Postgres, Node, telemetry or phone-home.
 
 ## Requirements
@@ -34,7 +35,7 @@ platform adapter is the offline publishing path. A real Nostr adapter was added 
 
 ## Install from source
 
-The 1.0.0 release is installed from the repository. PyPI publishing and Docker images are
+The 1.1.0 release is installed from the repository. PyPI publishing and Docker images are
 not part of this release.
 
 ```bash
@@ -120,7 +121,7 @@ uv run heraldesk telegram inbox list acme
 Bot tokens are encrypted with `secret.key`. Only chat IDs in `telegram.allowed_chat_ids`
 are served.
 
-## Nostr publishing (post-1.0.0)
+## Nostr publishing
 
 Nostr is the first real platform adapter: one NIP-01 **kind 1** text note per approved
 content item, signed locally with BIP-340 Schnorr and broadcast to relays. It needs no
@@ -155,6 +156,69 @@ Relays come from `nostr.relays` in `heraldesk.yaml` (defaults: `wss://relay.damu
 `wss://nos.lol`) or from `--relay` on the account. One relay accepting the event is
 enough; failures use the normal publisher retries. Details and the manual acceptance
 steps are in [docs/platforms/nostr.md](docs/platforms/nostr.md).
+
+## Web UI and API
+
+M11 adds a server-rendered Web UI and a JSON API for daily operation without the terminal.
+The CLI remains fully supported. One process still serves everything.
+
+```bash
+# Set the single admin token in $HERALDESK_HOME/.env, or use the one derived from secret.key.
+# HERALDESK_ADMIN_TOKEN=change-me-to-a-long-random-token
+
+uv run heraldesk admin token          # source + fingerprint only
+uv run heraldesk serve                # http://127.0.0.1:8000
+```
+
+Open `http://127.0.0.1:8000/login` and enter the token. The UI has a dashboard, approval
+queue, inbox triage, report viewer and profile list. HTMX and CSS are vendored; there is no
+Node build and no external CDN.
+
+The API uses `Authorization: Bearer <token>` only:
+
+```bash
+curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
+  http://127.0.0.1:8000/api/v1/status
+
+curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
+  http://127.0.0.1:8000/api/v1/queue?status=pending
+```
+
+`/health` is public liveness only. `/api/v1`, `/status` and every UI page require auth.
+Tokens in a URL query string are rejected. Login is rate limited to five failed attempts
+per minute per IP.
+
+`heraldesk admin token --show` prints the raw token for your own terminal. Never put it in
+chat, a GitHub issue, a screenshot or a shell history you do not control.
+
+### VPS hardening (Caddy + HTTPS)
+
+The recommended deployment keeps Heraldesk on loopback and puts a TLS reverse proxy in
+front of it:
+
+```bash
+# $HERALDESK_HOME/.env
+HERALDESK_ADMIN_TOKEN=<long-random-secret>
+HERALDESK_TRUST_PROXY=1
+```
+
+```caddyfile
+desk.example.com {
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+Then run `uv run heraldesk serve` without `--host`. Proxy mode makes the session cookie
+`Secure`; the admin token is still required.
+
+A non-loopback bind is refused unless all three conditions hold: `--allow-remote`, an
+explicit `HERALDESK_ADMIN_TOKEN`, and `HERALDESK_TRUST_PROXY=1` behind an HTTPS proxy.
+Without proxy mode the server refuses with "Remote mode requires HTTPS via reverse proxy".
+
+The default serve port is `8000`; if you change it, use the same value in the reverse
+proxy. **Do not expose the Heraldesk port directly to the internet.** Firewall it and let
+only the reverse proxy reach it. Set `HERALDESK_TELEGRAM_WEBHOOK_SECRET` if Telegram
+webhooks are used on a VPS.
 
 ## Inbox triage
 

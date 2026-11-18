@@ -30,9 +30,14 @@ dependencies = [
   "coincurve>=21.0,<22",
   "cryptography>=43",
   "fastapi>=0.115",
+  # Server-rendered Web UI (M11) and safe Markdown report rendering.
+  "jinja2>=3.1,<4",
   "litellm>=1.55",
+  "markdown>=3.7,<4",
+  "bleach>=6.2,<7",
   "pydantic-settings>=2.6",
   "python-dotenv>=1.0",
+  "python-multipart>=0.0.20,<1",
   "pyyaml>=6.0.2",
   "rich>=13.9",
   "sqlalchemy>=2.0.36",
@@ -58,6 +63,8 @@ dev = [
   "mypy>=1.14",
   "pytest>=8.3",
   "ruff>=0.8",
+  "types-bleach>=6.2",
+  "types-Markdown>=3.7",
   "types-pyyaml>=6.0.12",
 ]
 

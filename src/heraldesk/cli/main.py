@@ -13,7 +13,7 @@ from typing import Annotated
 import typer
 from rich.table import Table
 
-from heraldesk import __version__
+from heraldesk import __version__, paths
 from heraldesk.cli.account import account_app
 from heraldesk.cli.agent import agent_app
 from heraldesk.cli.backup import backup_command, restore_command
@@ -208,22 +208,66 @@ def serve_command(
     ] = None,
     no_web: Annotated[
         bool,
-        typer.Option(
-            "--no-web",
-            help="Accepted for compatibility; M7 exposes the API only (no web UI yet).",
-        ),
+        typer.Option("--no-web", help="Disable the Web UI; the JSON API stays available."),
     ] = False,
     no_telegram: Annotated[
         bool,
         typer.Option("--no-telegram", help="Disable Telegram polling and notifications."),
     ] = False,
+    allow_remote: Annotated[
+        bool,
+        typer.Option(
+            "--allow-remote",
+            help=(
+                "Allow a non-loopback bind. Requires HERALDESK_ADMIN_TOKEN and "
+                "HERALDESK_TRUST_PROXY=1 behind HTTPS."
+            ),
+        ),
+    ] = False,
 ) -> None:
-    """Run the API, scheduler and Telegram bot in one process."""
-    _ = no_web
+    """Run the API, Web UI, scheduler and Telegram bot in one process."""
     # Imported lazily so ordinary CLI commands do not pay for the web stack.
     from heraldesk.server.run import ServerError, run_server
 
     try:
-        run_server(host=host, port=port, enable_telegram=not no_telegram)
+        run_server(
+            host=host,
+            port=port,
+            enable_telegram=not no_telegram,
+            enable_web=not no_web,
+            allow_remote=allow_remote,
+        )
     except (ConfigError, ServerError) as exc:
         abort(str(exc))
+
+
+admin_app = typer.Typer(
+    no_args_is_help=True,
+    help="Inspect the single-admin authentication token.",
+)
+app.add_typer(admin_app, name="admin")
+
+
+@admin_app.command("token")
+def admin_token_command(
+    show: Annotated[
+        bool,
+        typer.Option(
+            "--show",
+            help="Print the raw token. It is a secret; never put it in logs or screenshots.",
+        ),
+    ] = False,
+) -> None:
+    """Show the admin token fingerprint, or the raw token with --show."""
+    from heraldesk.web.auth import AuthConfigError, mask_token, resolve_admin_token
+
+    layout = paths.layout_for(paths.resolve_home())
+    try:
+        resolution = resolve_admin_token(layout)
+    except AuthConfigError as exc:
+        abort(str(exc))
+    console.print(f"Admin token source: [bold]{resolution.source}[/bold]")
+    console.print(f"Fingerprint: {mask_token(resolution.token)}")
+    if show:
+        console.print("[yellow]Raw token (secret; do not log or screenshot):[/yellow]")
+        console.print(resolution.token)

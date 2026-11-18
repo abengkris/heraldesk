@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Request failed · Heraldesk{% endblock %}
+{% block content %}
+<section class="card narrow" aria-labelledby="error-title">
+  <h1 id="error-title">Request failed</h1>
+  <p class="alert error" role="alert">{{ message }}</p>
+  <p class="muted small">Code: {{ code }}</p>
+  <a class="button" href="/">Back to the dashboard</a>
+</section>
+{% endblock %}

@@ -774,3 +774,92 @@ These answers close the open questions raised after the first full read of the s
   at-most-once, redacted final failure and the scheduler path. `test_cli_m10.py` covers account add/list/test,
   publish success and failure, and proves the nsec and full npub never appear in CLI output or audit payloads.
   Every relay call is mocked; pytest stays offline. Revision assertions move from `0009` to `0010`.
+
+## M11 implementation decisions (2026-11-18)
+
+- **M11 adds the local-first Web UI and `/api/v1` on top of M0-M10.** The CLI remains the
+  complete control surface. The server is still one FastAPI/Uvicorn process with SQLite
+  only, no Node build, no Redis and no telemetry. No schema migration is added.
+- **Authentication is a single admin token, never optional.** Resolution order is
+  `HERALDESK_ADMIN_TOKEN` in the environment, the same key in `$HERALDESK_HOME/.env`, then
+  `HMAC-SHA256(secret.key, "heraldesk-admin-v1")`. The token is never written to
+  `heraldesk.yaml`, HTML, JSON, a cookie, an audit payload or a log line. `heraldesk admin
+  token` shows the source and a fingerprint; only `--show` prints the raw secret.
+- **The API accepts Bearer only; the UI accepts a signed HttpOnly cookie only.** Mixing
+  the two would weaken the CSRF boundary. The API returns
+  `{"error": "...", "code": "..."}` for every failure, including validation errors; the
+  validation handler deliberately does not echo submitted bodies.
+- **UI sessions are stateless signed cookies.** The payload carries `iat`, `exp` and a
+  random CSRF value and is signed with a key derived from the admin token. The cookie is
+  `HttpOnly`, `SameSite=Lax`, `Path=/`, 12 hours, and `Secure` whenever HTTPS proxy mode
+  is on. Logout clears the cookie; rotating the admin token invalidates every session.
+- **Every UI POST has a CSRF token.** Authenticated forms use the CSRF value inside the
+  signed session. The login form uses a short-lived signed double-submit cookie because no
+  session exists yet. Login failures do not create a session.
+- **Login rate limiting is in-memory: five failed attempts per 60 seconds per IP.** The
+  sixth returns 429 with `Retry-After`. `X-Forwarded-For` is trusted only when
+  `HERALDESK_TRUST_PROXY=1`. The limiter resets on process restart, which is acceptable for
+  a single-user process.
+- **A token in a URL is always rejected.** Middleware detects `token`, `access_token` or
+  `admin_token` in any query string, logs only that a token was seen, and returns 400. A
+  uvicorn access-log filter strips query strings so the token cannot leak through access
+  logs either.
+- **Remote mode is explicit and HTTPS-only.** The server still binds `127.0.0.1` by default.
+  A non-loopback host requires `--allow-remote`, an explicit environment/.env
+  `HERALDESK_ADMIN_TOKEN` (a secret-key-derived token is not accepted), and
+  `HERALDESK_TRUST_PROXY=1`. Missing proxy mode fails with "Remote mode requires HTTPS via
+  reverse proxy". Remote mode sets Secure cookies and logs a warning without secrets. The
+  recommended VPS layout remains a loopback bind behind Caddy/Nginx with TLS.
+- **`POST /webhook/telegram` is the documented platform-callback exception to "all routes
+  require auth".** Telegram cannot send an admin Bearer token; the route stays public only
+  when Telegram is enabled, still enforces `allowed_chat_ids`, and now optionally verifies
+  `X-Telegram-Bot-Api-Secret-Token` against `HERALDESK_TELEGRAM_WEBHOOK_SECRET` when that
+  variable is set. For a VPS, set the secret, firewall the port, and terminate TLS at the
+  proxy. A full Telegram secret rotation workflow is deferred to M12.
+- **`/health` is public liveness only.** It returns status, version and database revision,
+  no profile, queue, inbox or credential data. `/status` and every `/api/v1` route require
+  auth. `/static/*` serves only CSS/JS.
+- **The UI is Jinja2 + HTMX, with both assets vendored.** `htmx.min.js` and its license are
+  in `src/heraldesk/web/static/`; there is no CDN, npm or React build. Forms work as normal
+  POST/redirect forms and HTMX replaces the affected row when JavaScript is available.
+- **Runtime dependencies added:** `jinja2` (templates), `python-multipart` (forms),
+  `markdown` + `bleach` (report rendering and sanitization). `types-bleach` and
+  `types-Markdown` are dev-only stubs for strict mypy. HTMX is a static file, not a Python
+  dependency.
+- **Report rendering is sanitized.** Markdown is rendered with tables/fenced-code support,
+  then passed through `bleach` with an allowlist of tags, attributes and protocols. Report
+  filenames are restricted to `weekly-YYYY-Www.md` and `monthly-YYYY-MM.md`; traversal and
+  unknown names return 404. Downloads serve only those files.
+- **Reports GET is read-only.** `GET /api/v1/reports/weekly|monthly` builds the existing
+  analyst report in memory and returns `{summary, markdown}` without writing a file. The UI
+  "Generate" POST forms call the audited `write_report` service, which creates the file and
+  records `report.generated`. This keeps GET semantics clean while preserving the CLI
+  behavior.
+- **Approval ids are the public identifier for approve/reject.** Both the API
+  (`/api/v1/approvals/{id}`) and the UI (`/queue/{id}/approve|reject`) use the approval row
+  id returned in the queue listing. A narrow `ApprovalLocator` resolves it to the profile
+  scope and content item id; every state change still goes through the existing scoped
+  approval service with `channel="web"`. `POST /api/v1/publish/{id}` uses the content item
+  id, matching `heraldesk publish`.
+- **All Web/API actions reuse existing services.** Approve/reject call
+  `domain.approvals`; inbox reply/ignore call `community`; reports call `analyst`; publish
+  calls `publisher.publish_item` with the normal adapter factory, cipher, retries,
+  at-most-once `external_id` handling and notifications. The only domain addition is an
+  optional redacted `comment` on approve.
+- **Audit events:** existing `approval.*`, `inbox.*`, `publish.*` and `report.generated`
+  entries are reused; M11 adds `auth.login`, `auth.login_failed`,
+  `auth.login_rate_limited` and `auth.logout`. Auth payloads never contain the token or a
+  full IP.
+- **Security headers** are set for every response: `X-Content-Type-Options`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and a strict CSP allowing only
+  same-origin assets. There is no CORS configuration; the UI is same-origin only.
+- **`--no-web` is now meaningful.** It disables the UI router and `/static` but keeps
+  `/health`, `/status`, `/webhook/telegram` and `/api/v1`. Existing CLI commands and output
+  are unchanged. `--allow-remote` is additive.
+- **Tests:** `test_web_auth.py` covers token resolution, sessions, CSRF, rate limits,
+  query-token rejection, access-log redaction, the remote/HTTPS guards and the admin-token
+  command. `test_web_api.py` covers every `/api/v1` route, approval-id isolation, inbox
+  actions, in-memory reports, publish and generic validation errors. `test_web_ui.py`
+  covers login/cookie flags, CSRF, queue/inbox/reports/profiles, sanitized Markdown, no
+  secret leakage and the auth boundary. `test_serve.py` and `test_cli.py` are updated for
+  authenticated `/status` and the `admin` command group.

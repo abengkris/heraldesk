@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Inbox · Heraldesk{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Inbox</h1>
+    <p class="muted">Manual triage. Chat and sender ids are masked; previews are redacted.</p>
+  </div>
+</div>
+
+{% if notice %}<p class="alert ok" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
+
+{% if items %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">ID</th>
+        <th scope="col">Profile</th>
+        <th scope="col">From</th>
+        <th scope="col">Message</th>
+        <th scope="col">Action</th>
+      </tr>
+    </thead>
+    <tbody id="inbox-body">
+      {% for item in items %}
+        {% include "partials/inbox_item.html" %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">No pending inbox items. <a href="/">Back to the dashboard</a>.</p>
+{% endif %}
+{% endblock %}
