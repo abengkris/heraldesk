@@ -1,5 +1,7 @@
 # Heraldesk
 
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.2.0)
+
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
 **Version 1.2.0.** Heraldesk runs a small deterministic team of AI roles (strategist,
@@ -131,7 +133,7 @@ app review and no username or password.
 > cannot be deleted. Test with a throwaway key, check the event id on a public explorer,
 > then abandon the key.
 >
-> **Never paste an nsec into chat, a GitHub issue, a screenshot or a shell command.**
+> **Never paste an nsec into chat, a GitHub issue, or a screenshot. Type it only in your own terminal via an environment variable.**
 > Keep it in an environment variable or a secure prompt. Heraldesk encrypts it with
 > `secret.key` and never prints it.
 
