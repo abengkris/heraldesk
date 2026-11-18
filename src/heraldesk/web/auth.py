@@ -128,9 +128,13 @@ def explicit_admin_token(layout: paths.Layout) -> TokenResolution | None:
 
 
 def trust_proxy_enabled(layout: paths.Layout) -> bool:
-    """Return ``True`` when HTTPS proxy mode is enabled by env or ``.env``."""
-    if environment_flag(TRUST_PROXY_ENV):
-        return True
+    """Return ``True`` when HTTPS proxy mode is enabled by env or ``.env``.
+
+    A value present in the process environment wins even when it is false, matching the
+    documented environment-over-``.env`` precedence.
+    """
+    if TRUST_PROXY_ENV in os.environ:
+        return environment_flag(TRUST_PROXY_ENV)
     value = _dotenv_value(layout, TRUST_PROXY_ENV)
     return (value or "").strip().lower() in {"1", "true", "yes", "on"}
 

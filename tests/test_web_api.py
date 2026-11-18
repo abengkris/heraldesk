@@ -308,3 +308,21 @@ def test_no_web_keeps_the_api_and_health(initialized: InitResult) -> None:
         page = client.get("/", follow_redirects=False)
         assert page.status_code == 404
         assert client.get("/static/app.css").status_code == 404
+
+
+def test_api_inbox_missing_item_is_404(initialized: InitResult) -> None:
+    with make_app(initialized) as client:
+        response = client.post(
+            "/api/v1/inbox/999999/reply",
+            headers=HEADERS,
+            json={"text": "hello"},
+        )
+        assert response.status_code == 404
+        assert response.json()["code"] == "not_found"
+
+
+def test_api_inbox_invalid_status_preserves_code(initialized: InitResult) -> None:
+    with make_app(initialized) as client:
+        response = client.get("/api/v1/inbox?status=bogus", headers=HEADERS)
+        assert response.status_code == 400
+        assert response.json()["code"] == "invalid_status"

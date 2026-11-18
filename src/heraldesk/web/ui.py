@@ -279,7 +279,12 @@ async def queue_approve(request: Request, approval_id: int) -> Response:
     """Approve one queue item by approval id."""
     session = _session(request)
     form = await _form(request)
-    _require_csrf(_auth(request), session, form)
+    try:
+        _require_csrf(_auth(request), session, form)
+    except Forbidden as exc:
+        if not _is_htmx(request):
+            raise
+        return _queue_action_error(request, session, approval_id, exc)
     context = _context(request)
     try:
         with context.database.session() as db:
@@ -296,7 +301,12 @@ async def queue_reject(request: Request, approval_id: int) -> Response:
     """Reject one queue item with a required reason."""
     session = _session(request)
     form = await _form(request)
-    _require_csrf(_auth(request), session, form)
+    try:
+        _require_csrf(_auth(request), session, form)
+    except Forbidden as exc:
+        if not _is_htmx(request):
+            raise
+        return _queue_action_error(request, session, approval_id, exc)
     reason = _form_value(form, "reason").strip()
     if not reason:
         return _queue_action_error(
@@ -333,12 +343,19 @@ def _queue_action_error(
             ),
             None,
         )
-    if _is_htmx(request) and entry is not None:
+    if _is_htmx(request):
+        if entry is not None:
+            return _render(
+                request,
+                "partials/queue_row.html",
+                {"entry": entry, "csrf": session.csrf, "error": message},
+                status_code=200,
+            )
         return _render(
             request,
-            "partials/queue_row.html",
-            {"entry": entry, "csrf": session.csrf, "error": message},
-            status_code=400,
+            "partials/error_row.html",
+            {"error": message, "colspan": 7},
+            status_code=200,
         )
     with context.database.session() as db:
         entries = list_queue_views(db, context.redactor, status="pending")
@@ -350,6 +367,7 @@ def _queue_action_error(
         entries=entries,
         notice=None,
         error=message,
+        status_code=400,
     )
 
 
@@ -376,7 +394,12 @@ async def inbox_reply(request: Request, item_id: int) -> Response:
     """Send a manual reply through the existing Telegram service."""
     session = _session(request)
     form = await _form(request)
-    _require_csrf(_auth(request), session, form)
+    try:
+        _require_csrf(_auth(request), session, form)
+    except Forbidden as exc:
+        if not _is_htmx(request):
+            raise
+        return _inbox_action_error(request, session, item_id, exc)
     text = _form_value(form, "text").strip()
     if not text:
         return _inbox_action_error(
@@ -401,7 +424,12 @@ async def inbox_ignore(request: Request, item_id: int) -> Response:
     """Mark one inbox item ignored with a bounded reason."""
     session = _session(request)
     form = await _form(request)
-    _require_csrf(_auth(request), session, form)
+    try:
+        _require_csrf(_auth(request), session, form)
+    except Forbidden as exc:
+        if not _is_htmx(request):
+            raise
+        return _inbox_action_error(request, session, item_id, exc)
     reason = _form_value(form, "reason") or "other"
     context = _context(request)
     try:
@@ -431,12 +459,19 @@ def _inbox_action_error(
             ),
             None,
         )
-    if _is_htmx(request) and item is not None:
+    if _is_htmx(request):
+        if item is not None:
+            return _render(
+                request,
+                "partials/inbox_item.html",
+                {"item": item, "csrf": session.csrf, "error": message},
+                status_code=200,
+            )
         return _render(
             request,
-            "partials/inbox_item.html",
-            {"item": item, "csrf": session.csrf, "error": message},
-            status_code=400,
+            "partials/error_row.html",
+            {"error": message, "colspan": 5},
+            status_code=200,
         )
     with context.database.session() as db:
         items = list_inbox_views(db, context.redactor, status="pending", limit=50)
@@ -448,6 +483,7 @@ def _inbox_action_error(
         items=items,
         notice=None,
         error=message,
+        status_code=400,
     )
 
 

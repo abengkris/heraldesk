@@ -333,3 +333,48 @@ def test_status_requires_auth_but_accepts_bearer(initialized: InitResult) -> Non
             ).status_code
             == 200
         )
+
+
+def test_htmx_queue_error_returns_200_and_message(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    _, approval_id = pending_item(db_session, profile_setup)
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/queue")
+        csrf = csrf_from(page.text)
+
+        missing_csrf = client.post(
+            f"/queue/{approval_id}/approve",
+            headers={"HX-Request": "true"},
+            data={},
+        )
+        assert missing_csrf.status_code == 200
+        assert "CSRF" in missing_csrf.text
+
+        missing_approval = client.post(
+            "/queue/999999/approve",
+            headers={"HX-Request": "true"},
+            data={"csrf": csrf},
+        )
+        assert missing_approval.status_code == 200
+        assert "does not exist" in missing_approval.text
+        assert "<tr" in missing_approval.text
+
+
+def test_htmx_inbox_error_returns_200_and_message(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/inbox")
+        csrf = csrf_from(page.text)
+
+        response = client.post(
+            "/inbox/999999/reply",
+            headers={"HX-Request": "true"},
+            data={"csrf": csrf, "text": "hello"},
+        )
+        assert response.status_code == 200
+        assert "does not exist" in response.text
+        assert "<tr" in response.text

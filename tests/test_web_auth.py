@@ -200,3 +200,14 @@ def test_trust_proxy_can_come_from_dotenv(
     monkeypatch.delenv("HERALDESK_TRUST_PROXY", raising=False)
     initialized.layout.env_path.write_text("HERALDESK_TRUST_PROXY=1\n", encoding="utf-8")
     assert trust_proxy_enabled(initialized.layout) is True
+
+
+def test_explicit_false_trust_proxy_overrides_dotenv(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    initialized.layout.env_path.write_text("HERALDESK_TRUST_PROXY=1\n", encoding="utf-8")
+    monkeypatch.setenv("HERALDESK_TRUST_PROXY", "0")
+    assert trust_proxy_enabled(initialized.layout) is False
+
+    monkeypatch.setenv("HERALDESK_TRUST_PROXY", "1")
+    assert trust_proxy_enabled(initialized.layout) is True

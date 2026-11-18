@@ -11,12 +11,14 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
+from heraldesk.analyst import ReportError
+from heraldesk.community import InboxError, InboxItemNotFoundError, InboxStateError
 from heraldesk.db.engine import inspect_database
 from heraldesk.domain.errors import ApprovalError, ContentError
 from heraldesk.platforms.base import PublishError
 from heraldesk.web.auth import AdminAuth, Unauthorized
 from heraldesk.web.context import WebContext
-from heraldesk.web.errors import BadRequest, Conflict, WebError
+from heraldesk.web.errors import BadRequest, Conflict, NotFound, WebError
 from heraldesk.web.service import (
     approve_by_id,
     build_status,
@@ -55,9 +57,15 @@ def _redact(context: WebContext, message: str) -> str:
 
 
 def _domain_error(context: WebContext, exc: Exception) -> WebError:
+    if isinstance(exc, WebError):
+        return exc
     message = _redact(context, str(exc)) or "request failed"
     if isinstance(exc, PublishError):
         return WebError(502, "publish_failed", message)
+    if isinstance(exc, InboxItemNotFoundError):
+        return NotFound(message)
+    if isinstance(exc, InboxStateError):
+        return Conflict(message, "invalid_state")
     return BadRequest(message, "request_failed")
 
 
@@ -175,7 +183,7 @@ def api_inbox(
     with context.database.session() as session:
         try:
             views = list_inbox_views(session, context.redactor, status=status, limit=limit)
-        except Exception as exc:
+        except (InboxError, WebError) as exc:
             raise _domain_error(context, exc) from exc
         return {"items": [view.as_dict() for view in views], "count": len(views)}
 
@@ -187,7 +195,7 @@ def api_reply(request: Request, item_id: int, body: ReplyBody) -> dict[str, Any]
     with context.database.session() as session:
         try:
             view = reply_inbox(session, context, item_id, body.text)
-        except Exception as exc:
+        except (InboxError, WebError) as exc:
             raise _domain_error(context, exc) from exc
         return {"item": view.as_dict()}
 
@@ -199,7 +207,7 @@ def api_ignore(request: Request, item_id: int, body: IgnoreBody) -> dict[str, An
     with context.database.session() as session:
         try:
             view = ignore_inbox(session, context, item_id, body.reason)
-        except Exception as exc:
+        except (InboxError, WebError) as exc:
             raise _domain_error(context, exc) from exc
         return {"item": view.as_dict()}
 
@@ -214,7 +222,7 @@ def api_weekly_report(
     with context.database.session() as session:
         try:
             data, markdown = report_for(session, "weekly", week)
-        except Exception as exc:
+        except (ReportError, WebError) as exc:
             raise _domain_error(context, exc) from exc
         return {"summary": report_summary(data), "markdown": markdown}
 
@@ -229,7 +237,7 @@ def api_monthly_report(
     with context.database.session() as session:
         try:
             data, markdown = report_for(session, "monthly", month)
-        except Exception as exc:
+        except (ReportError, WebError) as exc:
             raise _domain_error(context, exc) from exc
         return {"summary": report_summary(data), "markdown": markdown}
 
