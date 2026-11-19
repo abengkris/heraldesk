@@ -278,6 +278,9 @@ publishing. Cookies are not accepted; use `Authorization: Bearer`. The OpenAPI s
 - `heraldesk admin rotate-key` stages a new key, re-encrypts accounts and the Telegram token, swaps files,
   verifies the result and rolls back the database if the key swap fails. Stop the server first.
 - `heraldesk serve` refuses to start on a schema that is not at the packaged Alembic head.
+- `heraldesk serve` writes `server.lock` (pid + start time) and releases it on shutdown; `restore`
+  refuses while that pid is alive.
+- `heraldesk backup-prune --keep N` deletes older archives with an audit entry; `--dry-run` lists first.
 - `heraldesk backup` copies `heraldesk.db` (SQLite online backup API), `profiles/`, `agents/` and `heraldesk.yaml`;
   `secret.key` and `telegram.token` only when explicitly requested. `.env` is not included.
 - `restore --force` writes a credential safety backup first, stages files before swapping

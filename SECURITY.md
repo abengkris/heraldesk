@@ -48,6 +48,8 @@ supply-chain issues.
   so back it up separately.
 - Run `heraldesk doctor` after every upgrade and `heraldesk upgrade` before starting a new
   release. `serve` refuses a stale schema.
+- Stop `heraldesk serve` before `restore`; the server lock makes restore refuse while the
+  process is running. Prune credential backups explicitly with `backup-prune`.
 - Install platform adapter plugins only from sources you trust: plugin code runs in the
   Heraldesk process with your user's permissions.
 - No telemetry. Outbound traffic is limited to your LLM provider, platform APIs, Telegram

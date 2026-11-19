@@ -14,6 +14,11 @@ import uvicorn
 from heraldesk import paths
 from heraldesk.api.app import AppOptions, create_app
 from heraldesk.config import is_loopback, load_config
+from heraldesk.core.locks import (
+    ServerLockError,
+    acquire_server_lock,
+    release_server_lock,
+)
 from heraldesk.core.logging import configure_logging
 from heraldesk.db.engine import inspect_database
 from heraldesk.db.migrations import MigrationError, head_revision
@@ -119,29 +124,37 @@ def run_server(
         )
 
     try:
-        admin = resolve_admin_token(layout)
-        configure_logging(layout, extra_secrets=(admin.token,))
-        logger.info(
-            "server starting host=%s port=%s web=%s telegram=%s remote=%s",
-            resolved_host,
-            resolved_port,
-            enable_web,
-            enable_telegram,
-            remote,
-        )
-        app = create_app(
-            AppOptions(
-                layout=layout,
-                config=config,
-                enable_telegram=enable_telegram,
-                enable_web=enable_web,
-                admin_token=admin.token,
-                cookie_secure=trust_proxy,
-                trust_proxy=trust_proxy,
-            )
-        )
-    except (TelegramConfigError, AuthConfigError) as exc:
+        acquire_server_lock(layout)
+    except ServerLockError as exc:
         raise ServerError(str(exc)) from exc
 
-    _install_query_redaction()
-    uvicorn.run(app, host=resolved_host, port=resolved_port, log_level="info")
+    try:
+        try:
+            admin = resolve_admin_token(layout)
+            configure_logging(layout, extra_secrets=(admin.token,))
+            logger.info(
+                "server starting host=%s port=%s web=%s telegram=%s remote=%s",
+                resolved_host,
+                resolved_port,
+                enable_web,
+                enable_telegram,
+                remote,
+            )
+            app = create_app(
+                AppOptions(
+                    layout=layout,
+                    config=config,
+                    enable_telegram=enable_telegram,
+                    enable_web=enable_web,
+                    admin_token=admin.token,
+                    cookie_secure=trust_proxy,
+                    trust_proxy=trust_proxy,
+                )
+            )
+        except (TelegramConfigError, AuthConfigError) as exc:
+            raise ServerError(str(exc)) from exc
+
+        _install_query_redaction()
+        uvicorn.run(app, host=resolved_host, port=resolved_port, log_level="info")
+    finally:
+        release_server_lock(layout)

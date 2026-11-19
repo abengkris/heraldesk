@@ -259,3 +259,40 @@ def test_force_restore_creates_a_safety_backup(
     assert result.safety_backup is not None
     assert result.safety_backup.is_file()
     assert result.safety_backup.parent == target.backups
+
+
+def test_prune_backups_keeps_the_newest(initialized: InitResult, tmp_path: Path) -> None:
+    import os
+
+    from heraldesk.core.backup import prune_backups
+
+    for index in range(4):
+        path = initialized.layout.backups / f"heraldesk-backup-{index}.zip"
+        path.write_text("backup", encoding="utf-8")
+        os.utime(path, (index + 1, index + 1))
+
+    would_remove = prune_backups(initialized.layout, keep=1, dry_run=True)
+    assert len(would_remove) == 3
+    assert all(path.exists() for path in would_remove)
+
+    removed = prune_backups(initialized.layout, keep=2)
+    assert len(removed) == 2
+    remaining = sorted(
+        path.name for path in initialized.layout.backups.glob("heraldesk-backup-*.zip")
+    )
+    assert remaining == ["heraldesk-backup-2.zip", "heraldesk-backup-3.zip"]
+
+
+def test_restore_refuses_while_the_server_lock_is_live(
+    initialized: InitResult, profile_setup, tmp_path: Path
+) -> None:
+    from heraldesk.core.locks import acquire_server_lock, release_server_lock
+
+    archive = tmp_path / "backup.zip"
+    create_backup(initialized.layout, output=archive, include_credentials=True)
+    acquire_server_lock(initialized.layout)
+    try:
+        with pytest.raises(BackupError, match="heraldesk serve is running"):
+            restore_backup(initialized.layout, archive, force=True)
+    finally:
+        release_server_lock(initialized.layout)

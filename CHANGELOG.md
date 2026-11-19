@@ -6,6 +6,20 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.14.0] - 2026-11-19
+
+### Added
+
+- `heraldesk backup-prune --keep N [--dry-run]` deletes old backup archives and audits the
+  count.
+- A single-process `server.lock` (pid + start time) prevents `restore` while `heraldesk
+  serve` is running; stale locks are replaced automatically.
+
+### Docs
+
+- README, AGENTS, SECURITY, architecture, decisions and roadmap document pruning,
+  stop-before-restore and the lock edge cases.
+
 ## [1.13.0] - 2026-11-19
 
 ### Added

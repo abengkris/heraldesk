@@ -73,8 +73,9 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
   `uv run heraldesk report monthly [--month YYYY-MM]` (written to `$HERALDESK_HOME/reports/`)
 - Show agent run traces and cost: `uv run heraldesk runs <slug>`
 - Back up the instance: `uv run heraldesk backup [--output PATH] [--with-credentials]`
+- Prune old archives: `uv run heraldesk backup-prune [--keep 10] [--dry-run]`
   (`--with-credentials` includes `secret.key`; a backup without it cannot restore the database)
-- Restore a backup: `uv run heraldesk restore <archive> [--without-credentials] [--force]`
+- Restore a backup (stop `serve` first): `uv run heraldesk restore <archive> [--without-credentials] [--force]`
   (`--without-credentials` restores config, profiles and agents only, never the DB or key)
 - Halt everything: `uv run heraldesk stop-all` (`--off` clears the global kill switch)
 - Try a throwaway instance: `HERALDESK_HOME=$(mktemp -d) uv run heraldesk init`

@@ -16,7 +16,7 @@ from rich.table import Table
 from heraldesk import __version__, paths
 from heraldesk.cli.account import account_app
 from heraldesk.cli.agent import agent_app
-from heraldesk.cli.backup import backup_command, restore_command
+from heraldesk.cli.backup import backup_command, prune_command, restore_command
 from heraldesk.cli.common import abort, console, session_for
 from heraldesk.cli.inbox import inbox_app
 from heraldesk.cli.plugins import plugins_app
@@ -61,6 +61,7 @@ app.add_typer(plugins_app, name="plugins")
 app.command("publish")(publish_command)
 app.command("runs")(runs_command)
 app.command("backup")(backup_command)
+app.command("backup-prune")(prune_command)
 app.command("restore")(restore_command)
 app.command("upgrade")(upgrade_command)
 

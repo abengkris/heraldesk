@@ -11,7 +11,7 @@ import typer
 from heraldesk import paths
 from heraldesk.cli.common import abort, console, session_for
 from heraldesk.core.audit import AuditService
-from heraldesk.core.backup import BackupError, create_backup, restore_backup
+from heraldesk.core.backup import BackupError, create_backup, prune_backups, restore_backup
 from heraldesk.core.bootstrap import BootstrapError, initialize
 from heraldesk.db.session import DatabaseNotInitialized, database_session
 from heraldesk.web.auth import AuthConfigError, rotate_session_epoch, session_epoch_path
@@ -62,6 +62,39 @@ def backup_command(
             "[yellow]Credentials:[/yellow] excluded; use --with-credentials "
             "for a database-restorable backup"
         )
+
+
+def prune_command(
+    keep: Annotated[
+        int,
+        typer.Option("--keep", min=1, max=3650, help="How many recent backups to keep."),
+    ] = 10,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="List backups that would be removed."),
+    ] = False,
+) -> None:
+    """Delete old backup archives, keeping the newest N."""
+    layout = paths.layout_for(paths.resolve_home())
+    try:
+        removed = prune_backups(layout, keep=keep, dry_run=dry_run)
+    except BackupError as exc:
+        abort(str(exc))
+    if dry_run:
+        console.print(f"[bold]Would remove:[/bold] {len(removed)} backup(s).")
+        for path in removed:
+            console.print(f"  {path.name}")
+        return
+    if removed:
+        with database_session(layout) as session:
+            AuditService(session).record(
+                None,
+                actor="user",
+                action="backup.pruned",
+                entity="backup",
+                payload={"removed": len(removed), "keep": keep},
+            )
+    console.print(f"[green]Pruned[/green] {len(removed)} backup(s); kept {keep}.")
 
 
 def restore_command(

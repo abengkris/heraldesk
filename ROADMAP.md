@@ -34,6 +34,7 @@ current summary.
 - [x] M21 Threads lifecycle (token refresh command, recorded expiry, doctor warning)
 - [x] M22 API pagination/filters and account read model
 - [x] M23 Automatic inbox retention and supply-chain pinning (SHA actions, SBOM/provenance)
+- [x] M24 Backup lifecycle (pruning with audit, dry-run, server-lock restore guard)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.

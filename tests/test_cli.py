@@ -33,6 +33,7 @@ def test_command_surface_is_init_doctor_serve_profile_account_stop_all() -> None
         "runs",
         "publish",
         "backup",
+        "backup-prune",
         "restore",
         "upgrade",
     }

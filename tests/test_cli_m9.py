@@ -218,3 +218,18 @@ def test_restore_migrates_an_older_backup(initialized: InitResult, tmp_path: Pat
     assert "Schema revision: 0010" in result.output
     assert "Safety backup:" in result.output
     assert inspect_database(initialized.layout.db_path).revision == "0010"
+
+
+def test_backup_prune_command(initialized: InitResult) -> None:
+    for index in range(3):
+        (initialized.layout.backups / f"heraldesk-backup-{index}.zip").write_text(
+            "backup",
+            encoding="utf-8",
+        )
+
+    result = invoke("backup-prune", "--keep", "1")
+
+    assert result.exit_code == 0, result.output
+    assert "Pruned" in result.output
+    remaining = list(initialized.layout.backups.glob("heraldesk-backup-*.zip"))
+    assert len(remaining) == 1

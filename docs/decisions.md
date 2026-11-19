@@ -1141,3 +1141,16 @@ never prints an API key, bot token or nsec.
 - **Supply chain:** all GitHub Actions are pinned to commit SHAs with version comments;
   release images enable Buildx provenance and SBOM generation. PyPI trusted publishing
   remains gated by `PYPI_PUBLISH=true`.
+
+
+## Backup lifecycle and restore lock (2026-11-19)
+
+- **Server lock:** `heraldesk serve` writes `server.lock` containing the pid and UTC start
+  time, replacing a stale lock when the pid is dead, and removes it on shutdown. `restore`
+  refuses while `server_is_running` returns a live pid. PID reuse is the documented edge
+  case; remove a stale lock only after confirming no server is running.
+- **Backup pruning:** `heraldesk backup-prune --keep N` removes the oldest
+  `heraldesk-backup-*.zip` files by mtime and audits `backup.pruned`. `--dry-run` lists the
+  candidates and changes nothing. Existing non-backup ZIPs are ignored.
+- **Not implemented:** archive encryption, automatic pruning after each backup, and
+  scheduled backups. Operators must protect credential archives themselves.

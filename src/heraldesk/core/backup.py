@@ -24,6 +24,7 @@ from pathlib import Path, PurePosixPath
 
 from heraldesk import __version__, paths
 from heraldesk.config import ConfigError, load_config
+from heraldesk.core.locks import server_is_running
 from heraldesk.db.engine import inspect_database
 
 BACKUP_FORMAT_VERSION = 1
@@ -227,6 +228,38 @@ def create_backup(
     )
 
 
+def prune_backups(
+    layout: paths.Layout,
+    *,
+    keep: int,
+    dry_run: bool = False,
+) -> list[Path]:
+    """Delete old ``heraldesk-backup-*.zip`` files, keeping the newest *keep*."""
+    if keep < 1:
+        raise BackupError("keep must be at least 1")
+    if not layout.backups.is_dir():
+        return []
+    try:
+        candidates = sorted(
+            layout.backups.glob("heraldesk-backup-*.zip"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError as exc:
+        raise BackupError(f"cannot list {layout.backups}: {exc}") from exc
+    selected = candidates[keep:]
+    if dry_run:
+        return selected
+    removed: list[Path] = []
+    for path in selected:
+        try:
+            path.unlink()
+        except OSError as exc:
+            raise BackupError(f"cannot remove {path}: {exc}") from exc
+        removed.append(path)
+    return removed
+
+
 def _safe_members(archive: zipfile.ZipFile) -> list[str]:
     names = archive.namelist()
     if len(names) != len(set(names)):
@@ -415,6 +448,11 @@ def restore_backup(
     archive_path = archive_path.expanduser()
     if not archive_path.is_file():
         raise BackupError(f"backup archive {archive_path} does not exist")
+    running = server_is_running(layout)
+    if running is not None:
+        raise BackupError(
+            f"heraldesk serve is running (pid {running}); stop it before restoring a backup"
+        )
 
     if not force and _target_has_data(layout):
         raise BackupError(f"{layout.home} already contains data; pass --force to replace it")
