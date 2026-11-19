@@ -58,7 +58,13 @@ def rotate_key_command(
     ] = False,
 ) -> None:
     """Generate a new secret.key and re-encrypt every stored credential."""
+    _ensure_stage_logging()
     layout = paths.layout_for(paths.resolve_home())
+    if layout.telegram_token_path.exists() and not layout.telegram_token_path.is_file():
+        abort(
+            f"{layout.telegram_token_path} exists but is not a regular file; "
+            "secret.key was not changed."
+        )
     try:
         old_key = load_key(layout.key_path)
         old_cipher = CredentialCipher(old_key)
@@ -238,6 +244,17 @@ def _cleanup(*paths_to_remove: Path) -> None:
     for path in paths_to_remove:
         with contextlib.suppress(OSError):
             path.unlink(missing_ok=True)
+
+
+def _ensure_stage_logging() -> None:
+    """Show rotation stage logs on stderr when the CLI has no logging configuration."""
+    root = logging.getLogger()
+    if root.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s %(message)s"))
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
 
 
 def _read_persisted_token(layout: paths.Layout, cipher: CredentialCipher) -> str:
