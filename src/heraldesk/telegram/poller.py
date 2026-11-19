@@ -39,11 +39,13 @@ class TelegramPoller:
         adapter: TelegramAdapter,
         *,
         allowed_chat_ids: Sequence[int],
+        allowed_user_ids: Sequence[int] = (),
         profile_hint: str | None = None,
         redactor: SecretRegistry | None = None,
     ) -> None:
         self._adapter = adapter
         self._allowed_chat_ids = tuple(allowed_chat_ids)
+        self._allowed_user_ids = tuple(allowed_user_ids)
         self._profile_hint = profile_hint
         self._redactor = redactor
         self._offset: int | None = None
@@ -71,6 +73,7 @@ class TelegramPoller:
                 layout,
                 update,
                 allowed_chat_ids=self._allowed_chat_ids,
+                allowed_user_ids=self._allowed_user_ids,
                 adapter=self._adapter,
                 profile_hint=self._profile_hint,
                 redactor=self._redactor,

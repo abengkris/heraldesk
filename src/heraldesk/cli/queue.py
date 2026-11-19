@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from heraldesk.cli.common import abort, console, session_for
 from heraldesk.core.redact import SecretRegistry
+from heraldesk.db.repositories import ApprovalRepository, ContentItemRepository
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.approvals import (
     approve,
@@ -114,6 +115,52 @@ def list_command(
             console.print(
                 f"      [yellow]reason:[/yellow] {escape(_preview(entry.reason, redactor, 96))}"
             )
+
+
+@queue_app.command("show")
+def show_command(
+    item_id: Annotated[
+        int,
+        typer.Argument(metavar="ID", help="Content item id shown by 'queue list'."),
+    ],
+) -> None:
+    """Show the full redacted draft, risk and approval state for one item."""
+    with session_for() as (_, session):
+        scope = _scope_for_item(session, item_id)
+        try:
+            summary = profile_summary(session, scope)
+        except (ProfileNotFoundError, ProfileValidationError) as exc:
+            abort(str(exc))
+        item = ContentItemRepository(session).get(scope, item_id)
+        approval = ApprovalRepository(session).latest_for_item(scope, item_id)
+    if item is None:
+        abort(f"content item {item_id} does not exist")
+
+    redactor = SecretRegistry.from_environment()
+    console.print(
+        f"[bold]Content #{item.id}[/bold]  {escape(summary.slug)} / {escape(item.platform)}"
+    )
+    console.print(
+        f"State: {item.state}  Risk: {item.risk_level or '-'}  Attempts: {item.publish_attempts}"
+    )
+    if item.scheduled_at is not None:
+        console.print(f"Scheduled: {_utc(item.scheduled_at).isoformat()}")
+    if item.published_at is not None:
+        console.print(f"Published: {_utc(item.published_at).isoformat()}")
+    if item.external_id:
+        console.print(f"External id: {escape(item.external_id)}")
+    if approval is not None:
+        expires = "-" if approval.expires_at is None else _utc(approval.expires_at).isoformat()
+        console.print(f"Approval: #{approval.id} {approval.state}  expires: {expires}")
+        if approval.reason:
+            console.print(f"Approval reason: {escape(redactor.redact(approval.reason))}")
+    if item.last_error:
+        console.print(f"[red]Last error:[/red] {escape(redactor.redact(item.last_error))}")
+    if item.risk_notes:
+        console.print(f"[yellow]Risk notes:[/yellow] {escape(redactor.redact(item.risk_notes))}")
+
+    console.print("\n[bold]Draft[/bold]")
+    console.print(escape(redactor.redact(item.body)))
 
 
 @queue_app.command("approve")

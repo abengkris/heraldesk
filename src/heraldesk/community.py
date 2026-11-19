@@ -19,9 +19,19 @@ from sqlalchemy.orm import Session
 from heraldesk import paths
 from heraldesk.config import ConfigError, load_config
 from heraldesk.core.audit import AuditService
+from heraldesk.core.locks import (
+    OffSwitchState,
+    evaluate_off_switches,
+    is_global_kill_switch_enabled,
+)
 from heraldesk.core.redact import SecretRegistry
 from heraldesk.db.models import TelegramMessage
-from heraldesk.db.repositories import InboxRepository, ProfileCatalog
+from heraldesk.db.repositories import (
+    InboxRepository,
+    ProfileCatalog,
+    ProfileRepository,
+    RecordNotFound,
+)
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.errors import DomainError
 from heraldesk.telegram.base import TelegramAdapter, TelegramError
@@ -220,6 +230,21 @@ def reply_item(
 
     message = _require_message(session, item_id)
     _require_pending(message)
+    scope = _scope(message)
+    if scope is not None:
+        try:
+            profile = ProfileRepository(session).require(scope)
+        except RecordNotFound as exc:
+            raise InboxError(str(exc)) from exc
+        gate = evaluate_off_switches(
+            OffSwitchState(
+                global_kill_switch=is_global_kill_switch_enabled(layout),
+                profile_kill_switch=profile.kill_switch,
+                profile_status=profile.status,
+            )
+        )
+        if gate.reason is not None:
+            raise InboxError(f"reply blocked by {gate.reason.value}")
 
     default_redactor: SecretRegistry
     if adapter is None:
@@ -246,7 +271,7 @@ def reply_item(
         raise InboxItemNotFoundError(f"inbox item {item_id} does not exist")
 
     AuditService(session).record(
-        _scope(updated),
+        scope,
         actor="user",
         action="inbox.replied",
         entity="inbox_item",

@@ -18,6 +18,7 @@ plugins_app = typer.Typer(
 
 _BUILT_IN_TARGETS = {
     "fake": "heraldesk.platforms.fake:FakeAdapter",
+    "threads": "heraldesk.platforms.threads:ThreadsAdapter",
     "nostr": "heraldesk.platforms.nostr:NostrAdapter",
 }
 

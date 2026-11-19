@@ -54,6 +54,8 @@ telegram:
   # polling: getUpdates every 10 s. webhook: no polling, POST /webhook/telegram.
   mode: polling
   allowed_chat_ids: []
+  # Optional sender allowlist; empty accepts any sender in an allowed chat.
+  allowed_user_ids: []
 """
 
 

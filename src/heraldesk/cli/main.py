@@ -28,6 +28,7 @@ from heraldesk.cli.run import run_app
 from heraldesk.cli.runs import runs_command
 from heraldesk.cli.scheduler import scheduler_app
 from heraldesk.cli.telegram import telegram_app
+from heraldesk.cli.upgrade import upgrade_command
 from heraldesk.config import ConfigError
 from heraldesk.core.audit import AuditService
 from heraldesk.core.bootstrap import BootstrapError, initialize
@@ -60,6 +61,7 @@ app.command("publish")(publish_command)
 app.command("runs")(runs_command)
 app.command("backup")(backup_command)
 app.command("restore")(restore_command)
+app.command("upgrade")(upgrade_command)
 
 
 def _version_callback(value: bool) -> None:

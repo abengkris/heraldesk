@@ -177,6 +177,32 @@ def test_login_rejects_bad_token_and_rate_limits(initialized: InitResult) -> Non
         assert "Retry-After" in blocked.headers
 
 
+def test_queue_detail_page_shows_the_full_draft(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    long_body = f"Full draft text. {'detail ' * 30}END-MARKER sk-ABCDEFGHIJKLMNOP1234"
+    item = ContentItemRepository(db_session).add(
+        profile_setup.scope,
+        platform="fake",
+        body=long_body,
+        state=ContentState.PENDING_APPROVAL.value,
+        risk_level="low",
+    )
+    approval = request_approval(db_session, profile_setup.scope, item.id, now=NOW)
+    db_session.commit()
+
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get(f"/queue/{approval.id}")
+
+    assert page.status_code == 200
+    assert "END-MARKER" in page.text
+    assert "Full draft text." in page.text
+    assert "sk-ABCDEFGHIJKLMNOP1234" not in page.text
+    assert "Approve" in page.text
+    assert "Reject" in page.text
+
+
 def test_queue_page_approves_and_rejects_with_csrf(
     initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
 ) -> None:
@@ -229,6 +255,7 @@ def test_inbox_reply_and_ignore(
     initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
 ) -> None:
     adapter = FakeTelegramAdapter()
+    set_profile_status(db_session, profile_setup.scope, ProfileStatus.ACTIVE)
     first = TelegramMessageRepository(db_session).add(
         profile_setup.scope,
         chat_id=CHAT_ID,

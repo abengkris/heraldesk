@@ -36,10 +36,12 @@ from heraldesk.core.crypto import CredentialCipher
 from heraldesk.core.redact import SecretRegistry
 from heraldesk.db.repositories import (
     ApprovalLocator,
+    ApprovalRepository,
     AuditRepository,
     ContentItemRepository,
     InboxRepository,
     ProfileCatalog,
+    ProfileRepository,
 )
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.approvals import (
@@ -102,6 +104,40 @@ class QueueView:
             "preview": self.preview,
             "reason": self.reason,
             "expires_at": None if self.expires_at is None else self.expires_at.isoformat(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class QueueDetailView:
+    """Full redacted content for one approval, used before a human decides."""
+
+    approval_id: int
+    content_item_id: int
+    profile_slug: str
+    platform: str
+    state: str
+    approval_state: str
+    risk_level: str | None
+    body: str
+    reason: str | None
+    expires_at: datetime | None
+    created_at: datetime | None
+    scheduled_at: datetime | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "approval_id": self.approval_id,
+            "content_item_id": self.content_item_id,
+            "profile": self.profile_slug,
+            "platform": self.platform,
+            "state": self.state,
+            "approval_state": self.approval_state,
+            "risk_level": self.risk_level,
+            "body": self.body,
+            "reason": self.reason,
+            "expires_at": None if self.expires_at is None else self.expires_at.isoformat(),
+            "created_at": None if self.created_at is None else self.created_at.isoformat(),
+            "scheduled_at": (None if self.scheduled_at is None else self.scheduled_at.isoformat()),
         }
 
 
@@ -568,3 +604,41 @@ __all__ = [
     "report_for",
     "report_summary",
 ]
+
+
+def get_queue_detail(
+    session: Session,
+    redactor: SecretRegistry,
+    approval_id: int,
+) -> QueueDetailView:
+    """Return the full redacted draft and approval state for one approval id."""
+    resolved = ApprovalLocator(session).resolve(approval_id)
+    if resolved is None:
+        raise NotFound("approval not found")
+    scope, content_item_id = resolved
+    item = ContentItemRepository(session).get(scope, content_item_id)
+    if item is None:
+        raise NotFound("content item not found")
+    approval = ApprovalRepository(session).get(scope, approval_id)
+    profile = ProfileRepository(session).require(scope)
+    reason = None
+    if approval is not None and approval.reason:
+        reason = approval.reason
+    elif item.last_error:
+        reason = item.last_error
+    elif item.risk_notes:
+        reason = item.risk_notes
+    return QueueDetailView(
+        approval_id=approval_id,
+        content_item_id=content_item_id,
+        profile_slug=profile.slug,
+        platform=item.platform,
+        state=item.state,
+        approval_state=approval.state if approval is not None else "unknown",
+        risk_level=item.risk_level,
+        body=redactor.redact(item.body),
+        reason=None if reason is None else redactor.redact(reason),
+        expires_at=as_utc(approval.expires_at) if approval is not None else None,
+        created_at=as_utc(item.created_at),
+        scheduled_at=None if item.scheduled_at is None else as_utc(item.scheduled_at),
+    )

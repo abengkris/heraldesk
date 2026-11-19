@@ -18,9 +18,11 @@ from heraldesk.community import (
     show_item,
 )
 from heraldesk.core.audit import AuditService
+from heraldesk.core.locks import engage_global_kill_switch
 from heraldesk.core.redact import SecretRegistry
 from heraldesk.db.repositories import InboxRepository, TelegramMessageRepository
 from heraldesk.db.scope import ProfileScope
+from heraldesk.domain.profiles import ProfileStatus, set_profile_status
 from heraldesk.telegram.fake import FakeTelegramAdapter
 
 pytestmark = pytest.mark.core
@@ -36,6 +38,8 @@ def add_message(
     text: str = "hello",
     created_at: datetime | None = None,
 ) -> int:
+    if scope is not None:
+        set_profile_status(db_session, scope, ProfileStatus.ACTIVE)
     message = TelegramMessageRepository(db_session).add(
         scope,
         chat_id=CHAT_ID,
@@ -184,3 +188,15 @@ def test_unlinked_message_can_be_triaged(db_session: Session) -> None:
     actions = [entry.action for entry in AuditService(db_session).history(None)]
     assert "inbox.shown" in actions
     assert "inbox.ignored" in actions
+
+
+def test_reply_is_blocked_by_the_global_kill_switch(db_session: Session, profile_setup) -> None:
+    item_id = add_message(db_session, profile_setup.scope)
+    adapter = FakeTelegramAdapter()
+    engage_global_kill_switch(profile_setup.layout)
+
+    with pytest.raises(InboxError, match="global_kill_switch"):
+        reply_item(db_session, profile_setup.layout, item_id, "hi", adapter=adapter)
+
+    assert adapter.sent == []
+    assert show_item(db_session, item_id).status == "pending"

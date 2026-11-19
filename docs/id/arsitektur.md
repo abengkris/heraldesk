@@ -1,3 +1,8 @@
+> **Terjemahan ini tertinggal dari implementasi.** Dokumen berbahasa Inggris
+> [`docs/architecture.md`](../architecture.md) adalah sumber kebenaran. Beberapa bagian di
+> bawah masih menggambarkan rencana lama (Tailwind, aiogram, argon2, Docker/PyPI yang
+> belum ada, dan lain-lain). Gunakan versi Inggris dan `ROADMAP.md` untuk status terkini.
+
 # Heraldesk: Arsitektur Teknis (Departemen Social Media Manager Otonom, Open Source, Single-User, Self-Hosted)
 
 Dokumen ini adalah spesifikasi arsitektur Heraldesk untuk dikerjakan kontributor, manusia maupun coding agent. Baca seluruhnya sebelum menulis kode. Kerjakan per milestone di bagian 13, jangan melompat.

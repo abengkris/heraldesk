@@ -941,3 +941,52 @@ never prints an API key, bot token or nsec.
 - **Tests:** probes are small private functions, so tests monkeypatch them and never touch
   the network. A default `--online` run makes no external call (fake LLM, disabled
   Telegram, no Nostr account).
+
+
+## Superseded notes (2026-11-19)
+
+- **R1 "last 20 posts" duplicate check:** superseded by M5. At-most-once uses the persisted
+  `external_id` plus the local idempotency key; no adapter fetches remote history.
+- **R2 cancellation and stop-all:** no `queue cancel`/Telegram/web cancel exists, and
+  `stop-all` does not move scheduled items to `cancelled`. It blocks publishing while engaged.
+- **R2/§10 inbox retention:** the 30-day purge is not implemented; inbox text is kept until
+  a human acts or the row is deleted.
+- **M7 loopback-only until auth:** superseded by M11. Remote mode requires `--allow-remote`,
+  an explicit admin token of at least 32 characters and `HERALDESK_TRUST_PROXY=1`.
+- **M7 `--no-web` no-op:** superseded by M11; it now disables the UI router and `/static`.
+- **M12 and Telegram secret rotation:** M12 shipped the platform plugin loader, not a
+  Telegram secret rotation workflow. Webhook secrets are configured per deployment.
+- **AGENTS principles:** AGENTS keeps ten core principles. The two extra items (official
+  platform APIs only, no telemetry) are also principles 9 and 10 in `architecture.md`;
+  this supersedes the M0 instruction to keep exactly eight.
+
+
+## Production hardening and Threads (2026-11-19)
+
+- **Threads is a bundled adapter.** Text-only posts use the official two-step API:
+  `POST /{user-id}/threads`, poll `/{container-id}`, `POST /{user-id}/threads_publish`,
+  then read `/{media-id}?fields=permalink`. `external_id` is the media id; the permalink
+  is best effort. The access token is sent in the documented `access_token` field and is
+  never included in an error message.
+- **No remote duplicate check or API idempotency.** At-most-once comes from the persisted
+  `external_id`; the adapter caches per idempotency key inside one process.
+- **Text is rejected locally above 500 UTF-8 bytes.** The platform counts emoji by bytes
+  but does not document the exact algorithm; this conservative guard avoids deterministic
+  400s. Token refresh, replies, insights and media posts are future work.
+- **Webhook authentication is mandatory in webhook/remote mode.** The server refuses to
+  start without `HERALDESK_TELEGRAM_WEBHOOK_SECRET`; optional `telegram.allowed_user_ids`
+  adds a sender allowlist. This supersedes the earlier "secret is optional" wording.
+- **Remote admin tokens must be at least 32 characters.** The derived token already is;
+  short explicit tokens are rejected before startup.
+- **Manual replies obey the off switches.** `community.reply_item` checks the global and
+  per-profile kill switches and the profile status. Quiet hours apply to automatic
+  publishing only, because replies are manual.
+- **Schema upgrades are guarded.** `heraldesk upgrade` backs up credentials, migrates and
+  audits. `serve` refuses a stale schema and `/health` returns 503 with the expected
+  revision.
+- **Distribution is part of the release.** Docker/Compose, systemd/Caddy examples, a
+  tag-triggered release workflow, CI wheel/install/Docker/audit gates and Dependabot are
+  committed. PyPI publishing is gated by the repository variable `PYPI_PUBLISH=true` and
+  trusted publishing configuration.
+- **Security headers:** HSTS in proxy mode, `Cache-Control: no-store` outside `/static`,
+  `Permissions-Policy`, COOP and CORP complement the existing CSP and frame/referrer rules.

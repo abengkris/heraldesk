@@ -22,6 +22,7 @@ from heraldesk.web.errors import BadRequest, Conflict, NotFound, WebError
 from heraldesk.web.service import (
     approve_by_id,
     build_status,
+    get_queue_detail,
     ignore_inbox,
     list_inbox_views,
     list_queue_views,
@@ -117,6 +118,14 @@ def api_queue(
     with context.database.session() as session:
         views = list_queue_views(session, context.redactor, status=status, limit=limit)
         return {"items": [view.as_dict() for view in views], "count": len(views)}
+
+
+@router.get("/queue/{approval_id}", dependencies=dependencies)
+def api_queue_detail(request: Request, approval_id: int) -> dict[str, Any]:
+    """Return the full redacted draft for one approval id."""
+    context = _context(request)
+    with context.database.session() as session:
+        return get_queue_detail(session, context.redactor, approval_id).as_dict()
 
 
 @router.post("/approvals/{approval_id}/approve", dependencies=dependencies)

@@ -8,7 +8,6 @@ route requires either a Bearer admin token or a signed UI session cookie.
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -26,6 +25,7 @@ from heraldesk.config import Config
 from heraldesk.core.audit import AuditService
 from heraldesk.core.redact import SecretRegistry
 from heraldesk.db.engine import inspect_database
+from heraldesk.db.migrations import MigrationError, head_revision
 from heraldesk.server.background import (
     DEFAULT_POLL_INTERVAL_SECONDS,
     DEFAULT_SCHEDULER_INTERVAL_SECONDS,
@@ -40,12 +40,12 @@ from heraldesk.web import ui
 from heraldesk.web.api import router as api_router
 from heraldesk.web.auth import (
     SESSION_COOKIE,
-    WEBHOOK_SECRET_ENV,
     AdminAuth,
     AuthConfigError,
     AuthError,
     Unauthorized,
     resolve_admin_token,
+    resolve_webhook_secret,
     token_in_query,
 )
 from heraldesk.web.context import AdapterFactory, WebContext
@@ -118,24 +118,9 @@ def _wants_json(request: Request) -> bool:
 
 
 def _webhook_secret(options: AppOptions) -> str | None:
-    configured = options.telegram_webhook_secret
-    if configured is None:
-        configured = os.environ.get(WEBHOOK_SECRET_ENV)
-    if configured is None:
-        configured = _dotenv_setting(options.layout, WEBHOOK_SECRET_ENV)
-    cleaned = (configured or "").strip()
-    return cleaned or None
-
-
-def _dotenv_setting(layout: paths.Layout, name: str) -> str | None:
-    if not layout.env_path.is_file():
-        return None
-    from dotenv import dotenv_values
-
-    try:
-        return dotenv_values(layout.env_path).get(name)
-    except OSError:
-        return None
+    if options.telegram_webhook_secret is not None:
+        return options.telegram_webhook_secret.strip() or None
+    return resolve_webhook_secret(options.layout)
 
 
 def require_any_auth(request: Request) -> None:
@@ -187,6 +172,16 @@ def create_app(options: AppOptions) -> FastAPI:
             value for value in (token, admin_token) if value is not None and value.strip()
         ]
     )
+    webhook_secret = _webhook_secret(options)
+    if (
+        options.config.telegram.enabled
+        and (options.config.telegram.mode == "webhook" or options.trust_proxy)
+        and webhook_secret is None
+    ):
+        raise AuthConfigError(
+            "Telegram webhook mode and proxy mode require HERALDESK_TELEGRAM_WEBHOOK_SECRET "
+            "so forged /approve commands are rejected"
+        )
     database = ServerDatabase(options.layout)
     jobs = BackgroundJobs(
         database,
@@ -205,10 +200,11 @@ def create_app(options: AppOptions) -> FastAPI:
         adapter=adapter,
         redactor=redactor,
         allowed_chat_ids=tuple(options.config.telegram.allowed_chat_ids),
+        allowed_user_ids=tuple(options.config.telegram.allowed_user_ids),
         telegram_active=telegram_active,
         auth=auth,
         adapter_factory=options.adapter_factory,
-        webhook_secret=_webhook_secret(options),
+        webhook_secret=webhook_secret,
         web_enabled=options.enable_web,
     )
 
@@ -268,6 +264,17 @@ def create_app(options: AppOptions) -> FastAPI:
         ):
             return json_error(401, "unauthorized", "a valid Bearer admin token is required")
         response: Response = await call_next(request)
+        if auth.cookie_secure:
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        if not request.url.path.startswith("/static/"):
+            response.headers.setdefault("Cache-Control", "no-store")
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+        )
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
@@ -327,11 +334,20 @@ def create_app(options: AppOptions) -> FastAPI:
         revision: str | None = None
         if reachable:
             revision = inspect_database(ctx.layout.db_path).revision
-        healthy = reachable and revision is not None
+        try:
+            expected = head_revision(ctx.layout.db_path)
+        except MigrationError:
+            expected = None
+        schema_ok = expected is not None and revision == expected
+        healthy = reachable and schema_ok
         body: dict[str, Any] = {
             "status": "ok" if healthy else "error",
             "version": __version__,
-            "db": {"ok": healthy, "revision": revision},
+            "db": {
+                "ok": healthy,
+                "revision": revision,
+                "expected_revision": expected,
+            },
         }
         return JSONResponse(body, status_code=200 if healthy else 503)
 
@@ -362,7 +378,10 @@ def create_app(options: AppOptions) -> FastAPI:
         ``HERALDESK_TELEGRAM_WEBHOOK_SECRET`` is set, the Bot API secret header is required.
         """
         ctx = _context(request)
-        if ctx.webhook_secret is not None and not ctx.auth.verify_webhook_secret(
+        if ctx.webhook_secret is None:
+            if ctx.config.telegram.mode == "webhook" or ctx.auth.trust_proxy:
+                return {"ok": False, "status": "unauthorized"}
+        elif not ctx.auth.verify_webhook_secret(
             request.headers.get("x-telegram-bot-api-secret-token"),
             ctx.webhook_secret,
         ):
@@ -384,6 +403,7 @@ def create_app(options: AppOptions) -> FastAPI:
                 ctx.layout,
                 update,
                 allowed_chat_ids=ctx.allowed_chat_ids,
+                allowed_user_ids=ctx.allowed_user_ids,
                 adapter=ctx.adapter,
                 profile_hint=None,
                 redactor=ctx.redactor,

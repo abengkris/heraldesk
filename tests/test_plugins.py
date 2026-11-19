@@ -17,6 +17,7 @@ from heraldesk.platforms.base import (
     PublishResult,
 )
 from heraldesk.platforms.fake import FakeAdapter
+from heraldesk.platforms.threads import ThreadsAdapter
 from heraldesk.plugins import (
     PluginError,
     discover_plugins,
@@ -112,12 +113,15 @@ def test_entry_point_name_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_built_in_adapters_cannot_be_replaced(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_entry = FakeEntryPoint("fake", WrongPlatformAdapter)
+    threads_entry = FakeEntryPoint("threads", WrongPlatformAdapter)
     nostr_entry = FakeEntryPoint("nostr", WrongPlatformAdapter)
-    install(monkeypatch, fake_entry, nostr_entry)
+    install(monkeypatch, fake_entry, threads_entry, nostr_entry)
 
     assert discover_plugins() == {}
     assert isinstance(publish_adapter_for("fake"), FakeAdapter)
+    assert isinstance(publish_adapter_for("threads"), ThreadsAdapter)
     assert fake_entry.load_calls == 0
+    assert threads_entry.load_calls == 0
     assert nostr_entry.load_calls == 0
 
 

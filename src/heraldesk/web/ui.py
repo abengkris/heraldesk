@@ -36,6 +36,7 @@ from heraldesk.web.service import (
     audit_login,
     dashboard_counts,
     generate_report,
+    get_queue_detail,
     ignore_inbox,
     latest_report_file,
     list_inbox_views,
@@ -272,6 +273,27 @@ def queue_page(request: Request, ok: str | None = None) -> HTMLResponse:
         notice=_notice(ok),
         error=None,
     )
+
+
+@router.get("/queue/{approval_id}", response_class=HTMLResponse)
+def queue_detail_page(request: Request, approval_id: int) -> HTMLResponse:
+    """Show the full redacted draft before a human approves or rejects it."""
+    session = _session(request)
+    context = _context(request)
+    with context.database.session() as db:
+        try:
+            detail = get_queue_detail(db, context.redactor, approval_id)
+        except WebError as exc:
+            return _page(
+                request,
+                session,
+                "error.html",
+                "queue",
+                status_code=exc.status_code,
+                code=exc.code,
+                message=exc.message,
+            )
+    return _page(request, session, "queue_detail.html", "queue", detail=detail)
 
 
 @router.post("/queue/{approval_id}/approve", response_class=HTMLResponse)

@@ -127,6 +127,14 @@ def explicit_admin_token(layout: paths.Layout) -> TokenResolution | None:
     return None
 
 
+def resolve_webhook_secret(layout: paths.Layout) -> str | None:
+    """Return the Telegram webhook secret from the environment or ``.env``."""
+    value = _clean(os.environ.get(WEBHOOK_SECRET_ENV))
+    if value is None:
+        value = _dotenv_value(layout, WEBHOOK_SECRET_ENV)
+    return _clean(value)
+
+
 def trust_proxy_enabled(layout: paths.Layout) -> bool:
     """Return ``True`` when HTTPS proxy mode is enabled by env or ``.env``.
 

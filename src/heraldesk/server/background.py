@@ -63,6 +63,7 @@ class BackgroundJobs:
             self._poller = TelegramPoller(
                 adapter,
                 allowed_chat_ids=tuple(config.telegram.allowed_chat_ids),
+                allowed_user_ids=tuple(config.telegram.allowed_user_ids),
                 redactor=self._redactor,
             )
 

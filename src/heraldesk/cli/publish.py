@@ -78,6 +78,8 @@ def publish_command(
             f"after {outcome.attempts} attempt(s)."
         )
         console.print(f"External id: {escape(outcome.external_id or '-')}")
+        if outcome.url:
+            console.print(f"URL: {escape(outcome.url)}")
         return
     if outcome.status is PublishStatus.FAILED:
         console.print(f"[red]Failed[/red]: {escape(outcome.error or 'unknown error')}")

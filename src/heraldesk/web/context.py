@@ -28,6 +28,7 @@ class WebContext:
     adapter: TelegramAdapter | None
     redactor: SecretRegistry
     allowed_chat_ids: tuple[int, ...]
+    allowed_user_ids: tuple[int, ...]
     telegram_active: bool
     auth: AdminAuth
     adapter_factory: AdapterFactory | None = None

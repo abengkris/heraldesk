@@ -182,6 +182,7 @@ def test_api_inbox_reply_and_ignore(
     initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
 ) -> None:
     adapter = FakeTelegramAdapter()
+    set_profile_status(db_session, profile_setup.scope, ProfileStatus.ACTIVE)
     message = TelegramMessageRepository(db_session).add(
         profile_setup.scope,
         chat_id=CHAT_ID,
@@ -244,6 +245,21 @@ def test_api_reports_build_in_memory_with_summary(initialized: InitResult) -> No
         bad = client.get("/api/v1/reports/weekly?week=not-a-week", headers=HEADERS)
         assert bad.status_code == 400
         assert bad.json()["code"] == "request_failed"
+
+
+def test_api_queue_detail_returns_the_full_body(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item_id, approval_id = pending_item(db_session, profile_setup)
+    with make_app(initialized) as client:
+        response = client.get(f"/api/v1/queue/{approval_id}", headers=HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["approval_id"] == approval_id
+    assert body["content_item_id"] == item_id
+    assert "Queue body" in body["body"]
+    assert "sk-ABCDEFGHIJKLMNOP1234" not in body["body"]
 
 
 def test_api_publish_uses_the_publisher(

@@ -1,21 +1,21 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.4.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.5.0)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.4.0.** Heraldesk runs a small deterministic team of AI roles (strategist,
-researcher, writer, designer, community manager, analyst, compliance) that draft, review,
-queue and schedule social media content for accounts you manage. You approve; Heraldesk
-does the legwork. It runs on your laptop or your own VPS. Your keys, your data.
+**Version 1.5.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+compliance) plus a deterministic Designer placeholder and manual Community/Analyst
+tooling. They draft, review, queue and schedule social media content for accounts you
+manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
+Your keys, your data.
 
-Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Real
-Threads/X/Facebook/Instagram/LinkedIn adapters are still not bundled; since 1.3.0 any of
-them can be supplied by an installed plugin. The fake platform adapter is the offline
-publishing path. A real Nostr adapter was added in 1.1.0; see
-[Nostr publishing](#nostr-publishing).
+Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Threads
+(text) and Nostr are bundled publishers; X/Facebook/Instagram/LinkedIn can be supplied by
+an installed plugin. The fake adapter is the offline publishing path. See
+[Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.4.0
+## What works in 1.5.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -23,7 +23,9 @@ publishing path. A real Nostr adapter was added in 1.1.0; see
 - CLI approval queue, edits, rejection and manual publishing.
 - Stateless scheduler with durable retries and at-most-once publishing.
 - Profile quiet hours and a local-day post cap gate automatic publishing; explicit publishes override them.
-- Third-party platform adapters through `heraldesk.platforms` entry-point plugins.
+- Official Threads (text) and Nostr publishers, plus `heraldesk.platforms` adapter plugins.
+- `heraldesk upgrade` takes a credential backup before applying migrations.
+- Docker, Compose, systemd and Caddy deployment examples for a VPS.
 - Telegram notifications, allowlisted commands and a stored inbound inbox.
 - Manual inbox triage: list, show, reply and ignore. No auto-reply and no AI-generated replies.
 - Deterministic weekly and monthly reports, with no LLM calls.
@@ -34,23 +36,47 @@ publishing path. A real Nostr adapter was added in 1.1.0; see
 
 ## Requirements
 
-- Python 3.12
+- Python 3.12 (`pipx install --python 3.12 ...` if your default interpreter is newer)
 - [`uv`](https://docs.astral.sh/uv/) for the recommended source install
 - A Linux, macOS or Windows machine; the CLI is tested on all three
 
 ## Install from source
 
-The 1.4.0 release is installed from the repository. PyPI publishing and Docker images are
-not part of this release.
+The 1.5.0 release is available as a GitHub release wheel and as a repository checkout.
+A tag-triggered workflow builds PyPI and GHCR artifacts; PyPI publishing is enabled after
+the maintainer configures trusted publishing.
 
 ```bash
+# Repository checkout, with the pinned development environment
 git clone https://github.com/abengkris/heraldesk.git
 cd heraldesk
 uv sync
 uv run heraldesk init
+
+# Or install the checkout directly into your user environment
+pipx install --python 3.12 .
+# uvx --from . heraldesk init
 ```
 
-You can also install the checkout with `pipx install .` or `uvx --from . heraldesk`.
+The release wheel is attached to each
+[GitHub release](https://github.com/abengkris/heraldesk/releases); install it with
+`pipx install --python 3.12 ./heraldesk-1.5.0-py3-none-any.whl`.
+
+### Docker
+
+```bash
+git clone https://github.com/abengkris/heraldesk.git
+cd heraldesk
+printf 'HERALDESK_ADMIN_TOKEN=%s\n' "$(python -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env
+chmod 600 .env
+docker compose up -d --build
+docker compose exec heraldesk heraldesk init
+docker compose exec heraldesk heraldesk doctor
+```
+
+Compose binds only `127.0.0.1:8000`; put Caddy or Nginx in front. See
+[deploy/README.md](deploy/README.md) for the VPS runbook, systemd unit and hardening
+checklist.
 
 ## First run
 
@@ -97,6 +123,7 @@ uv run heraldesk run daily acme
 
 # Review, approve, reject or edit.
 uv run heraldesk queue list acme
+uv run heraldesk queue show <id>          # full draft before deciding
 uv run heraldesk queue approve <id>
 uv run heraldesk queue reject <id> --reason "off voice"
 uv run heraldesk queue edit <id> --body "Replacement text"
@@ -110,11 +137,13 @@ uv run heraldesk serve
 ```
 
 Approvals, publishing and replies obey the global kill switch, the per-profile kill
-switch, the profile status and `policy.yaml`. Automatic publishing is refused inside
-`quiet_hours` and after `max_posts_per_day` has been reached, both in the profile
-timezone. An explicit `heraldesk publish` overrides those two limits and records a
-`publish.policy_override` audit entry. `heraldesk stop-all` halts everything;
-`heraldesk stop-all --off` clears the global switch.
+switch and the profile status. Automatic publishing is refused inside `quiet_hours` and
+after `max_posts_per_day` has been reached, both in the profile timezone. An explicit
+`heraldesk publish` overrides those two limits and records a `publish.policy_override`
+audit entry. Manual inbox replies are blocked by the kill switches and profile status;
+quiet hours apply to automatic replies only. `heraldesk stop-all` halts everything;
+`heraldesk stop-all --off` clears the global switch. Stop-all does not cancel items that
+are already scheduled; use the queue commands and review scheduled items before clearing it.
 
 ## Telegram
 
@@ -127,7 +156,8 @@ uv run heraldesk telegram inbox list acme
 ```
 
 Bot tokens are encrypted with `secret.key`. Only chat IDs in `telegram.allowed_chat_ids`
-are served.
+are served. Set `telegram.allowed_user_ids` to restrict which senders may run commands
+(`/approve`, `/reject`, `/queue`).
 
 ## Nostr publishing
 
@@ -153,9 +183,10 @@ uv run heraldesk account add acme --platform nostr \
 uv run heraldesk account list acme
 uv run heraldesk account test acme --platform nostr
 
-# Draft, approve and publish through the existing flow.
-uv run heraldesk run daily acme --dry-run
+# Draft for real (a dry run writes nothing, so there is nothing to approve).
+uv run heraldesk run daily acme
 uv run heraldesk queue list acme
+uv run heraldesk queue show <id>
 uv run heraldesk queue approve <id>
 uv run heraldesk publish <id>
 ```
@@ -164,6 +195,27 @@ Relays come from `nostr.relays` in `heraldesk.yaml` (defaults: `wss://relay.damu
 `wss://nos.lol`) or from `--relay` on the account. One relay accepting the event is
 enough; failures use the normal publisher retries. Details and the manual acceptance
 steps are in [docs/platforms/nostr.md](docs/platforms/nostr.md).
+
+## Threads publishing
+
+The Threads adapter publishes one **text** thread through the official Meta Graph API:
+create a container, wait for it, publish, then read the permalink. It needs a Threads
+user access token and (optionally) the user id.
+
+```bash
+# Read the token from the environment; never put it on the command line.
+export THREADS_TOKEN='<long-lived Threads user access token>'
+export THREADS_USER_ID='<threads user id>'
+
+uv run heraldesk account add acme --platform threads --handle @acme \
+    --credential-from-env THREADS_TOKEN --credential-from-env THREADS_USER_ID
+uv run heraldesk account test acme --platform threads   # calls GET /me
+```
+
+A long-lived token lasts 60 days; refresh it with the official token endpoint and store
+the new value. Text is limited to 500 UTF-8 bytes and the platform allows 250 posts per
+rolling 24 hours. CI mocks every HTTP call; the manual acceptance steps and sources are in
+[docs/platforms/threads.md](docs/platforms/threads.md).
 
 ## Web UI and API
 
@@ -182,7 +234,8 @@ Open `http://127.0.0.1:8000/login` and enter the token. The UI has a dashboard, 
 queue, inbox triage, report viewer and profile list. HTMX and CSS are vendored; there is no
 Node build and no external CDN.
 
-The API uses `Authorization: Bearer <token>` only:
+The API uses `Authorization: Bearer <token>` only. `GET /api/v1/queue/{approval_id}`
+returns the full redacted draft so scripts can inspect content before deciding:
 
 ```bash
 curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
@@ -225,8 +278,9 @@ Without proxy mode the server refuses with "Remote mode requires HTTPS via rever
 
 The default serve port is `8000`; if you change it, use the same value in the reverse
 proxy. **Do not expose the Heraldesk port directly to the internet.** Firewall it and let
-only the reverse proxy reach it. Set `HERALDESK_TELEGRAM_WEBHOOK_SECRET` if Telegram
-webhooks are used on a VPS.
+only the reverse proxy reach it. Set `HERALDESK_TELEGRAM_WEBHOOK_SECRET` whenever
+Telegram is enabled on a remote or webhook-mode server; the server refuses to start
+without it so forged `/approve` commands cannot approve content.
 
 ## Inbox triage
 
@@ -303,8 +357,12 @@ uv run heraldesk init
 uv run heraldesk profile reload
 ```
 
-Upgrade procedure: make a credential backup first, install the new version, run
-`heraldesk init` to apply Alembic migrations, then run `heraldesk doctor`.
+Upgrade procedure: install the new version, then run `heraldesk upgrade`. It creates a
+credential backup first, applies Alembic migrations and audits the change. Run
+`heraldesk doctor` afterwards. `heraldesk serve` refuses to start on a stale schema.
+
+See [deploy/README.md](deploy/README.md) for Docker, systemd, Caddy and the VPS hardening
+checklist.
 
 ## Doctor
 
@@ -334,8 +392,9 @@ Online probes never print an API key, bot token or nsec.
 - `heraldesk.yaml` contains no credentials. LLM keys live in `.env` or the environment.
 - Social account credentials are encrypted at rest with `secret.key` (mode 600).
 - Backups exclude `.env`; protect credential backups like the original data folder.
-- The server binds to `127.0.0.1` by default and refuses non-loopback binds until admin
-  authentication exists. Use a local reverse proxy for remote access.
+- The server binds to `127.0.0.1` by default. A non-loopback bind requires
+  `--allow-remote`, an explicit `HERALDESK_ADMIN_TOKEN` of at least 32 characters and
+  `HERALDESK_TRUST_PROXY=1` behind an HTTPS reverse proxy.
 - Audit payloads, reports and CLI output redact credential-shaped values. Full inbox and
   content text is never written to the audit log.
 - No telemetry and no phone-home. Outbound traffic is limited to your configured LLM
@@ -351,6 +410,7 @@ Online probes never print an API key, bot token or nsec.
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
+- [Deployment](deploy/README.md)
 - [Changelog](CHANGELOG.md)
 - Bahasa Indonesia: [docs/id/arsitektur.md](docs/id/arsitektur.md)
 

@@ -1,7 +1,7 @@
 # Nostr adapter
 
-Status: implemented in M10. This is the first real publishing adapter; every other
-non-fake platform still returns `NotSupportedError`.
+Status: implemented in M10. Nostr and Threads are the bundled real adapters; any other
+platform returns `NotSupportedError` unless an installed plugin supplies it.
 
 ## Protocol
 
@@ -68,7 +68,10 @@ export NOSTR_NSEC_THROWAY='<throwaway nsec>'
 uv run heraldesk account add acme --platform nostr \
     --credential-from-env NOSTR_NSEC_THROWAY --label throwaway
 uv run heraldesk account list acme
-uv run heraldesk run daily acme --dry-run
+uv run heraldesk run daily acme
+uv run heraldesk queue list acme
+uv run heraldesk queue show <id>
+uv run heraldesk queue approve <id>
 uv run heraldesk publish <id>
 ```
 

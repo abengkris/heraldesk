@@ -106,8 +106,14 @@ def add_account(
 
     normalized_platform = platform.strip().lower()
     if normalized_platform not in KNOWN_PLATFORMS:
-        known = ", ".join(sorted(KNOWN_PLATFORMS))
-        raise UnknownPlatformError(f"unknown platform '{platform}'; known platforms: {known}")
+        from heraldesk.plugins import plugin_adapters
+
+        if normalized_platform not in plugin_adapters():
+            known = ", ".join(sorted(KNOWN_PLATFORMS))
+            raise UnknownPlatformError(
+                f"unknown platform '{platform}'; known platforms: {known}; "
+                "install a plugin to add another platform"
+            )
 
     clean: dict[str, str] = {}
     for key, value in credentials.items():
@@ -123,6 +129,11 @@ def add_account(
     normalized_handle = handle.strip()
     if normalized_platform == "nostr":
         normalized_handle = _nostr_handle(normalized_handle, clean)
+    if normalized_platform == "threads" and not clean.get("access_token", "").strip():
+        raise AccountError(
+            "threads accounts require an 'access_token' credential; "
+            "pass it with --credential-from-env so the token is never typed on the command line"
+        )
     if not normalized_handle:
         raise AccountError("handle must not be empty")
 

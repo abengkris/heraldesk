@@ -28,6 +28,7 @@ from heraldesk.domain.profiles import ProfileStatus, set_profile_status
 from heraldesk.server.background import BackgroundJobs
 from heraldesk.server.database import ServerDatabase
 from heraldesk.telegram.fake import FakeTelegramAdapter
+from heraldesk.web.auth import AuthConfigError
 from tests.conftest import ProfileSetup
 
 pytestmark = pytest.mark.core
@@ -79,6 +80,7 @@ def make_app(
     token: str | None = None,
     scheduler_interval: float = 3600.0,
     poll_interval: float = 10.0,
+    webhook_secret: str | None = None,
 ):
     config = load_test_config(initialized, telegram_enabled=telegram_enabled, mode=mode)
     return create_app(
@@ -90,6 +92,7 @@ def make_app(
             admin_token=ADMIN_TOKEN,
             scheduler_interval_seconds=scheduler_interval,
             poll_interval_seconds=poll_interval,
+            telegram_webhook_secret=webhook_secret,
         )
     )
 
@@ -515,6 +518,7 @@ def test_webhook_mode_disables_polling_but_keeps_the_webhook(
         mode="webhook",
         adapter=adapter,
         poll_interval=0.1,
+        webhook_secret="telegram-webhook-secret",
     )
 
     with TestClient(app) as client:
@@ -523,8 +527,32 @@ def test_webhook_mode_disables_polling_but_keeps_the_webhook(
         response = client.post(
             "/webhook/telegram",
             json=webhook_payload("/queue", update_id=52),
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-webhook-secret"},
         )
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert adapter.sent
+
+
+def test_webhook_mode_requires_a_secret(initialized: InitResult) -> None:
+    with pytest.raises(AuthConfigError, match="WEBHOOK_SECRET"):
+        make_app(initialized, telegram_enabled=True, mode="webhook")
+
+
+def test_health_reports_a_stale_schema(initialized: InitResult) -> None:
+    from alembic import command
+
+    from heraldesk.db.migrations import alembic_config
+
+    command.downgrade(alembic_config(initialized.layout.db_path), "0009")
+    app = make_app(initialized)
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["db"]["revision"] == "0009"
+    assert body["db"]["expected_revision"] == "0010"

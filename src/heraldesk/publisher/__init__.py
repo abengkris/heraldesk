@@ -88,6 +88,7 @@ class PublishOutcome:
     from_state: str
     to_state: str
     external_id: str | None = None
+    url: str | None = None
     error: str | None = None
     attempts: int = 0
     retry_at: datetime | None = None
@@ -591,6 +592,7 @@ def publish_item(
             "content_item_id": item.id,
             "platform": item.platform,
             "external_id": result.external_id,
+            "url": result.url,
             "attempts": attempts,
             "trigger": trigger,
             "body_sha256": _body_hash(body),
@@ -604,5 +606,6 @@ def publish_item(
         from_state=from_state,
         to_state=ContentState.PUBLISHED.value,
         external_id=result.external_id,
+        url=result.url,
         attempts=attempts,
     )

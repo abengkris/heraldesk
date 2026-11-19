@@ -1,0 +1,20 @@
+services:
+  heraldesk:
+    build: .
+    image: ghcr.io/abengkris/heraldesk:latest
+    restart: unless-stopped
+    ports:
+      # Keep the app on the host loopback; terminate TLS in a reverse proxy.
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Required: a long random value, never the secret.key-derived token.
+      HERALDESK_ADMIN_TOKEN: ${HERALDESK_ADMIN_TOKEN:?set HERALDESK_ADMIN_TOKEN in .env}
+      # Required by the remote-bind guard. Secure cookies work on localhost and behind TLS.
+      HERALDESK_TRUST_PROXY: "1"
+      # Optional: only when Telegram webhooks are used behind the proxy.
+      # HERALDESK_TELEGRAM_WEBHOOK_SECRET: ${HERALDESK_TELEGRAM_WEBHOOK_SECRET}
+    volumes:
+      - heraldesk-data:/data
+
+volumes:
+  heraldesk-data:

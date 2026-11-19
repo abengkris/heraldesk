@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -13,8 +13,10 @@ requires-python = ">=3.12,<3.13"
 authors = [{ name = "Abeng" }]
 keywords = ["social-media", "automation", "self-hosted", "llm", "agents"]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 4 - Beta",
   "Environment :: Console",
+  "Environment :: Web Environment",
+  "Framework :: FastAPI",
   "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: MIT License",
   "Operating System :: MacOS",
@@ -24,27 +26,27 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "alembic>=1.14",
+  "alembic>=1.14,<2",
   "apscheduler>=3.10,<4",
   # BIP-340 Schnorr signing for the Nostr adapter (libsecp256k1 via cffi).
   "coincurve>=21.0,<22",
-  "cryptography>=43",
-  "fastapi>=0.115",
+  "cryptography>=43,<52",
+  "fastapi>=0.115,<1",
   # Server-rendered Web UI (M11) and safe Markdown report rendering.
   "jinja2>=3.1,<4",
-  "litellm>=1.55",
+  "litellm>=1.55,<2",
   "markdown>=3.7,<4",
   "bleach>=6.2,<7",
-  "pydantic-settings>=2.6",
+  "pydantic-settings>=2.6,<3",
   "python-dotenv>=1.0",
   "python-multipart>=0.0.20,<1",
   "pyyaml>=6.0.2",
-  "rich>=13.9",
-  "sqlalchemy>=2.0.36",
+  "rich>=13.9,<16",
+  "sqlalchemy>=2.0.36,<3",
   # Provides the IANA timezone database where the OS has none (Windows, minimal containers).
   "tzdata>=2024.1",
-  "typer>=0.15",
-  "uvicorn>=0.30",
+  "typer>=0.15,<1",
+  "uvicorn>=0.30,<1",
   # Async RFC 6455 client used to broadcast Nostr events to relays.
   "websockets>=15,<18",
 ]
@@ -56,6 +58,9 @@ hdesk = "heraldesk.cli.main:app"
 [project.urls]
 Homepage = "https://github.com/abengkris/heraldesk"
 Documentation = "https://github.com/abengkris/heraldesk/blob/main/docs/architecture.md"
+Repository = "https://github.com/abengkris/heraldesk"
+Issues = "https://github.com/abengkris/heraldesk/issues"
+Changelog = "https://github.com/abengkris/heraldesk/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [

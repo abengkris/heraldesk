@@ -1,14 +1,16 @@
 """Platform adapter registry.
 
-``fake`` and ``nostr`` implement publishing. ``nostr`` signs NIP-01 kind 1 notes with the
-account's encrypted nsec and broadcasts them to relays. Every other platform stays
+``fake``, ``threads`` and ``nostr`` implement publishing. ``threads`` uses the official
+Meta Threads Graph API; ``nostr`` signs NIP-01 kind 1 notes with the account's encrypted
+nsec and broadcasts them to relays. Every other platform stays
 :class:`NotSupportedError` unless an installed plugin provides it through the
 ``heraldesk.platforms`` entry-point group; the reason is documented in
 ``docs/platforms/README.md``.
 
-``adapter_for`` is the offline account-check path: Nostr validates the key and relay list
-locally, every other platform keeps the fake adapter. Plugins are used for publishing
-only, so ``account test`` never imports third-party code.
+``adapter_for`` is the account-check path: Nostr validates the key and relay list
+locally, Threads calls ``/me`` with the stored token, every other platform keeps the fake
+adapter. Plugins are used for publishing only, so ``account test`` never imports
+third-party code.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from heraldesk.platforms.base import (
 )
 from heraldesk.platforms.fake import FakeAdapter
 from heraldesk.platforms.nostr import NostrAdapter
+from heraldesk.platforms.threads import ThreadsAdapter
 
 if TYPE_CHECKING:
     from heraldesk.plugins import PluginAdapter
@@ -55,6 +58,7 @@ def _nostr_adapter() -> PlatformAdapter:
 
 _PUBLISH_ADAPTERS: dict[str, Callable[[], PlatformAdapter]] = {
     "fake": FakeAdapter,
+    "threads": ThreadsAdapter,
     "nostr": _nostr_adapter,
 }
 
@@ -76,8 +80,11 @@ def adapter_for(platform: str) -> PlatformAdapter:
     Nostr validates the nsec and relay list without network I/O. Every other platform uses
     :class:`FakeAdapter`; the CLI labels the result as a fake-adapter check.
     """
-    if platform.strip().lower() == "nostr":
+    key = platform.strip().lower()
+    if key == "nostr":
         return NostrAdapter()
+    if key == "threads":
+        return ThreadsAdapter()
     return FakeAdapter()
 
 

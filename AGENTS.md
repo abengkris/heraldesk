@@ -23,6 +23,8 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
 
 ## Commands (keep this section up to date as the project grows)
 - Install dev deps: `uv sync`
+- Build distributions: `uv build` (wheel + sdist)
+- Build the container image: `docker build -t heraldesk:local .`
 - Run tests: `uv run pytest`
 - Run the core cross-platform subset (what Windows CI runs): `uv run pytest -m core`
 - Lint/format: `uv run ruff check . && uv run ruff format .`
@@ -35,6 +37,7 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
 - Allow a non-loopback bind only behind HTTPS: `uv run heraldesk serve --host 0.0.0.0 --allow-remote` with an
   explicit `HERALDESK_ADMIN_TOKEN` and `HERALDESK_TRUST_PROXY=1`; the default remains `127.0.0.1`
 - Initialise an instance: `uv run heraldesk init`
+- Upgrade with a credential backup first: `uv run heraldesk upgrade`
 - Diagnose an instance offline: `uv run heraldesk doctor` (database migration head, config, `secret.key`,
   Telegram token when enabled, writability and reports directory; `--online` probes the LLM provider,
   Telegram `getMe` when enabled, and Nostr relays when an account exists)
@@ -46,8 +49,8 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
   `uv run heraldesk account add <slug> --platform nostr --credential-from-env NOSTR_NSEC_THROWAY [--label "throwaway"] [--relay wss://relay.example]`
 - List accounts with the Nostr npub masked: `uv run heraldesk account list <slug>`
 - List built-in and installed adapter plugins: `uv run heraldesk plugins list [--check]`
-- Test accounts offline: `uv run heraldesk account test <slug>` (fake adapter) or
-  `uv run heraldesk account test <slug> --platform nostr` (local nsec and relay validation, no network)
+- Test accounts: `uv run heraldesk account test <slug>` (fake adapter), `--platform nostr` (local key/relay
+  validation, no network) or `--platform threads` (real `GET /me`; needs network)
 - Run the Writer once and record the trace: `uv run heraldesk agent run writer <slug> --idea "..."`
 - Run the daily content pipeline: `uv run heraldesk run daily <slug> [--dry-run]` (`--dry-run` writes nothing)
 - List the approval queue: `uv run heraldesk queue list <slug>`

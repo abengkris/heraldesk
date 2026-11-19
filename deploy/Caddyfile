@@ -1,0 +1,11 @@
+# Copy to /etc/caddy/Caddyfile and replace desk.example.com.
+# Heraldesk stays on 127.0.0.1:8000; Caddy terminates TLS and forwards the real host.
+desk.example.com {
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+    reverse_proxy 127.0.0.1:8000
+}

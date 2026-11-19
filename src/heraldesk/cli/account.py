@@ -87,7 +87,7 @@ def add_command(
         str,
         typer.Option(
             "--platform",
-            help="fake, threads, nostr, x, facebook, instagram, linkedin",
+            help="fake, threads, nostr, x, facebook, instagram, linkedin or an installed plugin",
         ),
     ],
     handle: Annotated[

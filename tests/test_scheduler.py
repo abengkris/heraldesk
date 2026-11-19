@@ -354,14 +354,14 @@ def test_unsupported_platform_fails_with_a_documented_reason(
     cipher = cipher_for(profile_setup)
     account = SocialAccountRepository(db_session).add(
         profile_setup.scope,
-        platform="threads",
+        platform="linkedin",
         handle="@acme",
-        credentials_encrypted=cipher.encrypt_json({"token": "threads-token-value"}),
+        credentials_encrypted=cipher.encrypt_json({"token": "linkedin-token-value"}),
     )
     make_scheduled(
         db_session,
         profile_setup,
-        platform="threads",
+        platform="linkedin",
         account_id=account.id,
     )
 

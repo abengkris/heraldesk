@@ -7,7 +7,7 @@
   <td>{{ entry.platform }}</td>
   <td>{{ entry.risk_level or "unknown" }}</td>
   <td class="preview">
-    {{ entry.preview }}
+    <a href="/queue/{{ entry.approval_id }}">{{ entry.preview }}</a>
     {% if entry.reason %}<div class="muted small">Reason: {{ entry.reason }}</div>{% endif %}
     {% if error %}<div class="alert error small" role="alert">{{ error }}</div>{% endif %}
   </td>

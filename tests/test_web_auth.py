@@ -29,6 +29,7 @@ pytestmark = pytest.mark.core
 
 runner = CliRunner()
 TOKEN = "test-admin-token"
+LONG_TOKEN = "test-admin-token-0123456789abcdef"
 SECRET_KEY_BYTES = b"fixed-secret-key-for-tests"
 
 
@@ -142,11 +143,16 @@ def test_remote_bind_requires_flag_token_and_https_proxy(
     with pytest.raises(ServerError, match="HERALDESK_ADMIN_TOKEN"):
         run_server(host="0.0.0.0", allow_remote=True)
 
-    monkeypatch.setenv(ADMIN_TOKEN_ENV, TOKEN)
+    monkeypatch.setenv(ADMIN_TOKEN_ENV, LONG_TOKEN)
     with pytest.raises(ServerError, match="HTTPS via reverse proxy"):
         run_server(host="0.0.0.0", allow_remote=True)
 
+    monkeypatch.setenv(ADMIN_TOKEN_ENV, "short")
     monkeypatch.setenv("HERALDESK_TRUST_PROXY", "1")
+    with pytest.raises(ServerError, match="at least 32"):
+        run_server(host="0.0.0.0", allow_remote=True)
+
+    monkeypatch.setenv(ADMIN_TOKEN_ENV, LONG_TOKEN)
     run_server(host="0.0.0.0", allow_remote=True)
     assert calls and calls[0][0].state.auth.cookie_secure is True
 

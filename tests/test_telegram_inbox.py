@@ -198,3 +198,40 @@ def test_inbox_redacts_token_and_chat_id(profile_setup: ProfileSetup, db_session
     assert str(CHAT_ID) not in payloads
     assert "12***89" in payloads
     assert outcome.profile_id == profile_setup.scope.profile_id
+
+
+def test_sender_allowlist_ignores_other_users(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item_id, _ = pending_item(db_session, profile_setup)
+    adapter = FakeTelegramAdapter()
+
+    ignored = handle_update(
+        db_session,
+        profile_setup.layout,
+        update(f"/approve {item_id}"),
+        allowed_chat_ids=(CHAT_ID,),
+        allowed_user_ids=(999,),
+        adapter=adapter,
+        profile_hint="acme",
+        redactor=redactor(),
+        now=NOW,
+    )
+
+    assert ignored.status == "ignored"
+    item = ContentItemRepository(db_session).get(profile_setup.scope, item_id)
+    assert item is not None and item.state == ContentState.PENDING_APPROVAL.value
+
+    accepted = handle_update(
+        db_session,
+        profile_setup.layout,
+        update(f"/approve {item_id}"),
+        allowed_chat_ids=(CHAT_ID,),
+        allowed_user_ids=(555,),
+        adapter=adapter,
+        profile_hint="acme",
+        redactor=redactor(),
+        now=NOW,
+    )
+
+    assert accepted.status == "ok"

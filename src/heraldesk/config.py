@@ -87,6 +87,8 @@ class TelegramSettings(_Section):
     enabled: bool = False
     mode: Literal["polling", "webhook"] = "polling"
     allowed_chat_ids: list[int] = Field(default_factory=list)
+    # Optional sender allowlist. Empty accepts any sender in an allowed chat.
+    allowed_user_ids: list[int] = Field(default_factory=list)
 
 
 class ResearchSettings(_Section):

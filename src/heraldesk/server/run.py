@@ -14,11 +14,14 @@ import uvicorn
 from heraldesk import paths
 from heraldesk.api.app import AppOptions, create_app
 from heraldesk.config import is_loopback, load_config
+from heraldesk.db.engine import inspect_database
+from heraldesk.db.migrations import MigrationError, head_revision
 from heraldesk.telegram.credentials import TelegramConfigError
 from heraldesk.web.auth import (
     AuthConfigError,
     explicit_admin_token,
     resolve_admin_token,
+    resolve_webhook_secret,
     trust_proxy_enabled,
 )
 
@@ -68,10 +71,16 @@ def run_server(
                 "use 127.0.0.1 behind a reverse proxy, or pass --allow-remote with HTTPS "
                 "proxy hardening"
             )
-        if explicit_admin_token(layout) is None:
+        explicit = explicit_admin_token(layout)
+        if explicit is None:
             raise ServerError(
                 "remote mode requires an explicit HERALDESK_ADMIN_TOKEN in the environment "
                 "or .env; a secret.key-derived token is not accepted for remote binds"
+            )
+        if len(explicit.token) < 32:
+            raise ServerError(
+                "remote mode requires an admin token of at least 32 characters; "
+                'generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
             )
         if not trust_proxy:
             raise ServerError(
@@ -83,8 +92,30 @@ def run_server(
             "trusted reverse proxy"
         )
 
+    if (
+        config.telegram.enabled
+        and (remote or config.telegram.mode == "webhook")
+        and resolve_webhook_secret(layout) is None
+    ):
+        raise ServerError(
+            "Telegram webhook mode and remote mode require "
+            "HERALDESK_TELEGRAM_WEBHOOK_SECRET so forged /approve commands are rejected"
+        )
+
     if not layout.db_path.is_file():
         raise ServerError(f"database {layout.db_path} does not exist; run 'heraldesk init' first")
+    status = inspect_database(layout.db_path)
+    try:
+        expected = head_revision(layout.db_path)
+    except MigrationError as exc:
+        raise ServerError(str(exc)) from exc
+    if status.error is not None:
+        raise ServerError(f"cannot read the database: {status.error}")
+    if status.revision != expected:
+        raise ServerError(
+            f"database schema is {status.revision or 'missing'}, expected {expected}; "
+            "run 'heraldesk upgrade'"
+        )
 
     try:
         admin = resolve_admin_token(layout)

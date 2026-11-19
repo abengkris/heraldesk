@@ -66,6 +66,20 @@ def add_item(
         return item.id
 
 
+def test_queue_show_prints_the_full_redacted_body(initialized: InitResult) -> None:
+    assert invoke("profile", "new", "acme").exit_code == 0
+    body = f"A very long draft. {'detail ' * 30}END-MARKER {SECRET}"
+    item_id = add_item(initialized, body=body)
+
+    shown = invoke("queue", "show", str(item_id))
+
+    assert shown.exit_code == 0, shown.output
+    assert "Draft" in shown.output
+    assert "END-MARKER" in shown.output
+    assert "Approval:" in shown.output
+    assert SECRET not in shown.output
+
+
 def test_queue_list_and_approve(initialized: InitResult) -> None:
     assert invoke("profile", "new", "acme").exit_code == 0
     item_id = add_item(initialized)

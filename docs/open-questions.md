@@ -1,5 +1,9 @@
 # Open questions
 
+> This file is a chronological record of milestone questions. Resolved entries describe the
+> behavior at that milestone; the current behavior is defined by `docs/architecture.md`, the
+> README and the code. Entries marked superseded no longer describe the release.
+
 Agents and contributors: when the spec is ambiguous or conflicts with real API behavior, add the question here
 instead of guessing. Format: `- [ ] (date, milestone) question`. The maintainer answers and moves it to decisions.md.
 
@@ -140,8 +144,27 @@ No open questions remain for M0. Later ambiguities are added here when their mil
 - [x] (2026-11-17, M7) **May `heraldesk serve` bind a non-loopback host before password auth exists?**
   **RESOLVED 2026-11-17: no.** Any non-loopback host is refused with a clear error. Remote access goes
   through a local reverse proxy until the web UI milestone adds authentication. Recorded in
-  `docs/decisions.md`.
+  `docs/decisions.md`. **Superseded by M11:** remote binds are allowed with `--allow-remote`,
+  an explicit admin token of at least 32 characters and `HERALDESK_TRUST_PROXY=1` behind HTTPS.
 - [x] (2026-11-17, M7) **What happens when the same Telegram update arrives twice?**
   **RESOLVED 2026-11-17:** `telegram_messages.update_id` has a unique index and the inbox returns
   `duplicate` without storing, replying or auditing. This covers webhook retries and polling replay
   after a restart. Migration `0008` adds the column and index. Recorded in `docs/decisions.md`.
+
+
+## Resolved during M13
+
+- [x] (2026-11-19, M13) **How strict should the Threads text limit be?**
+  **RESOLVED 2026-11-19:** reject locally when the UTF-8 encoding exceeds 500 bytes, before
+  any network call. The platform counts emoji by bytes but does not publish the exact
+  algorithm; the conservative guard may reject some mixed-script text but never wastes the
+  publisher's retries on a deterministic rejection. Recorded in `docs/platforms/threads.md`.
+
+- [x] (2026-11-19, M13) **Does Threads support an idempotency key?**
+  **RESOLVED 2026-11-19: no documented key.** Heraldesk uses its persisted `external_id`
+  plus an in-process cache; a timeout after acceptance remains the documented
+  human-reconciliation case. Do not blind-retry `threads_publish`.
+
+- [x] (2026-11-19, M13) **Should the adapter use `auto_publish_text=true`?**
+  **RESOLVED 2026-11-19: no.** Its response shape is undocumented. Use the explicit
+  create-container / status / publish flow.

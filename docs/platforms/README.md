@@ -9,7 +9,7 @@ publisher applies the content state machine, policy, retries and audit rules.
 |---|---|---|---|
 | `fake` | yes | yes (M5) | Offline adapter used by tests and CI. See `fake.md`. |
 | `nostr` | yes (offline key check) | yes (M10) | Real NIP-01 kind 1 notes. See `nostr.md`. |
-| `threads` | fake fallback | `NotSupportedError` | Real adapter deferred. |
+| `threads` | real `/me` check | yes | Official Meta Threads API, text only. See `threads.md`. |
 | `x` | fake fallback | `NotSupportedError` | Real adapter deferred. |
 | `facebook` | fake fallback | `NotSupportedError` | Real adapter deferred. |
 | `instagram` | fake fallback | `NotSupportedError` | Real adapter deferred; needs Business account plus linked Page. |
@@ -20,7 +20,7 @@ An installed plugin can supply any platform that has no built-in publisher; see
 
 ## Why the remaining adapters return `NotSupportedError`
 
-The publisher is complete for `fake` and `nostr`. Threads, X, Facebook, Instagram and
+The publisher is complete for `fake`, `threads` and `nostr`. X, Facebook, Instagram and
 LinkedIn need platform app review, live credentials and API behaviour that cannot be
 verified offline. Rather than guess at an API, `heraldesk.platforms.publish_adapter_for`
 raises `NotSupportedError` when no built-in or installed plugin supplies the platform:
@@ -40,7 +40,7 @@ Declare an entry point in the `heraldesk.platforms` group:
 
 ```toml
 [project.entry-points."heraldesk.platforms"]
-threads = "my_plugin.threads:ThreadsAdapter"
+bluesky = "my_plugin.bluesky:BlueskyAdapter"
 ```
 
 The entry point name is the platform key stored on accounts and passed to
@@ -48,8 +48,8 @@ The entry point name is the platform key stored on accounts and passed to
 object that implements the contract in `src/heraldesk/platforms/base.py`:
 
 ```python
-class ThreadsAdapter:
-    platform = "threads"  # must match the entry point name
+class BlueskyAdapter:
+    platform = "bluesky"  # must match the entry point name
 
     async def validate_credentials(self, account: AccountRef) -> bool: ...
 
@@ -58,12 +58,13 @@ class ThreadsAdapter:
 
 Rules:
 
-- **Built-ins win.** A plugin cannot replace `fake` or `nostr`.
+- **Built-ins win.** A plugin cannot replace `fake`, `threads` or `nostr`.
 - **Discovery is lazy.** Entry-point metadata is read once per process; plugin code is
   imported the first time its adapter is requested. Call
   `heraldesk.plugins.reset_plugin_cache()` after installing a plugin in a running process.
-- **Account checks stay offline.** `heraldesk account test` never imports plugin code; it
-  keeps the fake adapter for plugin platforms. Publishing uses the real plugin.
+- **Account checks:** `nostr` validates keys locally and `fake` is offline; `threads` calls
+  `GET /me`. Plugin platforms keep the fake adapter for `account test`, so no third-party
+  code is imported by an account check. Publishing uses the real plugin.
 - **Trust:** plugin code runs in the Heraldesk process with your user's permissions.
   Install only packages you trust.
 - **Publishing rules still apply.** The publisher owns the state machine, policy gates,

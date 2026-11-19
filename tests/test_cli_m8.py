@@ -18,7 +18,7 @@ from heraldesk.core.redact import SecretRegistry
 from heraldesk.db.repositories import InboxRepository, TelegramMessageRepository
 from heraldesk.db.scope import ProfileScope
 from heraldesk.db.session import database_session
-from heraldesk.domain.profiles import resolve_scope
+from heraldesk.domain.profiles import ProfileStatus, resolve_scope, set_profile_status
 from heraldesk.telegram.fake import FakeTelegramAdapter
 
 pytestmark = pytest.mark.core
@@ -48,6 +48,7 @@ def make_message(initialized: InitResult, text: str = "hello") -> int:
     ensure_profile(initialized)
     with db(initialized) as session:
         scope: ProfileScope = resolve_scope(session, "acme")
+        set_profile_status(session, scope, ProfileStatus.ACTIVE)
         message = TelegramMessageRepository(session).add(
             scope,
             chat_id=CHAT_ID,

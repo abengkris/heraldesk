@@ -133,6 +133,7 @@ def handle_update(
     update: TelegramUpdate,
     *,
     allowed_chat_ids: Sequence[int],
+    allowed_user_ids: Sequence[int] = (),
     adapter: TelegramAdapter | None = None,
     profile_hint: str | None = None,
     redactor: SecretRegistry | None = None,
@@ -144,6 +145,13 @@ def handle_update(
     commands get the help text and never raise.
     """
     if update.chat_id not in allowed_chat_ids:
+        return InboxOutcome(
+            message_id=None,
+            command=None,
+            status="ignored",
+            reply=None,
+        )
+    if allowed_user_ids and (update.sender_id is None or update.sender_id not in allowed_user_ids):
         return InboxOutcome(
             message_id=None,
             command=None,
@@ -315,6 +323,7 @@ def process_polling(
     adapter: TelegramAdapter,
     *,
     allowed_chat_ids: Sequence[int],
+    allowed_user_ids: Sequence[int] = (),
     profile_hint: str | None = None,
     redactor: SecretRegistry | None = None,
     now: datetime | None = None,
@@ -333,6 +342,7 @@ def process_polling(
                 layout,
                 update,
                 allowed_chat_ids=allowed_chat_ids,
+                allowed_user_ids=allowed_user_ids,
                 adapter=adapter,
                 profile_hint=profile_hint,
                 redactor=redactor,

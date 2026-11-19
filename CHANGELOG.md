@@ -3,14 +3,44 @@
 All notable changes to Heraldesk are recorded here. The `1.0.0` release folded the
 M0-M9 implementation milestones together; `1.1.0` adds the first real platform adapter;
 `1.2.0` adds the local Web UI + REST API; `1.2.1` enforces quiet hours and daily post caps;
-`1.3.0` adds third-party adapter plugins.
+`1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
+the Threads adapter and production distribution/hardening.
 
-## [Unreleased]
+## [1.5.0] - 2026-11-19
 
 ### Added
 
-- `heraldesk plugins list [--check]` shows built-in adapters and installed
-  `heraldesk.platforms` plugins. `--check` imports each plugin and validates its adapter.
+- Official Threads text adapter (create container, wait, publish, permalink) with `/me`
+  credential validation, a local 500-UTF-8-byte guard, token-free errors and
+  `docs/platforms/threads.md`.
+- `heraldesk upgrade` creates a credential backup, applies pending migrations and audits
+  the change. `heraldesk serve` refuses a stale schema and `/health` returns 503 with the
+  expected revision.
+- `heraldesk plugins list [--check]` and account creation for installed plugin platforms.
+- `heraldesk queue show <id>`, a Web UI queue detail page and `GET /api/v1/queue/{id}`
+  expose the full redacted draft before approval. `heraldesk publish` prints a permalink
+  when the adapter returns one.
+- Dockerfile, `.dockerignore`, `docker-compose.yml`, systemd unit, Caddyfile and a VPS
+  runbook in `deploy/`.
+- Tag-triggered release workflow (wheel/sdist, optional PyPI trusted publishing, GHCR
+  image, GitHub release), CI wheel-install smoke, Docker build and `pip-audit` jobs, and
+  Dependabot.
+- `py.typed`, Beta package classifier, dependency upper bounds, repository/changelog URLs.
+
+### Changed
+
+- Telegram webhook mode and remote Telegram deployments now require
+  `HERALDESK_TELEGRAM_WEBHOOK_SECRET`; an unsigned webhook cannot forge approvals.
+  Optional `telegram.allowed_user_ids` restricts command senders.
+- Remote binds reject explicit admin tokens shorter than 32 characters.
+- Manual inbox replies obey the global/profile kill switches and profile status.
+- HSTS (in proxy mode), `Cache-Control: no-store`, `Permissions-Policy`, COOP and CORP
+  headers are set.
+
+### Docs
+
+- Reconciled the architecture, README, roadmap, security policy and platform docs with the
+  shipped 1.5 implementation; historical decisions are marked superseded.
 
 ## [1.4.0] - 2026-11-19
 

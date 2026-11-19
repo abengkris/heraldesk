@@ -11,7 +11,7 @@ an object that implements :class:`heraldesk.platforms.base.PlatformAdapter`.
 
 Discovery reads installed distribution metadata only. Plugin code is imported the first
 time an adapter is requested, so a broken plugin cannot stop other platforms from
-working. Built-in adapters always win: a plugin cannot replace ``fake`` or ``nostr``.
+working. Built-in adapters always win: a plugin cannot replace ``fake``, ``threads`` or ``nostr``.
 
 Plugin code runs in the Heraldesk process with the permissions of the user running
 Heraldesk. Install plugins you trust, exactly like any other Python dependency.
@@ -27,7 +27,7 @@ from typing import cast
 from heraldesk.platforms.base import PlatformAdapter, PublishError
 
 ENTRY_POINT_GROUP = "heraldesk.platforms"
-BUILT_IN_PLATFORMS = frozenset({"fake", "nostr"})
+BUILT_IN_PLATFORMS = frozenset({"fake", "threads", "nostr"})
 _REQUIRED_METHODS = ("publish", "validate_credentials")
 
 

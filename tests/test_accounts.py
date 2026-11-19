@@ -259,3 +259,55 @@ def test_account_test_without_matches_is_an_error(
                 adapter=FakeAdapter(),
             )
         )
+
+
+def test_threads_account_requires_an_access_token(
+    db_session: Session, make_definition: MakeDefinition, initialized: InitResult
+) -> None:
+    scope = make_scope(db_session, make_definition("alpha"))
+
+    with pytest.raises(AccountError, match="access_token"):
+        add_account(
+            db_session,
+            scope,
+            platform="threads",
+            handle="@alpha",
+            credentials={"user_id": "17841400000000001"},
+            cipher=cipher(initialized),
+        )
+
+    account = add_account(
+        db_session,
+        scope,
+        platform="threads",
+        handle="@alpha",
+        credentials={
+            "access_token": "th-long-lived-token",
+            "user_id": "17841400000000001",
+        },
+        cipher=cipher(initialized),
+    )
+    assert account.platform == "threads"
+
+
+def test_add_accepts_a_platform_from_an_installed_plugin(
+    db_session: Session,
+    make_definition: MakeDefinition,
+    initialized: InitResult,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from heraldesk import plugins
+
+    monkeypatch.setattr(plugins, "plugin_adapters", lambda: {"bluesky": object()})
+    scope = make_scope(db_session, make_definition("alpha"))
+
+    account = add_account(
+        db_session,
+        scope,
+        platform="bluesky",
+        handle="@alpha.example",
+        credentials={"token": "app-password"},
+        cipher=cipher(initialized),
+    )
+
+    assert account.platform == "bluesky"
