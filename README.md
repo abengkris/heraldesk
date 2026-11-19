@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.12.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.13.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.13.0)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.12.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.13.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.12.0
+## What works in 1.13.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -25,7 +25,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 - Profile quiet hours and a local-day post cap gate automatic publishing; explicit publishes override them.
 - Official Threads (text) and Nostr publishers, plus `heraldesk.platforms` adapter plugins.
 - `heraldesk upgrade` takes a credential backup before applying migrations.
-- Docker, Compose, systemd and Caddy deployment examples for a VPS.
+- Docker, Compose, systemd and Caddy deployment examples for a VPS, with SBOM/provenance on release images.
 - Runnable profile and adapter-plugin examples under `examples/`.
 - Telegram notifications, allowlisted commands and a stored inbound inbox.
 - Manual inbox triage: list, show, reply and ignore. No auto-reply and no AI-generated replies.
@@ -43,7 +43,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 
 ## Install from source
 
-The 1.12.0 release is available as a GitHub release wheel and as a repository checkout.
+The 1.13.0 release is available as a GitHub release wheel and as a repository checkout.
 A tag-triggered workflow builds PyPI and GHCR artifacts; PyPI publishing is enabled after
 the maintainer configures trusted publishing.
 
@@ -61,7 +61,7 @@ pipx install --python 3.12 .
 
 The release wheel is attached to each
 [GitHub release](https://github.com/abengkris/heraldesk/releases); install it with
-`pipx install --python 3.12 ./heraldesk-1.12.0-py3-none-any.whl`.
+`pipx install --python 3.12 ./heraldesk-1.13.0-py3-none-any.whl`.
 
 ### Docker
 
@@ -259,6 +259,15 @@ curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
 curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
   "http://127.0.0.1:8000/api/v1/runs?profile=acme"
 
+curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
+  "http://127.0.0.1:8000/api/v1/accounts?profile=acme"
+
+# Pagination and filters
+curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
+  "http://127.0.0.1:8000/api/v1/queue?status=pending&profile=acme&limit=20&offset=0"
+curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
+  "http://127.0.0.1:8000/api/v1/audit?action=auth.login&limit=50&offset=0"
+
 # Authenticated machine-readable contract
 curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
   http://127.0.0.1:8000/api/v1/openapi.json
@@ -317,6 +326,7 @@ uv run heraldesk inbox reply <id> --text "Thanks for the question."
 uv run heraldesk inbox ignore <id> --reason spam
 
 # Delete handled/ignored messages older than 30 days (pending is kept).
+# Set telegram.retention_days in heraldesk.yaml for a daily 03:15 UTC job.
 uv run heraldesk inbox prune --days 30
 uv run heraldesk inbox prune --days 30 --dry-run
 ```

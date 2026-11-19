@@ -170,12 +170,19 @@ def list_items(
     *,
     status: InboxStatus | str = InboxStatus.PENDING,
     limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
 ) -> list[InboxItemView]:
     """Return newest inbox items for one status across every profile."""
     selected = status if isinstance(status, InboxStatus) else InboxStatus(status)
     if limit < 1:
         raise InboxError("limit must be at least 1")
-    messages = InboxRepository(session).list(status=selected.value, limit=limit)
+    if offset < 0:
+        raise InboxError("offset must not be negative")
+    messages = InboxRepository(session).list(
+        status=selected.value,
+        limit=limit,
+        offset=offset,
+    )
     slugs = _profile_slugs(session)
     views = [_view(message, slugs) for message in messages]
     AuditService(session).record(
@@ -183,7 +190,12 @@ def list_items(
         actor="user",
         action="inbox.listed",
         entity="inbox",
-        payload={"status": selected.value, "limit": limit, "count": len(views)},
+        payload={
+            "status": selected.value,
+            "limit": limit,
+            "offset": offset,
+            "count": len(views),
+        },
     )
     return views
 

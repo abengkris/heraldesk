@@ -558,3 +558,68 @@ def test_api_calendar_lists_scheduled_items(
     assert body["count"] == 1
     assert body["items"][0]["content_item_id"] == item.id
     assert body["items"][0]["state"] == "scheduled"
+
+
+def test_api_queue_pagination_and_profile_filter(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    first_item, _ = pending_item(db_session, profile_setup)
+    second_item, _ = pending_item(db_session, profile_setup)
+    with make_app(initialized) as client:
+        page_one = client.get("/api/v1/queue?limit=1&offset=0", headers=HEADERS)
+        page_two = client.get("/api/v1/queue?limit=1&offset=1", headers=HEADERS)
+        filtered = client.get(
+            "/api/v1/queue?profile=acme&limit=10",
+            headers=HEADERS,
+        )
+        missing = client.get("/api/v1/queue?profile=missing", headers=HEADERS)
+
+    assert page_one.json()["count"] == 1
+    assert page_two.json()["count"] == 1
+    assert (
+        page_one.json()["items"][0]["content_item_id"]
+        != page_two.json()["items"][0]["content_item_id"]
+    )
+    assert {first_item, second_item} <= {
+        item["content_item_id"] for item in filtered.json()["items"]
+    }
+    assert missing.status_code == 404
+
+
+def test_api_audit_filters_by_action(initialized: InitResult) -> None:
+    with make_app(initialized) as client:
+        response = client.get(
+            "/api/v1/audit?action=serve.started&limit=5",
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["items"][0]["action"] == "serve.started"
+
+
+def test_api_accounts_returns_metadata_without_credentials(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    from heraldesk.core.crypto import CredentialCipher
+    from heraldesk.db.repositories import SocialAccountRepository
+
+    cipher = CredentialCipher.from_key_file(initialized.layout.key_path)
+    SocialAccountRepository(db_session).add(
+        profile_setup.scope,
+        platform="threads",
+        handle="@acme",
+        label="main",
+        credentials_encrypted=cipher.encrypt_json({"access_token": "sk-ABCDEFGHIJKLMNOP1234"}),
+    )
+    db_session.commit()
+    with make_app(initialized) as client:
+        response = client.get("/api/v1/accounts?profile=acme", headers=HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["items"][0]["platform"] == "threads"
+    assert body["items"][0]["label"] == "main"
+    assert "sk-ABCDEFGHIJKLMNOP1234" not in response.text

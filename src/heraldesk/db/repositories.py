@@ -324,12 +324,23 @@ class AuditCatalog:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def recent(self, *, limit: int = 100) -> list[AuditLog]:
-        """Return the newest audit entries across every profile."""
+    def recent(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        action: str | None = None,
+    ) -> list[AuditLog]:
+        """Return newest audit entries across every profile."""
         if limit < 1 or limit > 1000:
             raise ValueError("limit must be between 1 and 1000")
+        if offset < 0:
+            raise ValueError("offset must not be negative")
+        query = select(AuditLog)
+        if action:
+            query = query.where(AuditLog.action == action)
         entries = self._session.scalars(
-            select(AuditLog).order_by(AuditLog.id.desc()).limit(limit)
+            query.order_by(AuditLog.id.desc()).offset(offset).limit(limit)
         ).all()
         return list(entries)
 
@@ -1164,14 +1175,23 @@ class InboxRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def list(self, *, status: str, limit: int = 20) -> list[TelegramMessage]:
+    def list(
+        self,
+        *,
+        status: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[TelegramMessage]:
         """Return newest messages with *status* across every profile, newest first."""
         if limit < 1:
             raise ValueError("limit must be at least 1")
+        if offset < 0:
+            raise ValueError("offset must not be negative")
         messages = self._session.scalars(
             select(TelegramMessage)
             .where(TelegramMessage.status == status)
             .order_by(TelegramMessage.id.desc())
+            .offset(offset)
             .limit(limit)
         ).all()
         return list(messages)

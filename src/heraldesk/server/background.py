@@ -14,14 +14,16 @@ the M5 pattern extended to the server; see ``docs/decisions.md`` (M7).
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from sqlalchemy.orm import Session
 
 from heraldesk import paths
 from heraldesk.config import Config
+from heraldesk.core.audit import AuditService
 from heraldesk.core.redact import SecretRegistry
+from heraldesk.db.repositories import InboxRepository
 from heraldesk.scheduler.runner import SchedulerResult, run_scheduler
 from heraldesk.server.database import ServerDatabase
 from heraldesk.telegram.base import TelegramAdapter
@@ -97,6 +99,18 @@ class BackgroundJobs:
             coalesce=True,
             replace_existing=True,
         )
+        if self._config.telegram.retention_days > 0:
+            scheduler.add_job(
+                self._retention_job,
+                "cron",
+                hour=3,
+                minute=15,
+                id="heraldesk.inbox_retention",
+                name="inbox retention",
+                max_instances=1,
+                coalesce=True,
+                replace_existing=True,
+            )
         if self.polls_telegram:
             scheduler.add_job(
                 self._poll_job,
@@ -146,6 +160,31 @@ class BackgroundJobs:
                 notifier=None if dry_run else self._notifier(session),
             )
 
+    def run_retention_once(self) -> int:
+        """Delete old handled/ignored inbox rows when retention is enabled."""
+        days = self._config.telegram.retention_days
+        if days <= 0:
+            return 0
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        with self._database.session() as session:
+            deleted = InboxRepository(session).delete_older_than(cutoff)
+            if deleted:
+                AuditService(session).record(
+                    None,
+                    actor="system",
+                    action="inbox.pruned",
+                    entity="inbox",
+                    payload={
+                        "days": days,
+                        "deleted": deleted,
+                        "include_pending": False,
+                        "source": "scheduler",
+                    },
+                )
+        if deleted:
+            logger.info("inbox retention removed %d message(s)", deleted)
+        return deleted
+
     def run_poll_once(self) -> PollResult | None:
         """Poll Telegram once, or return ``None`` when polling is not configured."""
         if (
@@ -163,6 +202,13 @@ class BackgroundJobs:
         except Exception as exc:
             # A job thread must stay alive; log only the exception type, never payloads.
             logger.warning("publish sweep failed (%s)", type(exc).__name__)
+
+    def _retention_job(self) -> None:
+        try:
+            self.run_retention_once()
+        except Exception as exc:
+            # Keep the trigger alive; never log message text.
+            logger.warning("inbox retention failed (%s)", type(exc).__name__)
 
     def _poll_job(self) -> None:
         try:

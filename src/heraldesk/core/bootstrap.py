@@ -56,6 +56,8 @@ telegram:
   allowed_chat_ids: []
   # Optional sender allowlist; empty accepts any sender in an allowed chat.
   allowed_user_ids: []
+  # Delete handled/ignored inbox rows older than this. 0 keeps them.
+  retention_days: 0
 """
 
 

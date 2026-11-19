@@ -227,10 +227,10 @@ heraldesk stop-all [--off]
 report viewer, LLM cost page, read-only audit log, profile list and a validated editor for the four profile text
 files. Server-rendered (HTMX), no frontend build step.
 
-**REST API:** authenticated `/api/v1` for status, readiness, queue (list + detail), approvals, calendar, inbox,
-reports, audit, cost, profiles, agent-run traces and publishing. Cookies are not accepted; use
-`Authorization: Bearer`. The OpenAPI schema is served at `/api/v1/openapi.json` behind auth; FastAPI's public docs
-routes stay disabled.
+**REST API:** authenticated `/api/v1` for status, readiness, queue (list + detail, paged and profile-filtered),
+approvals, calendar, inbox, reports, audit (paged/action-filtered), cost, profiles, accounts, agent-run traces and
+publishing. Cookies are not accepted; use `Authorization: Bearer`. The OpenAPI schema is served at
+`/api/v1/openapi.json` behind auth; FastAPI's public docs routes stay disabled.
 
 ## 10. Security for self-hosting
 - **Bind `127.0.0.1` by default.** A non-loopback bind requires `--allow-remote`, an explicit
@@ -252,8 +252,8 @@ routes stay disabled.
   Telegram and the Researcher's web search.
 - **Retention:** `heraldesk inbox prune --days N` deletes handled/ignored inbox rows older than N days and
   audits the count. Pending messages are kept unless `--include-pending` is passed; there is no automatic schedule.
-- **Supply chain:** locked dependencies, `uv sync --locked` in CI, `pip-audit` in CI, Dependabot and `SECURITY.md`
-  for reporting.
+- **Supply chain:** locked dependencies, `uv sync --locked` in CI, `pip-audit` in CI, SHA-pinned GitHub Actions,
+  container SBOM/provenance, Dependabot and `SECURITY.md` for reporting.
 - **Acceptable use** (README and CONTRIBUTING): own or authorized accounts only; no fake-account networks,
   impersonation or spam. `disclose_ai` is parsed but not applied to post bodies yet. Users are responsible for
   platform ToS and local law.

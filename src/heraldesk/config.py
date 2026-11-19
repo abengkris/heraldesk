@@ -89,6 +89,8 @@ class TelegramSettings(_Section):
     allowed_chat_ids: list[int] = Field(default_factory=list)
     # Optional sender allowlist. Empty accepts any sender in an allowed chat.
     allowed_user_ids: list[int] = Field(default_factory=list)
+    # Delete handled/ignored inbox rows older than this. 0 keeps them forever.
+    retention_days: int = Field(default=0, ge=0, le=3650)
 
 
 class ResearchSettings(_Section):

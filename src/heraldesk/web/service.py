@@ -46,6 +46,7 @@ from heraldesk.db.repositories import (
     InboxRepository,
     ProfileCatalog,
     ProfileRepository,
+    SocialAccountRepository,
 )
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.approvals import (
@@ -290,6 +291,8 @@ def list_queue_views(
     *,
     status: str = "pending",
     limit: int = 50,
+    offset: int = 0,
+    profile: str | None = None,
 ) -> list[QueueView]:
     """Return approval-backed queue entries across profiles, newest first."""
     selected = status.strip().lower()
@@ -297,9 +300,16 @@ def list_queue_views(
         raise BadRequest(f"status must be one of: {', '.join(QUEUE_FILTERS)}", "invalid_status")
     if limit < 1 or limit > 200:
         raise BadRequest("limit must be between 1 and 200", "invalid_limit")
+    if offset < 0:
+        raise BadRequest("offset must not be negative", "invalid_offset")
+    summaries = ProfileCatalog(session).list()
+    if profile is not None:
+        summaries = [summary for summary in summaries if summary.slug == profile]
+        if not summaries:
+            raise NotFound(f"profile '{profile}' is not registered")
 
     views: list[QueueView] = []
-    for summary in ProfileCatalog(session).list():
+    for summary in summaries:
         entries = list_queue(session, ProfileScope(summary.id), limit=200)
         for entry in entries:
             if entry.approval_id is None or entry.approval_state is None:
@@ -321,7 +331,7 @@ def list_queue_views(
                 )
             )
     views.sort(key=lambda view: view.approval_id, reverse=True)
-    return views[:limit]
+    return views[offset : offset + limit]
 
 
 def list_inbox_views(
@@ -330,6 +340,7 @@ def list_inbox_views(
     *,
     status: str = "pending",
     limit: int = 20,
+    offset: int = 0,
 ) -> list[InboxView]:
     """Return inbox items through the existing triage service (which audits the read)."""
     selected = status.strip().lower()
@@ -337,7 +348,14 @@ def list_inbox_views(
         raise BadRequest(f"status must be one of: {', '.join(INBOX_STATUSES)}", "invalid_status")
     if limit < 1 or limit > 200:
         raise BadRequest("limit must be between 1 and 200", "invalid_limit")
-    items = list_items(session, status=InboxStatus(selected), limit=limit)
+    if offset < 0:
+        raise BadRequest("offset must not be negative", "invalid_offset")
+    items = list_items(
+        session,
+        status=InboxStatus(selected),
+        limit=limit,
+        offset=offset,
+    )
     return [_inbox_view(item, redactor) for item in items]
 
 
@@ -701,13 +719,17 @@ def list_audit_views(
     redactor: SecretRegistry,
     *,
     limit: int = 100,
+    offset: int = 0,
+    action: str | None = None,
 ) -> list[AuditView]:
     """Return newest audit entries with redacted, truncated payloads."""
     if limit < 1 or limit > 500:
         raise BadRequest("limit must be between 1 and 500", "invalid_limit")
+    if offset < 0:
+        raise BadRequest("offset must not be negative", "invalid_offset")
     slugs = {profile.id: profile.slug for profile in ProfileCatalog(session).list()}
     views: list[AuditView] = []
-    for entry in AuditCatalog(session).recent(limit=limit):
+    for entry in AuditCatalog(session).recent(limit=limit, offset=offset, action=action):
         payload = json.dumps(entry.payload, ensure_ascii=True, sort_keys=True)
         views.append(
             AuditView(
@@ -826,3 +848,54 @@ def list_calendar_views(
             )
     views.sort(key=lambda view: (view.when, view.content_item_id))
     return views
+
+
+@dataclass(frozen=True, slots=True)
+class AccountView:
+    """One social account without credentials."""
+
+    id: int
+    profile_slug: str
+    platform: str
+    handle: str
+    label: str | None
+    status: str
+    last_checked_at: datetime | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "profile": self.profile_slug,
+            "platform": self.platform,
+            "handle": self.handle,
+            "label": self.label,
+            "status": self.status,
+            "last_checked_at": (
+                None if self.last_checked_at is None else self.last_checked_at.isoformat()
+            ),
+        }
+
+
+def list_account_views(
+    session: Session,
+    profile: str,
+) -> list[AccountView]:
+    """Return social-account metadata for one profile. Credentials never leave storage."""
+    profile_id = ProfileCatalog(session).resolve(profile)
+    if profile_id is None:
+        raise NotFound(f"profile '{profile}' is not registered")
+    accounts = SocialAccountRepository(session).list(ProfileScope(profile_id))
+    return [
+        AccountView(
+            id=account.id,
+            profile_slug=profile,
+            platform=account.platform,
+            handle=account.handle,
+            label=account.label,
+            status=account.status,
+            last_checked_at=(
+                None if account.last_checked_at is None else as_utc(account.last_checked_at)
+            ),
+        )
+        for account in accounts
+    ]

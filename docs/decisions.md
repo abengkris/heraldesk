@@ -1126,3 +1126,18 @@ never prints an API key, bot token or nsec.
   token and `expires_at` in the encrypted blob, and audits the result without the token.
   `doctor` warns when expiry is missing or within 7 days. Live acceptance still needs a
   tester account; CI stays mocked.
+
+
+## API paging, retention and supply chain (2026-11-19)
+
+- **Paging:** queue, audit and inbox accept `limit` + `offset` (bounded). Queue accepts a
+  profile filter; audit accepts an exact action filter; calendar is window-based. Responses
+  include `offset` and the returned `count`, not an expensive total count.
+- **Accounts read model:** `GET /api/v1/accounts?profile=<slug>` returns id, platform,
+  handle, label, status and last check time. It never decrypts or returns credentials.
+- **Automatic retention:** `telegram.retention_days` (0 disables) schedules a daily 03:15
+  UTC purge of handled/ignored inbox rows. It audits `inbox.pruned` with
+  `source=scheduler`, keeps pending rows, and leaves the manual `inbox prune` command.
+- **Supply chain:** all GitHub Actions are pinned to commit SHAs with version comments;
+  release images enable Buildx provenance and SBOM generation. PyPI trusted publishing
+  remains gated by `PYPI_PUBLISH=true`.

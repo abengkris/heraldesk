@@ -6,6 +6,26 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.13.0] - 2026-11-19
+
+### Added
+
+- `limit`/`offset` pagination for queue, audit and inbox; queue profile filtering and
+  audit action filtering.
+- `GET /api/v1/accounts?profile=<slug>` account metadata without credentials.
+- `telegram.retention_days` schedules a daily 03:15 UTC purge of handled/ignored inbox
+  rows, with `source=scheduler` audit entries.
+
+### Security
+
+- GitHub Actions are pinned to commit SHAs, and release container images now build with
+  SBOM and provenance attestations.
+
+### Docs
+
+- README, architecture, decisions, security policy and roadmap describe the new paging,
+  retention schedule and supply-chain settings.
+
 ## [1.12.0] - 2026-11-19
 
 ### Added

@@ -30,6 +30,7 @@ from heraldesk.web.service import (
     cost_summary,
     get_queue_detail,
     ignore_inbox,
+    list_account_views,
     list_audit_views,
     list_calendar_views,
     list_inbox_views,
@@ -140,6 +141,18 @@ def api_openapi(request: Request) -> dict[str, Any]:
     return cast(dict[str, Any], request.app.openapi())
 
 
+@router.get("/accounts", dependencies=dependencies)
+def api_accounts(
+    request: Request,
+    profile: Annotated[str, Query(min_length=1, max_length=64)],
+) -> dict[str, Any]:
+    """List social-account metadata for one profile. Credentials never leave storage."""
+    context = _context(request)
+    with context.database.session() as session:
+        views = list_account_views(session, profile)
+        return {"items": [view.as_dict() for view in views], "count": len(views)}
+
+
 @router.get("/profiles", dependencies=dependencies)
 def api_profiles(request: Request) -> dict[str, Any]:
     """List registered profile metadata. No credentials or file contents."""
@@ -237,12 +250,24 @@ def api_calendar(
 def api_audit(
     request: Request,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    action: Annotated[str | None, Query(max_length=64)] = None,
 ) -> dict[str, Any]:
     """Return recent audit entries with redacted payloads."""
     context = _context(request)
     with context.database.session() as session:
-        views = list_audit_views(session, context.redactor, limit=limit)
-        return {"items": [view.as_dict() for view in views], "count": len(views)}
+        views = list_audit_views(
+            session,
+            context.redactor,
+            limit=limit,
+            offset=offset,
+            action=action,
+        )
+        return {
+            "items": [view.as_dict() for view in views],
+            "count": len(views),
+            "offset": offset,
+        }
 
 
 @router.get("/queue", dependencies=dependencies)
@@ -250,12 +275,25 @@ def api_queue(
     request: Request,
     status: Annotated[str, Query()] = "pending",
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    profile: Annotated[str | None, Query(max_length=64)] = None,
 ) -> dict[str, Any]:
     """List approval-backed queue entries with redacted previews."""
     context = _context(request)
     with context.database.session() as session:
-        views = list_queue_views(session, context.redactor, status=status, limit=limit)
-        return {"items": [view.as_dict() for view in views], "count": len(views)}
+        views = list_queue_views(
+            session,
+            context.redactor,
+            status=status,
+            limit=limit,
+            offset=offset,
+            profile=profile,
+        )
+        return {
+            "items": [view.as_dict() for view in views],
+            "count": len(views),
+            "offset": offset,
+        }
 
 
 @router.get("/queue/{approval_id}", dependencies=dependencies)
@@ -324,15 +362,26 @@ def api_inbox(
     request: Request,
     status: Annotated[str, Query()] = "pending",
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict[str, Any]:
     """List inbox items with masked chat ids and redacted previews."""
     context = _context(request)
     with context.database.session() as session:
         try:
-            views = list_inbox_views(session, context.redactor, status=status, limit=limit)
+            views = list_inbox_views(
+                session,
+                context.redactor,
+                status=status,
+                limit=limit,
+                offset=offset,
+            )
         except (InboxError, WebError) as exc:
             raise _domain_error(context, exc) from exc
-        return {"items": [view.as_dict() for view in views], "count": len(views)}
+        return {
+            "items": [view.as_dict() for view in views],
+            "count": len(views),
+            "offset": offset,
+        }
 
 
 @router.post("/inbox/{item_id}/reply", dependencies=dependencies)
