@@ -6,6 +6,23 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.17.0] - 2026-11-19
+
+### Added
+
+- Python 3.13 support: the full suite runs on CPython 3.13 and CI adds an Ubuntu 3.13 job.
+  `requires-python` is now `>=3.12,<3.14`.
+
+### Known limitation
+
+- Python 3.14 is blocked by `coincurve 21.0.0` (no cp314 wheel; sdist build failure). The
+  dependency must add 3.14 support before the constraint can widen.
+
+### Docs
+
+- README, AGENTS, architecture, doctor and decisions describe the 3.12–3.13 range and the
+  3.14 blocker.
+
 ## [1.16.3] - 2026-11-19
 
 ### Fixed

@@ -1203,3 +1203,15 @@ never prints an API key, bot token or nsec.
   image for an arbitrary commit SHA. It is therefore pinned to the released tag `v1.14.3` (newer releases bundle a twine that accepts
   Metadata-Version 2.5).
   A SHA pin failed with `ghcr.io/pypa/gh-action-pypi-publish:<sha>: not found`.
+
+
+## Python 3.13 support; 3.14 blocked (2026-11-19)
+
+- **3.13 is supported.** The full test suite passes on CPython 3.13.18 and CI runs it on
+  Ubuntu.
+- **3.14 is blocked by `coincurve 21.0.0`.** There is no cp314 wheel, and its sdist build
+  fails because the bundled cffi distribution has no LICENSE file. The package keeps
+  `requires-python = ">=3.12,<3.14"` until coincurve (or a replacement secp256k1 binding)
+  supports 3.14.
+- `doctor` accepts 3.12–3.13 and fails clearly on other versions.
+- The Docker image and default development interpreter remain 3.12.

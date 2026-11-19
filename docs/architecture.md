@@ -23,7 +23,7 @@ This document is the spec for contributors and coding agents. Work milestone by 
 ## 2. Tech stack
 | Layer | Choice |
 |---|---|
-| Language | Python 3.12 |
+| Language | Python 3.12–3.13 (3.14 blocked by coincurve) |
 | API/Web server | FastAPI + Uvicorn |
 | Web UI | Jinja2 + HTMX + custom CSS variables (vendored; no Node at runtime) |
 | Database | SQLite (WAL) via SQLAlchemy 2 + Alembic. Avoid SQLite-only features that block a future Postgres move |

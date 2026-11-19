@@ -39,7 +39,9 @@ from heraldesk.telegram.credentials import (
 )
 from heraldesk.web.auth import explicit_admin_token
 
-REQUIRED_PYTHON = (3, 12)
+MIN_PYTHON = (3, 12)
+MAX_PYTHON = (3, 14)
+SUPPORTED_PYTHON = "Python 3.12-3.13"
 
 
 class CheckStatus(StrEnum):
@@ -107,11 +109,12 @@ def has_failures(results: Sequence[CheckResult]) -> bool:
 def _check_python() -> CheckResult:
     version = sys.version_info
     found = f"{version.major}.{version.minor}.{version.micro}"
-    if (version.major, version.minor) != REQUIRED_PYTHON:
+    current = (version.major, version.minor)
+    if not MIN_PYTHON <= current < MAX_PYTHON:
         return CheckResult(
             "python",
             CheckStatus.FAIL,
-            f"{found} found, Python 3.12 required",
+            f"{found} found, {SUPPORTED_PYTHON} required",
         )
     return CheckResult("python", CheckStatus.PASS, found)
 
