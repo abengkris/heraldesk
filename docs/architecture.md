@@ -35,7 +35,7 @@ This document is the spec for contributors and coding agents. Work milestone by 
 | Secrets | Fernet encryption at rest; key in `secret.key` (mode 600) |
 | Logging | Standard-library `logging`; uvicorn access logs with query redaction |
 | Tests | pytest, fake LLM provider, fake platform and Telegram adapters |
-| Distribution | GitHub release wheel/sdist, GHCR container image, tag-triggered PyPI workflow |
+| Distribution | GitHub release wheel/sdist, GHCR image (SBOM/provenance), tag-triggered PyPI trusted publishing |
 | Deps | `uv` with lockfile |
 
 ## 3. Architecture

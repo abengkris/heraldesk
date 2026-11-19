@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.14.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.14.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.15.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.15.0)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.14.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.15.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.14.0
+## What works in 1.15.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -43,9 +43,10 @@ an installed plugin. The fake adapter is the offline publishing path. See
 
 ## Install from source
 
-The 1.14.0 release is available as a GitHub release wheel and as a repository checkout.
+The 1.15.0 release is available as a GitHub release wheel and as a repository checkout.
 A tag-triggered workflow builds PyPI and GHCR artifacts; PyPI publishing is enabled after
-the maintainer configures trusted publishing.
+the maintainer configures trusted publishing. The exact TestPyPI/PyPI runbook is in
+[docs/releasing.md](docs/releasing.md).
 
 ```bash
 # Repository checkout, with the pinned development environment
@@ -61,7 +62,7 @@ pipx install --python 3.12 .
 
 The release wheel is attached to each
 [GitHub release](https://github.com/abengkris/heraldesk/releases); install it with
-`pipx install --python 3.12 ./heraldesk-1.14.0-py3-none-any.whl`.
+`pipx install --python 3.12 ./heraldesk-1.15.0-py3-none-any.whl`.
 
 ### Docker
 
@@ -452,6 +453,7 @@ Online probes never print an API key, bot token or nsec.
 - [Architecture](docs/architecture.md)
 - [Decisions and milestone notes](docs/decisions.md)
 - [Roadmap](ROADMAP.md)
+- [Releasing](docs/releasing.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Deployment](deploy/README.md)

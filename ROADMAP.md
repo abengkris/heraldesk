@@ -35,6 +35,8 @@ current summary.
 - [x] M22 API pagination/filters and account read model
 - [x] M23 Automatic inbox retention and supply-chain pinning (SHA actions, SBOM/provenance)
 - [x] M24 Backup lifecycle (pruning with audit, dry-run, server-lock restore guard)
+- [x] M25 PyPI readiness (TestPyPI/PyPI trusted-publishing workflow, twine checks, sdist
+  install smoke, release runbook)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.

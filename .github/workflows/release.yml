@@ -44,6 +44,27 @@ jobs:
           path: dist
       - name: Publish
         uses: pypa/gh-action-pypi-publish@7f25271a4aa483500f742f9492b2ab5648d61011  # v1.12.4
+        with:
+          attestations: true
+
+  testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    # Configure a separate TestPyPI trusted publisher for the "testpypi" environment.
+    if: vars.TESTPYPI_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        with:
+          name: dist
+          path: dist
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@7f25271a4aa483500f742f9492b2ab5648d61011  # v1.12.4
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          attestations: true
 
   image:
     name: Publish container image

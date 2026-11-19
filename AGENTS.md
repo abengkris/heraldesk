@@ -23,7 +23,7 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
 
 ## Commands (keep this section up to date as the project grows)
 - Install dev deps: `uv sync`
-- Build distributions: `uv build` (wheel + sdist)
+- Build distributions: `uv build` (wheel + sdist); release from a tag, see `docs/releasing.md`
 - Build the container image: `docker build -t heraldesk:local .`
 - Run tests: `uv run pytest`
 - Run the core cross-platform subset (what Windows CI runs): `uv run pytest -m core`

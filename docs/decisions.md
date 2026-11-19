@@ -1154,3 +1154,21 @@ never prints an API key, bot token or nsec.
   candidates and changes nothing. Existing non-backup ZIPs are ignored.
 - **Not implemented:** archive encryption, automatic pruning after each backup, and
   scheduled backups. Operators must protect credential archives themselves.
+
+
+## PyPI trusted publishing readiness (2026-11-19)
+
+- **OIDC only; no stored PyPI token.** The release workflow requests `id-token: write`,
+  uses `pypa/gh-action-pypi-publish` with attestations, and gates publishing on repository
+  variables (`TESTPYPI_PUBLISH`, `PYPI_PUBLISH`) plus GitHub environments (`testpypi`,
+  `pypi`). The maintainer must create matching pending publishers on PyPI/TestPyPI.
+- **TestPyPI first.** A separate job publishes to `https://test.pypi.org/legacy/` with the
+  same action. TestPyPI does not host dependencies, so the verification command adds the
+  real PyPI index.
+- **Tag-only releases.** The version in `src/heraldesk/__init__.py`, the changelog entry and
+  the `vX.Y.Z` tag must match. PyPI versions are immutable; rollback is yank + patch.
+- **Pre-flight gates:** CI runs `twine check`, asserts `py.typed`, `_alembic` and static
+  assets in the wheel, installs the wheel, and installs the sdist into clean virtual
+  environments.
+- **Artifacts:** wheel/sdist on PyPI and the GitHub release, GHCR image with SBOM and
+  provenance, and the release notes.

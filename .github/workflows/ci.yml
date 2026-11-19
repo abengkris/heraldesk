@@ -77,8 +77,17 @@ jobs:
           version: "0.13.8"
           python-version: "3.12"
           enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked
       - name: Build distributions
         run: uv build
+      - name: Check package metadata
+        run: uv run --no-sync twine check dist/*.whl dist/*.tar.gz
+      - name: Verify wheel contents
+        run: |
+          unzip -l dist/*.whl | grep -q "heraldesk/py.typed"
+          unzip -l dist/*.whl | grep -q "heraldesk/_alembic/versions/0010"
+          unzip -l dist/*.whl | grep -q "heraldesk/web/static/htmx.min.js"
       - name: Install the wheel and initialise an instance
         run: |
           uv venv /tmp/heraldesk-wheel --python 3.12
@@ -88,6 +97,14 @@ jobs:
           /tmp/heraldesk-wheel/bin/heraldesk init
           /tmp/heraldesk-wheel/bin/heraldesk doctor
           /tmp/heraldesk-wheel/bin/heraldesk --version
+      - name: Install the source distribution
+        run: |
+          uv venv /tmp/heraldesk-sdist --python 3.12
+          uv pip install --python /tmp/heraldesk-sdist/bin/python --no-cache-dir dist/*.tar.gz
+          HERALDESK_HOME="$(mktemp -d)"
+          export HERALDESK_HOME
+          /tmp/heraldesk-sdist/bin/heraldesk init
+          /tmp/heraldesk-sdist/bin/heraldesk --version
 
   docker:
     name: Build container image

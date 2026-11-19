@@ -6,6 +6,21 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.15.0] - 2026-11-19
+
+### Added
+
+- TestPyPI trusted-publishing job alongside the PyPI job, both gated by repository
+  variables and GitHub environments.
+- CI pre-flight packaging gates: `twine check`, wheel content assertions (`py.typed`,
+  Alembic migrations, HTMX asset), wheel install and sdist install smoke tests.
+- `docs/releasing.md` runbook for TestPyPI/PyPI trusted publishing, verification,
+  troubleshooting and rollback.
+
+### Security
+
+- PyPI publication uses OIDC trusted publishing with attestations; no PyPI token is stored.
+
 ## [1.14.0] - 2026-11-19
 
 ### Added
