@@ -554,7 +554,7 @@ def publish_content(
     context: WebContext,
     content_item_id: int,
     *,
-    actor: str = "web",
+    actor: str = "user",
 ) -> PublishOutcome:
     """Publish one content item using the existing publisher and adapter routing."""
     scope = scope_for_content_item(session, content_item_id)

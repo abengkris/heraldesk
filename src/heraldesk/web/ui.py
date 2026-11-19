@@ -440,7 +440,7 @@ async def queue_publish(request: Request, approval_id: int) -> Response:
             if resolved is None:
                 raise NotFound("approval not found")
             _scope, item_id = resolved
-            outcome = publish_content(db, context, item_id, actor="web")
+            outcome = publish_content(db, context, item_id, actor="user")
     except (ApprovalError, ContentError, WebError) as exc:
         return _queue_detail_with_error(request, ui_session, approval_id, exc)
     if outcome.status.value == "published":

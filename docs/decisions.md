@@ -1185,3 +1185,12 @@ never prints an API key, bot token or nsec.
   `killswitch.engaged|disengaged` with `source=web`. It does not cancel already scheduled
   items.
 - **CSRF** is required on both actions; all error messages are redacted.
+
+
+## Web publish actor and async bridge (2026-11-19)
+
+- Web/API-triggered publishes use the audit actor `user`; `web` is not a valid audit actor.
+- `publisher.publish_item` is synchronous but can be called from async FastAPI routes. When
+  an event loop is already running, it runs the adapter coroutine in a short worker thread
+  instead of calling `asyncio.run` on the running loop. No database session enters the
+  worker.

@@ -627,6 +627,11 @@ def test_queue_detail_publishes_an_approved_item(
     approval = request_approval(db_session, profile_setup.scope, item.id, now=NOW)
     set_profile_status(db_session, profile_setup.scope, ProfileStatus.ACTIVE)
     approve(db_session, profile_setup.layout, profile_setup.scope, item.id, now=NOW)
+    ContentItemRepository(db_session).set_scheduled_at(
+        profile_setup.scope,
+        item.id,
+        scheduled_at=datetime.now(UTC) + timedelta(days=1),
+    )
     db_session.commit()
 
     with make_client(initialized, adapter_factory=lambda _platform: FakeAdapter()) as client:

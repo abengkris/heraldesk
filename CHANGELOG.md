@@ -6,6 +6,15 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.16.1] - 2026-11-19
+
+### Fixed
+
+- Web UI publishing now uses the valid audit actor `user` instead of `web`.
+- The publisher can run adapter coroutines from an async Web UI route without
+  `asyncio.run()` raising inside a running event loop; it uses a short worker thread.
+- The Web UI publish test no longer races the startup scheduler.
+
 ## [1.16.0] - 2026-11-19
 
 ### Added

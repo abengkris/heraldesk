@@ -20,10 +20,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from sqlalchemy.orm import Session
 
@@ -103,6 +104,21 @@ def _as_utc(value: datetime) -> datetime:
 
 def _current(now: datetime | None) -> datetime:
     return _as_utc(datetime.now(UTC) if now is None else now)
+
+
+def _run_adapter_coroutine(coroutine: Any) -> Any:
+    """Run an adapter coroutine from sync code, even inside a running event loop.
+
+    FastAPI Web UI routes are async; the publisher remains synchronous. ``asyncio.run``
+    alone would raise there, so a short worker thread owns the coroutine when a loop is
+    already running. The adapter sees no database session, so cross-thread use is safe.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coroutine)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coroutine).result()
 
 
 def _body_hash(body: str) -> str:
@@ -542,7 +558,7 @@ def publish_item(
         media=dict(item.media),
     )
     try:
-        result = asyncio.run(real_adapter.publish(account, request))
+        result = _run_adapter_coroutine(real_adapter.publish(account, request))
     except Exception as exc:  # adapters must never crash the publisher
         message = redactor.redact(str(exc)).strip()
         error = (message or type(exc).__name__)[:MAX_AUDIT_TEXT]
