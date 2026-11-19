@@ -19,6 +19,7 @@ from heraldesk.cli.agent import agent_app
 from heraldesk.cli.backup import backup_command, restore_command
 from heraldesk.cli.common import abort, console, session_for
 from heraldesk.cli.inbox import inbox_app
+from heraldesk.cli.plugins import plugins_app
 from heraldesk.cli.profile import profile_app
 from heraldesk.cli.publish import publish_command
 from heraldesk.cli.queue import queue_app
@@ -54,6 +55,7 @@ app.add_typer(scheduler_app, name="scheduler")
 app.add_typer(telegram_app, name="telegram")
 app.add_typer(inbox_app, name="inbox")
 app.add_typer(report_app, name="report")
+app.add_typer(plugins_app, name="plugins")
 app.command("publish")(publish_command)
 app.command("runs")(runs_command)
 app.command("backup")(backup_command)

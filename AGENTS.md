@@ -45,6 +45,7 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
 - Add a Nostr account (throwaway key only; the nsec is read from the environment, never typed):
   `uv run heraldesk account add <slug> --platform nostr --credential-from-env NOSTR_NSEC_THROWAY [--label "throwaway"] [--relay wss://relay.example]`
 - List accounts with the Nostr npub masked: `uv run heraldesk account list <slug>`
+- List built-in and installed adapter plugins: `uv run heraldesk plugins list [--check]`
 - Test accounts offline: `uv run heraldesk account test <slug>` (fake adapter) or
   `uv run heraldesk account test <slug> --platform nostr` (local nsec and relay validation, no network)
 - Run the Writer once and record the trace: `uv run heraldesk agent run writer <slug> --idea "..."`

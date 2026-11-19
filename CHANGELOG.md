@@ -5,6 +5,13 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.2.0` adds the local Web UI + REST API; `1.2.1` enforces quiet hours and daily post caps;
 `1.3.0` adds third-party adapter plugins.
 
+## [Unreleased]
+
+### Added
+
+- `heraldesk plugins list [--check]` shows built-in adapters and installed
+  `heraldesk.platforms` plugins. `--check` imports each plugin and validates its adapter.
+
 ## [1.4.0] - 2026-11-19
 
 ### Added
