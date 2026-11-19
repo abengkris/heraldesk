@@ -4,6 +4,14 @@ All notable changes to Heraldesk are recorded here. The `1.0.0` release folded t
 M0-M9 implementation milestones together; `1.1.0` adds the first real platform adapter;
 `1.2.0` adds the local Web UI + REST API; `1.2.1` enforces quiet hours and daily post caps.
 
+## [Unreleased]
+
+### Tests
+
+- Reuse one Alembic-migrated data folder per test session and copy it per test. The full
+  suite drops from roughly 12 minutes to about 3 minutes; `test_alembic.py` and
+  `test_init.py` still exercise the real migration and bootstrap paths.
+
 ## [1.2.1] - 2026-11-19
 
 ### Fixed
