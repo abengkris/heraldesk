@@ -2,9 +2,18 @@
 
 All notable changes to Heraldesk are recorded here. The `1.0.0` release folded the
 M0-M9 implementation milestones together; `1.1.0` adds the first real platform adapter;
-`1.2.0` adds the local Web UI + REST API; `1.2.1` enforces quiet hours and daily post caps.
+`1.2.0` adds the local Web UI + REST API; `1.2.1` enforces quiet hours and daily post caps;
+`1.3.0` adds third-party adapter plugins.
 
-## [Unreleased]
+## [1.3.0] - 2026-11-19
+
+### Added
+
+- Third-party platform adapters through the `heraldesk.platforms` entry-point group.
+  Discovery is lazy and cached; built-ins win, account checks stay offline, and a broken
+  plugin raises `PluginError` without stopping other platforms.
+- Plugin documentation and tests for discovery, caching, platform matching, built-in
+  precedence and failure modes.
 
 ### Tests
 

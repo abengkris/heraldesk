@@ -2,16 +2,19 @@
 
 ``fake`` and ``nostr`` implement publishing. ``nostr`` signs NIP-01 kind 1 notes with the
 account's encrypted nsec and broadcasts them to relays. Every other platform stays
-:class:`NotSupportedError` so no unverified API call can happen; the reason is documented
-in ``docs/platforms/README.md``.
+:class:`NotSupportedError` unless an installed plugin provides it through the
+``heraldesk.platforms`` entry-point group; the reason is documented in
+``docs/platforms/README.md``.
 
 ``adapter_for`` is the offline account-check path: Nostr validates the key and relay list
-locally, every other platform keeps the fake adapter.
+locally, every other platform keeps the fake adapter. Plugins are used for publishing
+only, so ``account test`` never imports third-party code.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from heraldesk.config import ConfigError, load_config
 from heraldesk.platforms.base import (
@@ -25,6 +28,9 @@ from heraldesk.platforms.base import (
 )
 from heraldesk.platforms.fake import FakeAdapter
 from heraldesk.platforms.nostr import NostrAdapter
+
+if TYPE_CHECKING:
+    from heraldesk.plugins import PluginAdapter
 
 __all__ = [
     "KNOWN_PLATFORMS",
@@ -53,6 +59,17 @@ _PUBLISH_ADAPTERS: dict[str, Callable[[], PlatformAdapter]] = {
 }
 
 
+def _plugin_adapter(key: str) -> PluginAdapter | None:
+    """Return a discovered plugin for *key*, importing ``heraldesk.plugins`` lazily.
+
+    The lazy import keeps ``heraldesk.plugins`` from importing this package first and
+    creating a cycle through ``platforms.base``.
+    """
+    from heraldesk.plugins import plugin_adapters
+
+    return plugin_adapters().get(key)
+
+
 def adapter_for(platform: str) -> PlatformAdapter:
     """Return the adapter used for an offline account check.
 
@@ -65,12 +82,20 @@ def adapter_for(platform: str) -> PlatformAdapter:
 
 
 def publish_adapter_for(platform: str) -> PlatformAdapter:
-    """Return the publisher adapter for *platform* or raise :class:`NotSupportedError`."""
+    """Return the publisher adapter for *platform* or raise :class:`NotSupportedError`.
+
+    Built-in adapters take precedence. An installed plugin supplies any other platform
+    through the ``heraldesk.platforms`` entry-point group. A plugin that cannot be
+    imported raises :class:`PluginError`, which is a :class:`PublishError`.
+    """
     key = platform.strip().lower()
     factory = _PUBLISH_ADAPTERS.get(key)
-    if factory is None:
-        raise NotSupportedError(
-            f"no publisher adapter for platform '{key}'; "
-            "see docs/platforms/README.md for the documented reason"
-        )
-    return factory()
+    if factory is not None:
+        return factory()
+    plugin = _plugin_adapter(key)
+    if plugin is not None:
+        return plugin.factory()
+    raise NotSupportedError(
+        f"no publisher adapter for platform '{key}'; "
+        "install a plugin or see docs/platforms/README.md for the documented reason"
+    )

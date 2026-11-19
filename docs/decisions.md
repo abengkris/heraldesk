@@ -900,3 +900,25 @@ profile timezone.
   separately on each side, so a DST day is 23 or 25 hours. Deferral uses the later
   occurrence of an ambiguous end time (`fold=1`) so a fall-back hour cannot publish inside
   the quiet window.
+
+## Third-party adapter plugins (2026-11-19)
+
+The original M8 scope included an entry-point loader. It ships now as M12 without adding
+a real platform adapter.
+
+- **Entry-point group:** `heraldesk.platforms`. The entry point name is the platform key
+  stored on accounts; the target is a zero-argument callable returning an adapter.
+- **Contract:** `PlatformAdapter` from `platforms/base.py` (`platform`, `publish`,
+  `validate_credentials`). The returned `platform` must equal the entry point name.
+- **Built-ins win.** A plugin cannot replace `fake` or `nostr`; duplicate entry point
+  names keep the first one.
+- **Discovery is lazy and cached.** Only entry-point metadata is read at discovery; plugin
+  code is imported on first use. `reset_plugin_cache()` exists for in-process installs.
+- **Account checks stay offline.** `adapter_for` never imports plugin code; `account test`
+  keeps the fake adapter for plugin platforms. Only publishing loads the plugin.
+- **Failures are explicit.** `PluginError` subclasses `PublishError`, so a broken plugin
+  is a normal publish failure rather than a crash. The publisher keeps ownership of the
+  state machine, policy gates, retries, idempotency, notifications and audit.
+- **Trust boundary.** Plugin code runs in the Heraldesk process with the user's
+  permissions; the documentation says to install only trusted packages. No sandbox is
+  attempted.

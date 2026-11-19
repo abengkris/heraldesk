@@ -290,6 +290,8 @@ The web UI, password auth and the `/api/v1` namespace remain future work. See `d
 
 **M8 Plugins and more adapters.** Entry-point loader, plugin template, X, Facebook, Instagram, LinkedIn adapters.
 *Accept:* a sample third-party plugin is detected without touching core code.
+*Repository note (2026-11-19):* the entry-point plugin loader shipped as M12 with docs and tests.
+X, Facebook, Instagram and LinkedIn adapters remain future work.
 
 **M9 Release v0.1.0.** Docker image, PyPI publish, `docker-compose.yml` and `systemd` examples, docs (local quickstart,
 VPS + Caddy deploy, writing `soul.md`, writing plugins), `SECURITY.md`, `CONTRIBUTING.md`, sample profiles in `examples/`.
