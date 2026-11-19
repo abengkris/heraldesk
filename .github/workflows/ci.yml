@@ -81,8 +81,8 @@ jobs:
         run: uv build
       - name: Install the wheel and initialise an instance
         run: |
-          python -m venv /tmp/heraldesk-wheel
-          /tmp/heraldesk-wheel/bin/pip install --no-cache-dir dist/*.whl
+          uv venv /tmp/heraldesk-wheel --python 3.12
+          uv pip install --python /tmp/heraldesk-wheel/bin/python --no-cache-dir dist/*.whl
           HERALDESK_HOME="$(mktemp -d)"
           export HERALDESK_HOME
           /tmp/heraldesk-wheel/bin/heraldesk init

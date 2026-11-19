@@ -6,6 +6,18 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.5.1] - 2026-11-19
+
+### Fixed
+
+- The CI wheel-install smoke job now creates its virtual environment with the uv-managed
+  Python 3.12 instead of the runner's default Python 3.14. No runtime code changed.
+
+### Docs
+
+- Finished the post-1.5 documentation reconciliation: API scope, `/health` readiness,
+  Telegram sender allowlist and the historical 1.0 deferred list.
+
 ## [1.5.0] - 2026-11-19
 
 ### Added
@@ -188,9 +200,13 @@ the Threads adapter and production distribution/hardening.
   and tracked-file hygiene.
 - Rewrote the English README and bumped the package version to `1.0.0`.
 
-### Deferred
+### Deferred (as of 1.0.0)
 
 - Local web UI, REST `/api/v1`, admin authentication and remote deployment examples.
 - Real Threads, Nostr, X, Facebook, Instagram and LinkedIn adapters.
 - Plugin entry-point loading and third-party adapter templates.
 - Docker image and PyPI publishing.
+
+Later delivered in 1.1–1.5: Nostr, Threads, the Web UI/API, remote mode, adapter plugins,
+Docker/Compose/deploy assets and the tag-triggered PyPI/GHCR workflow. X, Facebook,
+Instagram and LinkedIn remain plugin/future work.

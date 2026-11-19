@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.5.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.5.1-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.5.1)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.5.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.5.1.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.5.0
+## What works in 1.5.1
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -31,7 +31,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 - Deterministic weekly and monthly reports, with no LLM calls.
 - Backup and restore, doctor hardening, global and per-profile kill switches.
 - Real Nostr publishing (NIP-01 kind 1 notes) with a throwaway key.
-- Local Web UI and authenticated `/api/v1` for queue, inbox, reports and profiles.
+- Local Web UI and authenticated `/api/v1` for queue (including full-draft detail), inbox, reports and manual publishing.
 - SQLite only. No Redis, Postgres, Node, telemetry or phone-home.
 
 ## Requirements
@@ -42,7 +42,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 
 ## Install from source
 
-The 1.5.0 release is available as a GitHub release wheel and as a repository checkout.
+The 1.5.1 release is available as a GitHub release wheel and as a repository checkout.
 A tag-triggered workflow builds PyPI and GHCR artifacts; PyPI publishing is enabled after
 the maintainer configures trusted publishing.
 
@@ -60,7 +60,7 @@ pipx install --python 3.12 .
 
 The release wheel is attached to each
 [GitHub release](https://github.com/abengkris/heraldesk/releases); install it with
-`pipx install --python 3.12 ./heraldesk-1.5.0-py3-none-any.whl`.
+`pipx install --python 3.12 ./heraldesk-1.5.1-py3-none-any.whl`.
 
 ### Docker
 
@@ -245,7 +245,7 @@ curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
   http://127.0.0.1:8000/api/v1/queue?status=pending
 ```
 
-`/health` is public liveness only. `/api/v1`, `/status` and every UI page require auth.
+`/health` is public liveness/schema readiness and returns 503 when the database is behind the packaged migration. `/api/v1`, `/status` and every UI page require auth.
 Tokens in a URL query string are rejected. Login is rate limited to five failed attempts
 per minute per IP.
 
