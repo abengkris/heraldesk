@@ -72,6 +72,15 @@ class BotApiTelegramAdapter:
             raise TelegramError(f"telegram API rejected {method}")
         return parsed
 
+    def get_me(self) -> str | None:
+        """Return the bot username from ``getMe``, or ``None`` when it has none."""
+        parsed = self._call("getMe", {})
+        result = parsed.get("result")
+        if not isinstance(result, dict):
+            return None
+        username = result.get("username")
+        return username if isinstance(username, str) and username else None
+
     def send_message(self, chat_id: int, text: str) -> TelegramSendResult:
         """Send one plain-text message through ``sendMessage``."""
         body = text.strip()

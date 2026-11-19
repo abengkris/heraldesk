@@ -36,7 +36,8 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
   explicit `HERALDESK_ADMIN_TOKEN` and `HERALDESK_TRUST_PROXY=1`; the default remains `127.0.0.1`
 - Initialise an instance: `uv run heraldesk init`
 - Diagnose an instance offline: `uv run heraldesk doctor` (database migration head, config, `secret.key`,
-  Telegram token when enabled, writability and reports directory; network checks are opt-in with `--online`)
+  Telegram token when enabled, writability and reports directory; `--online` probes the LLM provider,
+  Telegram `getMe` when enabled, and Nostr relays when an account exists)
 - Create a profile skeleton: `uv run heraldesk profile new <slug> --name "Name" --type company --timezone UTC --languages en,id`
 - Validate profile files: `uv run heraldesk profile reload [slug]`
 - Control a profile: `uv run heraldesk profile pause|resume|killswitch <slug>`

@@ -922,3 +922,22 @@ a real platform adapter.
 - **Trust boundary.** Plugin code runs in the Heraldesk process with the user's
   permissions; the documentation says to install only trusted packages. No sandbox is
   attempted.
+
+## Online doctor probes (2026-11-19)
+
+`heraldesk doctor` stays offline by default. `--online` adds explicit network checks and
+never prints an API key, bot token or nsec.
+
+- **LLM:** one completion with `max_tokens=1` only when the resolved provider is LiteLLM.
+  The fake provider returns a PASS with "no network call". A failed call FAILs the doctor.
+- **Telegram:** `getMe` only when `telegram.enabled` is true and a token resolves through
+  the normal environment/`.env`/encrypted-file precedence. A missing token or failed call
+  FAILs.
+- **Nostr:** one WebSocket handshake, trying the configured relays in order, only when at
+  least one registered profile has a Nostr account. Reaching any relay passes; reaching
+  none is a WARN because network filtering is not a broken installation.
+- **Timeouts:** the configured LLM timeout, the Telegram adapter's 10-second timeout, and
+  a relay-probe cap of 5 seconds. There are no retries.
+- **Tests:** probes are small private functions, so tests monkeypatch them and never touch
+  the network. A default `--online` run makes no external call (fake LLM, disabled
+  Telegram, no Nostr account).

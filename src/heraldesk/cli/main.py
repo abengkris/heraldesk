@@ -107,7 +107,10 @@ def init_command() -> None:
 def doctor_command(
     online: Annotated[
         bool,
-        typer.Option("--online", help="Also check network connectivity (not implemented yet)."),
+        typer.Option(
+            "--online",
+            help="Also probe the LLM provider, Telegram and configured Nostr relays.",
+        ),
     ] = False,
 ) -> None:
     """Check the installation. Offline by default."""

@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.3.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.4.0)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.3.0.** Heraldesk runs a small deterministic team of AI roles (strategist,
+**Version 1.4.0.** Heraldesk runs a small deterministic team of AI roles (strategist,
 researcher, writer, designer, community manager, analyst, compliance) that draft, review,
 queue and schedule social media content for accounts you manage. You approve; Heraldesk
 does the legwork. It runs on your laptop or your own VPS. Your keys, your data.
@@ -15,7 +15,7 @@ them can be supplied by an installed plugin. The fake platform adapter is the of
 publishing path. A real Nostr adapter was added in 1.1.0; see
 [Nostr publishing](#nostr-publishing).
 
-## What works in 1.3.0
+## What works in 1.4.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -40,7 +40,7 @@ publishing path. A real Nostr adapter was added in 1.1.0; see
 
 ## Install from source
 
-The 1.3.0 release is installed from the repository. PyPI publishing and Docker images are
+The 1.4.0 release is installed from the repository. PyPI publishing and Docker images are
 not part of this release.
 
 ```bash
@@ -319,7 +319,15 @@ Upgrade procedure: make a credential backup first, install the new version, run
 - the reports directory, or that it can be created;
 - loopback-only server binding.
 
-Only FAIL changes the exit code to 1. `--online` is reserved for future network checks.
+Only FAIL changes the exit code to 1. `--online` adds three explicit network probes:
+
+- the LLM provider, using one minimal completion when a real LiteLLM model is configured
+  (the fake provider makes no call);
+- the Telegram Bot API's `getMe`, when `telegram.enabled` is true and a token is present;
+- one Nostr relay WebSocket handshake, only when at least one Nostr account exists. An
+  unreachable relay is a WARN, not a failure.
+
+Online probes never print an API key, bot token or nsec.
 
 ## Security notes
 

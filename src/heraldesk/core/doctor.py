@@ -1,11 +1,14 @@
-"""Offline health checks for ``heraldesk doctor``.
+"""Offline health checks for ``heraldesk doctor``, plus opt-in online probes.
 
-Every check runs locally. Network checks are opt-in and are not implemented until the LLM
-and platform milestones. A FAIL result makes the command exit non-zero; WARN does not.
+Every check runs locally. ``doctor --online`` adds three explicit network probes: the
+configured LLM provider, the Telegram Bot API when Telegram is enabled, and Nostr relays
+when at least one Nostr account exists. A FAIL result makes the command exit non-zero;
+WARN does not. Online probes never print an API key, bot token or nsec.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 import stat
 import sys
@@ -16,10 +19,18 @@ from enum import StrEnum
 from pathlib import Path
 
 from heraldesk import paths
-from heraldesk.config import ConfigError, is_loopback, load_config
+from heraldesk.config import Config, ConfigError, is_loopback, load_config
 from heraldesk.core.crypto import CryptoError, key_is_secure, validate_key
-from heraldesk.db.engine import WAL_MODE, inspect_database
+from heraldesk.db.engine import WAL_MODE, build_engine, inspect_database
 from heraldesk.db.migrations import MigrationError, head_revision
+from heraldesk.db.repositories import ProfileCatalog, SocialAccountRepository
+from heraldesk.db.scope import ProfileScope
+from heraldesk.db.session import session_factory
+from heraldesk.llm.errors import LLMError
+from heraldesk.llm.factory import build_llm
+from heraldesk.llm.types import ChatMessage, LLMRequest
+from heraldesk.telegram.base import TelegramError
+from heraldesk.telegram.bot_api import BotApiTelegramAdapter
 from heraldesk.telegram.credentials import (
     TelegramConfigError,
     resolve_bot_token,
@@ -63,13 +74,24 @@ def run_checks(home: Path | None = None, *, online: bool = False) -> list[CheckR
         _check_server_host(layout),
     ]
     if online:
-        results.append(
-            CheckResult(
-                name="online checks",
-                status=CheckStatus.WARN,
-                detail="not implemented yet; arrives with the LLM and platform milestones",
+        try:
+            config = load_config(layout.home)
+        except ConfigError:
+            results.append(
+                CheckResult(
+                    name="online checks",
+                    status=CheckStatus.WARN,
+                    detail="skipped because the configuration is invalid",
+                )
             )
-        )
+        else:
+            results.extend(
+                (
+                    _check_online_llm(layout, config),
+                    _check_online_telegram(layout, config),
+                    _check_online_nostr(layout, config),
+                )
+            )
     return results
 
 
@@ -297,3 +319,105 @@ def _check_server_host(layout: paths.Layout) -> CheckResult:
         CheckStatus.PASS,
         f"{config.server.host}:{config.server.port} (loopback)",
     )
+
+
+def _check_online_llm(layout: paths.Layout, config: Config) -> CheckResult:
+    try:
+        detail = _probe_llm(layout, config)
+    except LLMError as exc:
+        return CheckResult("llm provider", CheckStatus.FAIL, str(exc))
+    return CheckResult("llm provider", CheckStatus.PASS, detail)
+
+
+def _probe_llm(layout: paths.Layout, config: Config) -> str:
+    """Make one minimal, explicitly requested LLM call."""
+    provider = build_llm(config, layout)
+    if provider.name == "fake":
+        return "fake provider selected; no network call"
+    request = LLMRequest(
+        messages=(ChatMessage(role="user", content="Reply with OK."),),
+        model=config.llm.default_model.strip(),
+        max_tokens=1,
+        temperature=0.0,
+    )
+    result = provider.complete(request)
+    return f"{result.model} responded"
+
+
+def _check_online_telegram(layout: paths.Layout, config: Config) -> CheckResult:
+    try:
+        detail = _probe_telegram(layout, config)
+    except TelegramError as exc:
+        return CheckResult("telegram api", CheckStatus.FAIL, str(exc))
+    return CheckResult("telegram api", CheckStatus.PASS, detail)
+
+
+def _probe_telegram(layout: paths.Layout, config: Config) -> str:
+    """Call ``getMe`` only when Telegram is enabled and a token is configured."""
+    if not config.telegram.enabled:
+        return "telegram is disabled"
+    token = resolve_bot_token(layout)
+    if token is None:
+        raise TelegramConfigError(
+            "telegram.enabled is true but no bot token is configured; "
+            "run 'heraldesk telegram token set'"
+        )
+    adapter = BotApiTelegramAdapter(token)
+    username = adapter.get_me()
+    return f"bot @{username} reachable" if username else "bot reachable"
+
+
+def _check_online_nostr(layout: paths.Layout, config: Config) -> CheckResult:
+    try:
+        detail = _probe_nostr(layout, config)
+    except Exception as exc:  # websockets and TLS errors vary by platform
+        return CheckResult("nostr relays", CheckStatus.WARN, f"no relay reachable: {exc}")
+    return CheckResult("nostr relays", CheckStatus.PASS, detail)
+
+
+def _probe_nostr(layout: paths.Layout, config: Config) -> str:
+    """Open one relay connection when at least one Nostr account is configured."""
+    if not _has_nostr_account(layout):
+        return "no Nostr accounts configured"
+    failures: list[str] = []
+    timeout = min(config.nostr.timeout_seconds, 5.0)
+    for relay in config.nostr.relays:
+        try:
+            _probe_relay(relay, timeout=timeout)
+        except Exception as exc:
+            failures.append(f"{relay} ({type(exc).__name__})")
+        else:
+            return f"{relay} reachable"
+    raise RuntimeError("; ".join(failures))
+
+
+def _probe_relay(relay: str, *, timeout: float) -> None:
+    """Complete a WebSocket handshake with one relay, then close immediately."""
+    import websockets
+
+    async def check() -> None:
+        async with websockets.connect(relay, open_timeout=timeout, close_timeout=timeout):
+            return
+
+    asyncio.run(check())
+
+
+def _has_nostr_account(layout: paths.Layout) -> bool:
+    """Return ``True`` when any registered profile has a Nostr account."""
+    status = inspect_database(layout.db_path)
+    if not status.exists or status.error is not None:
+        return False
+    engine = build_engine(layout.db_path)
+    try:
+        session = session_factory(engine)()
+        try:
+            accounts = SocialAccountRepository(session)
+            for summary in ProfileCatalog(session).list():
+                scoped = accounts.list(ProfileScope(summary.id))
+                if any(account.platform == "nostr" for account in scoped):
+                    return True
+            return False
+        finally:
+            session.close()
+    finally:
+        engine.dispose()

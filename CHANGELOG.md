@@ -5,6 +5,15 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.2.0` adds the local Web UI + REST API; `1.2.1` enforces quiet hours and daily post caps;
 `1.3.0` adds third-party adapter plugins.
 
+## [1.4.0] - 2026-11-19
+
+### Added
+
+- `heraldesk doctor --online` now probes the configured LLM provider with one minimal
+  completion, the Telegram Bot API with `getMe` when Telegram is enabled, and one Nostr
+  relay only when a Nostr account exists. An unreachable relay is a WARN.
+- Added `BotApiTelegramAdapter.get_me()`.
+
 ## [1.3.0] - 2026-11-19
 
 ### Added

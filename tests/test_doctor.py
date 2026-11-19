@@ -8,11 +8,19 @@ import sys
 from pathlib import Path
 
 import pytest
+from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
 from heraldesk.cli.main import app
+from heraldesk.core import doctor
 from heraldesk.core.bootstrap import InitResult, initialize
+from heraldesk.core.crypto import CredentialCipher
 from heraldesk.core.doctor import CheckStatus, has_failures, run_checks
+from heraldesk.db.repositories import SocialAccountRepository
+from heraldesk.llm.errors import LLMError
+from heraldesk.telegram.base import TelegramError
+from heraldesk.telegram.bot_api import BotApiTelegramAdapter
+from tests.conftest import ProfileSetup
 
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
 runner = CliRunner()
@@ -104,8 +112,108 @@ def test_non_loopback_host_warns(initialized: InitResult) -> None:
 
 def test_online_checks_are_opt_in(initialized: InitResult) -> None:
     home = initialized.layout.home
-    assert "online checks" not in by_name(home)
-    assert by_name(home, online=True)["online checks"] is CheckStatus.WARN
+    offline = by_name(home)
+    assert {"llm provider", "telegram api", "nostr relays"}.isdisjoint(offline)
+
+    online = by_name(home, online=True)
+    assert online["llm provider"] is CheckStatus.PASS
+    assert online["telegram api"] is CheckStatus.PASS
+    assert online["nostr relays"] is CheckStatus.PASS
+
+
+def test_online_llm_failure_fails(initialized: InitResult, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = initialized.layout.home
+    (home / "heraldesk.yaml").write_text(
+        "version: 1\nllm:\n  provider: litellm\n  default_model: deepseek/deepseek-chat\n",
+        encoding="utf-8",
+    )
+
+    def fail(*_args: object, **_kwargs: object) -> str:
+        raise LLMError("LLM call failed (AuthenticationError)")
+
+    monkeypatch.setattr(doctor, "_probe_llm", fail)
+    statuses = by_name(home, online=True)
+    assert statuses["llm provider"] is CheckStatus.FAIL
+
+
+def test_online_telegram_uses_get_me(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = initialized.layout.home
+    monkeypatch.setenv("HERALDESK_TELEGRAM_BOT_TOKEN", "123456789:fake-token-value")
+    (home / "heraldesk.yaml").write_text(
+        "version: 1\ntelegram:\n  enabled: true\n  allowed_chat_ids: [123456789]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(BotApiTelegramAdapter, "get_me", lambda _self: "smokebot")
+
+    results = {result.name: result for result in run_checks(home, online=True)}
+
+    assert results["telegram api"].status is CheckStatus.PASS
+    assert "smokebot" in results["telegram api"].detail
+
+
+def test_online_telegram_failure_fails(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = initialized.layout.home
+    monkeypatch.setenv("HERALDESK_TELEGRAM_BOT_TOKEN", "123456789:fake-token-value")
+    (home / "heraldesk.yaml").write_text(
+        "version: 1\ntelegram:\n  enabled: true\n  allowed_chat_ids: [123456789]\n",
+        encoding="utf-8",
+    )
+
+    def fail(_self: BotApiTelegramAdapter) -> str | None:
+        raise TelegramError("telegram API call getMe failed")
+
+    monkeypatch.setattr(BotApiTelegramAdapter, "get_me", fail)
+    assert by_name(home, online=True)["telegram api"] is CheckStatus.FAIL
+
+
+def test_online_nostr_probes_a_configured_relay(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = initialized.layout.home
+    calls: list[tuple[str, float]] = []
+    monkeypatch.setattr(doctor, "_has_nostr_account", lambda _layout: True)
+    monkeypatch.setattr(
+        doctor,
+        "_probe_relay",
+        lambda relay, *, timeout: calls.append((relay, timeout)),
+    )
+
+    results = {result.name: result for result in run_checks(home, online=True)}
+
+    assert results["nostr relays"].status is CheckStatus.PASS
+    assert calls
+    assert calls[0][0].startswith("wss://")
+
+
+def test_online_nostr_unreachable_is_a_warning(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = initialized.layout.home
+    monkeypatch.setattr(doctor, "_has_nostr_account", lambda _layout: True)
+
+    def fail(_relay: str, *, timeout: float) -> None:
+        raise OSError(f"cannot connect in {timeout}s")
+
+    monkeypatch.setattr(doctor, "_probe_relay", fail)
+    assert by_name(home, online=True)["nostr relays"] is CheckStatus.WARN
+
+
+def test_has_nostr_account_reads_scoped_accounts(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    cipher = CredentialCipher.from_key_file(profile_setup.layout.key_path)
+    SocialAccountRepository(db_session).add(
+        profile_setup.scope,
+        platform="nostr",
+        handle="npub1test",
+        credentials_encrypted=cipher.encrypt_json({"nsec": "nsec1test"}),
+    )
+    db_session.commit()
+    assert doctor._has_nostr_account(profile_setup.layout) is True
 
 
 def test_cli_doctor_exits_zero_when_healthy(initialized: InitResult) -> None:
@@ -125,7 +233,9 @@ def test_cli_doctor_exits_one_on_failure(initialized: InitResult) -> None:
 def test_cli_doctor_accepts_online_flag(initialized: InitResult) -> None:
     result = runner.invoke(app, ["doctor", "--online"])
     assert result.exit_code == 0
-    assert "online checks" in result.output
+    assert "llm provider" in result.output
+    assert "telegram api" in result.output
+    assert "nostr relays" in result.output
 
 
 def test_initialize_helper_is_used_by_fixture(initialized: InitResult) -> None:
