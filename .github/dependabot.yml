@@ -12,3 +12,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # requires-python is pinned to 3.12; a newer base image cannot install the wheel.
+      - dependency-name: "python"
