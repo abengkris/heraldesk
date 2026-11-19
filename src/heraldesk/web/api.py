@@ -6,7 +6,7 @@ Every route delegates to an existing domain service and requires
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
@@ -14,6 +14,9 @@ from pydantic import BaseModel, Field
 from heraldesk.analyst import ReportError
 from heraldesk.community import InboxError, InboxItemNotFoundError, InboxStateError
 from heraldesk.db.engine import inspect_database
+from heraldesk.db.repositories import AgentRunRepository, ProfileCatalog
+from heraldesk.db.scope import ProfileScope
+from heraldesk.domain.approvals import as_utc
 from heraldesk.domain.errors import ApprovalError, ContentError
 from heraldesk.platforms.base import PublishError
 from heraldesk.web.auth import AdminAuth, Unauthorized
@@ -89,6 +92,67 @@ class IgnoreBody(BaseModel):
 
 
 dependencies = [Depends(require_api_auth)]
+
+
+@router.get("/openapi.json", dependencies=dependencies)
+def api_openapi(request: Request) -> dict[str, Any]:
+    """Return the OpenAPI schema. Authenticated, unlike FastAPI's default docs routes."""
+    return cast(dict[str, Any], request.app.openapi())
+
+
+@router.get("/profiles", dependencies=dependencies)
+def api_profiles(request: Request) -> dict[str, Any]:
+    """List registered profile metadata. No credentials or file contents."""
+    context = _context(request)
+    with context.database.session() as session:
+        items = [
+            {
+                "id": summary.id,
+                "slug": summary.slug,
+                "name": summary.name,
+                "type": summary.profile_type,
+                "timezone": summary.timezone,
+                "languages": list(summary.languages),
+                "status": summary.status,
+                "kill_switch": summary.kill_switch,
+            }
+            for summary in ProfileCatalog(session).list()
+        ]
+        return {"items": items, "count": len(items)}
+
+
+@router.get("/runs", dependencies=dependencies)
+def api_runs(
+    request: Request,
+    profile: Annotated[str, Query(min_length=1)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> dict[str, Any]:
+    """Return recent agent-run traces for one profile. Inputs/outputs stay private."""
+    context = _context(request)
+    with context.database.session() as session:
+        profile_id = ProfileCatalog(session).resolve(profile)
+        if profile_id is None:
+            raise NotFound(f"profile '{profile}' is not registered")
+        runs = AgentRunRepository(session).list(ProfileScope(profile_id), limit=limit)
+        items = [
+            {
+                "id": run.id,
+                "agent": run.agent,
+                "status": run.status,
+                "model": run.model,
+                "pipeline_run_id": run.pipeline_run_id,
+                "tokens_in": run.tokens_in,
+                "tokens_out": run.tokens_out,
+                "cost_usd": run.cost_usd,
+                "error": None if run.error is None else context.redactor.redact(run.error)[:500],
+                "started_at": as_utc(run.started_at).isoformat(),
+                "finished_at": None
+                if run.finished_at is None
+                else as_utc(run.finished_at).isoformat(),
+            }
+            for run in runs
+        ]
+        return {"profile": profile, "items": items, "count": len(items)}
 
 
 @router.get("/status", dependencies=dependencies)

@@ -435,3 +435,71 @@ def test_api_cost_summarises_agent_runs(
     assert body["totals"]["today"]["cost_usd"] == pytest.approx(0.12)
     assert body["profiles"][0]["profile"] == "acme"
     assert body["profiles"][0]["cost_today"] == pytest.approx(0.12)
+
+
+def test_api_profiles_lists_registered_metadata(
+    initialized: InitResult, profile_setup: ProfileSetup
+) -> None:
+    with make_app(initialized) as client:
+        response = client.get("/api/v1/profiles", headers=HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    item = body["items"][0]
+    assert item["slug"] == "acme"
+    assert item["timezone"] == "UTC"
+    assert "credential" not in str(item).lower()
+
+
+def test_api_runs_returns_traces_without_inputs_or_outputs(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    AgentRunRepository(db_session).add(
+        profile_setup.scope,
+        agent="writer",
+        status="failed",
+        model="fake/fake",
+        input={"prompt": "secret sk-ABCDEFGHIJKLMNOP1234"},
+        output={"body": "private draft"},
+        started_at=datetime.now(UTC),
+        error="provider failed with sk-ABCDEFGHIJKLMNOP1234",
+        tokens_in=10,
+        tokens_out=0,
+        cost_usd=0.01,
+    )
+    db_session.commit()
+    with make_app(initialized) as client:
+        response = client.get("/api/v1/runs?profile=acme", headers=HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    run = body["items"][0]
+    assert run["agent"] == "writer"
+    assert run["status"] == "failed"
+    assert "sk-ABCDEFGHIJKLMNOP1234" not in response.text
+    assert "private draft" not in response.text
+    assert "prompt" not in run
+
+
+def test_api_runs_rejects_an_unknown_profile(initialized: InitResult) -> None:
+    with make_app(initialized) as client:
+        response = client.get("/api/v1/runs?profile=missing", headers=HEADERS)
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"
+
+
+def test_api_openapi_requires_auth_and_lists_routes(initialized: InitResult) -> None:
+    with make_app(initialized) as client:
+        denied = client.get("/api/v1/openapi.json")
+        allowed = client.get("/api/v1/openapi.json", headers=HEADERS)
+
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+    paths = allowed.json()["paths"]
+    assert "/api/v1/status" in paths
+    assert "/api/v1/profiles" in paths
+    assert "/api/v1/runs" in paths
+    assert "/api/v1/audit" in paths

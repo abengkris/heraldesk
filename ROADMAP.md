@@ -26,6 +26,7 @@ current summary.
   backup, staged replacement, post-restore migrations and session-epoch rotation)
 - [x] M16 Inbox retention (manual `inbox prune`, dry-run, pending opt-in, audit)
 - [x] M17 Audit and cost visibility (read-only UI pages and `/api/v1/audit|cost`)
+- [x] M18 API contract and read models (authenticated OpenAPI, profiles and run traces)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.

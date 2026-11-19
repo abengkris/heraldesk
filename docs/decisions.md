@@ -1061,3 +1061,18 @@ never prints an API key, bot token or nsec.
 - **Cross-profile reads are narrow.** `AuditCatalog.recent` and
   `GlobalCostRepository` are the documented diagnostic exceptions; every write and every
   content-bearing query still goes through `ProfileScope`.
+
+
+## API contract and read models (2026-11-19)
+
+- **OpenAPI is authenticated.** FastAPI's docs/redoc/OpenAPI routes stay disabled; the
+  schema is returned by `GET /api/v1/openapi.json` after Bearer authentication. This keeps
+  the route surface discoverable without making it public.
+- **Profiles are metadata only.** `GET /api/v1/profiles` returns id, slug, name, type,
+  timezone, languages, status and kill-switch state. It never returns `config_hash`,
+  credentials or file contents.
+- **Run traces exclude prompts and outputs.** `GET /api/v1/runs?profile=<slug>` returns
+  agent, status, model, tokens, cost, timestamps, pipeline id and a redacted/truncated
+  error. Inputs and outputs stay in the local database; they can contain draft content.
+- **Scoped lookups.** Run reads resolve the slug through `ProfileCatalog`, then use
+  `AgentRunRepository.list(ProfileScope(...))`.

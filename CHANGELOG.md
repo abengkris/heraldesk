@@ -6,6 +6,20 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.10.0] - 2026-11-19
+
+### Added
+
+- Authenticated `GET /api/v1/openapi.json` for the machine-readable API contract.
+- `GET /api/v1/profiles` for profile metadata.
+- `GET /api/v1/runs?profile=<slug>` for recent agent-run traces with redacted errors and
+  no prompt/output content.
+
+### Docs
+
+- README, architecture, decisions and roadmap describe the expanded API and its privacy
+  boundaries.
+
 ## [1.9.1] - 2026-11-19
 
 ### Changed

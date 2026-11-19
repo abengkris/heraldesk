@@ -227,8 +227,9 @@ heraldesk stop-all [--off]
 LLM cost page, read-only audit log and a read-only profile list. There is no calendar or profile editor yet.
 Server-rendered (HTMX), no frontend build step.
 
-**REST API:** authenticated `/api/v1` for status, queue (list + detail), approvals, inbox, reports, audit, cost
-and publishing. Cookies are not accepted; use `Authorization: Bearer`. OpenAPI/docs endpoints are disabled.
+**REST API:** authenticated `/api/v1` for status, queue (list + detail), approvals, inbox, reports, audit, cost,
+profiles, agent-run traces and publishing. Cookies are not accepted; use `Authorization: Bearer`. The OpenAPI
+schema is served at `/api/v1/openapi.json` behind auth; FastAPI's public docs routes stay disabled.
 
 ## 10. Security for self-hosting
 - **Bind `127.0.0.1` by default.** A non-loopback bind requires `--allow-remote`, an explicit
