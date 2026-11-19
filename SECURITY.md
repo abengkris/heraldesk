@@ -39,8 +39,10 @@ supply-chain issues.
   instance session epoch immediately.
 - Keep the reverse proxy as the only client of the Heraldesk port and make it overwrite `X-Forwarded-For`.
 - Keep `secret.key` mode 600. Rotate it with `heraldesk admin rotate-key` while the server
-  is stopped; it takes a mandatory credential backup first. Losing the key without a backup
-  makes stored credentials unreadable.
+  is stopped; it takes a mandatory credential backup first. Rotation re-encrypts the
+  persisted `telegram.token` file only; environment/`.env` token overrides are left in place.
+  If session revocation fails, rotation aborts before touching credentials. Losing the key
+  without a backup makes stored credentials unreadable.
 - Back up with credentials (`heraldesk backup --with-credentials`) and store the archive
   off the host. This includes `secret.key` and `telegram.token`; `.env` is still excluded,
   so back it up separately.

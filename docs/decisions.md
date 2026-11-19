@@ -1083,6 +1083,10 @@ never prints an API key, bot token or nsec.
 - **Command:** `heraldesk admin rotate-key [--dry-run]`. It re-encrypts every
   `social_accounts.credentials_encrypted` blob and, when present, the encrypted
   `telegram.token`.
+- **Persisted token only.** The rotation reads and decrypts `telegram.token` directly. It
+  deliberately does not use `resolve_bot_token`, because that helper gives environment and
+  `.env` values precedence; copying an override into the file would replace the persisted
+  credential. Environment/`.env` tokens stay where they are and are not written to disk.
 - **Mandatory backup:** a credential backup (including the old `secret.key`) is written
   before any change. If it cannot be written, rotation aborts.
 - **Ordering:** decrypt everything, generate and stage the new key, update the database in
@@ -1093,8 +1097,11 @@ never prints an API key, bot token or nsec.
   memory, the database is re-encrypted with the old key and the command aborts. A failure
   restoring the old key points the operator at the backup. Verification failure also
   points at the backup.
-- **Sessions:** rotation revokes UI sessions. If the admin token is secret.key-derived, the
-  token changes; `heraldesk admin token --show` prints the new value. Explicit environment
-  or `.env` tokens are unchanged.
+- **Session revocation is a prerequisite.** The epoch is rotated after the backup but
+  before any credential changes. If it fails, the command exits non-zero with a clear
+  message and the key/database remain untouched. On success, old browser sessions are
+  invalid. If the admin token is secret.key-derived, the token changes;
+  `heraldesk admin token --show` prints the new value. Explicit environment or `.env`
+  tokens are unchanged.
 - **Operational rule:** stop `heraldesk serve` before rotating. The CLI cannot detect an
   open server, and SQLite WAL locks differ by platform.

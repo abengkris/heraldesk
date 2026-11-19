@@ -17,6 +17,7 @@ Stop ``heraldesk serve`` before rotating.
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 from pathlib import Path
 from typing import Annotated
@@ -35,10 +36,11 @@ from heraldesk.core.crypto import (
 )
 from heraldesk.db.repositories import ProfileCatalog, SocialAccountRepository
 from heraldesk.db.scope import ProfileScope
-from heraldesk.telegram.credentials import TelegramConfigError, resolve_bot_token
 from heraldesk.web.auth import AuthConfigError, rotate_session_epoch, session_epoch_path
 
 _KEY_MODE = 0o600
+
+logger = logging.getLogger("heraldesk.cli.rotate_key")
 
 
 def _write_private(path: Path, data: str) -> None:
@@ -64,28 +66,39 @@ def rotate_key_command(
         abort(str(exc))
 
     accounts: list[tuple[ProfileScope, int, str, dict[str, str]]] = []
-    try:
-        with session_for() as (_, session):
-            for summary in ProfileCatalog(session).list():
-                scope = ProfileScope(summary.id)
-                for account in SocialAccountRepository(session).list(scope):
-                    try:
-                        plaintext = old_cipher.decrypt_json(account.credentials_encrypted)
-                    except CryptoError as exc:
-                        abort(
-                            f"cannot decrypt account #{account.id} ({account.platform}): {exc}. "
-                            "secret.key was not changed."
-                        )
-                    accounts.append((scope, account.id, account.platform, plaintext))
-        telegram_token = resolve_bot_token(layout)
-    except TelegramConfigError as exc:
-        abort(f"cannot read the Telegram token: {exc}. secret.key was not changed.")
+    with session_for() as (_, session):
+        for summary in ProfileCatalog(session).list():
+            scope = ProfileScope(summary.id)
+            for account in SocialAccountRepository(session).list(scope):
+                try:
+                    plaintext = old_cipher.decrypt_json(account.credentials_encrypted)
+                except CryptoError as exc:
+                    abort(
+                        f"cannot decrypt account #{account.id} ({account.platform}): {exc}. "
+                        "secret.key was not changed."
+                    )
+                accounts.append((scope, account.id, account.platform, plaintext))
 
     token_file = layout.telegram_token_path.is_file()
+    telegram_token: str | None = None
+    if token_file:
+        try:
+            telegram_token = _read_persisted_token(layout, old_cipher)
+        except CryptoError as exc:
+            abort(
+                f"cannot decrypt the persisted Telegram token at "
+                f"{layout.telegram_token_path}: {exc}. secret.key was not changed."
+            )
+
+    logger.info(
+        "key rotation started accounts=%d telegram_file=%s",
+        len(accounts),
+        token_file,
+    )
     if dry_run:
         console.print(
             f"[bold]Would rotate:[/bold] {len(accounts)} account(s)"
-            f"{' and the encrypted Telegram token' if token_file and telegram_token else ''}."
+            f"{' and the persisted Telegram token' if telegram_token is not None else ''}."
         )
         console.print("No files or database rows were changed.")
         return
@@ -94,6 +107,17 @@ def rotate_key_command(
         backup = create_backup(layout, include_credentials=True)
     except BackupError as exc:
         abort(f"cannot create the required pre-rotation backup; aborted: {exc}")
+    logger.info("credential backup written path=%s", backup.path)
+
+    # Revoke sessions before touching credentials. If this fails, nothing is rotated.
+    try:
+        rotate_session_epoch(session_epoch_path(layout))
+    except AuthConfigError as exc:
+        abort(
+            f"cannot revoke existing sessions: {exc}. Rotation aborted before any "
+            "credential changed. Fix the data-folder permissions and retry."
+        )
+    logger.info("session epoch rotated")
 
     new_key = generate_key()
     new_cipher = CredentialCipher(new_key)
@@ -101,9 +125,7 @@ def rotate_key_command(
         (scope, account_id, new_cipher.encrypt_json(plaintext))
         for scope, account_id, _platform, plaintext in accounts
     ]
-    new_token = (
-        new_cipher.encrypt(telegram_token) if token_file and telegram_token is not None else None
-    )
+    new_token = new_cipher.encrypt(telegram_token) if telegram_token is not None else None
 
     temporary_key = layout.key_path.with_name(f".{layout.key_path.name}.new")
     temporary_token = layout.telegram_token_path.with_name(
@@ -176,9 +198,6 @@ def rotate_key_command(
     except CryptoError as exc:
         abort(f"rotation verification failed: {exc}. Restore the backup at {backup.path}.")
 
-    with contextlib.suppress(AuthConfigError):
-        rotate_session_epoch(session_epoch_path(layout))
-
     try:
         with session_for() as (_, session):
             AuditService(session).record(
@@ -198,9 +217,15 @@ def rotate_key_command(
             f"({type(exc).__name__})."
         )
 
+    logger.info(
+        "key rotation completed accounts=%d telegram_reencrypted=%s",
+        len(accounts),
+        new_token is not None,
+    )
     console.print(
         f"[green]Key rotated:[/green] {len(accounts)} account(s) re-encrypted"
-        f"{' and the Telegram token' if new_token is not None else ''}."
+        f"{' and the persisted Telegram token' if new_token is not None else ''}. "
+        "Existing UI sessions were revoked."
     )
     console.print(f"Backup: {backup.path}")
     console.print(
@@ -213,3 +238,15 @@ def _cleanup(*paths_to_remove: Path) -> None:
     for path in paths_to_remove:
         with contextlib.suppress(OSError):
             path.unlink(missing_ok=True)
+
+
+def _read_persisted_token(layout: paths.Layout, cipher: CredentialCipher) -> str:
+    """Decrypt the token file directly. Environment and .env overrides are ignored."""
+    path = layout.telegram_token_path
+    try:
+        ciphertext = path.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise CryptoError(f"cannot read {path}: {exc}") from exc
+    if not ciphertext:
+        raise CryptoError("the persisted token file is empty")
+    return cipher.decrypt(ciphertext)

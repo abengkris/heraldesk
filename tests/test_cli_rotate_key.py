@@ -149,3 +149,92 @@ def test_rotation_rolls_back_when_the_token_swap_fails(
             "token": "plaintext-token"
         }
     assert resolve_bot_token(initialized.layout) == BOT_TOKEN
+
+
+def test_rotation_ignores_environment_token_override(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prepare_account(initialized)
+    store_bot_token(initialized.layout, BOT_TOKEN)
+    override = "987654321:AAHenvironmentOverrideValue123456"
+    monkeypatch.setenv("HERALDESK_TELEGRAM_BOT_TOKEN", override)
+
+    result = invoke("admin", "rotate-key")
+
+    assert result.exit_code == 0, result.output
+    cipher = CredentialCipher.from_key_file(initialized.layout.key_path)
+    persisted = initialized.layout.telegram_token_path.read_text(encoding="ascii")
+    assert cipher.decrypt(persisted) == BOT_TOKEN
+    assert resolve_bot_token(initialized.layout) == override
+
+
+def test_rotation_ignores_dotenv_token_override(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prepare_account(initialized)
+    store_bot_token(initialized.layout, BOT_TOKEN)
+    override = "987654321:AAHdotenvOverrideValue1234567890"
+    monkeypatch.delenv("HERALDESK_TELEGRAM_BOT_TOKEN", raising=False)
+    initialized.layout.env_path.write_text(
+        f"HERALDESK_TELEGRAM_BOT_TOKEN={override}\n",
+        encoding="utf-8",
+    )
+
+    result = invoke("admin", "rotate-key")
+
+    assert result.exit_code == 0, result.output
+    cipher = CredentialCipher.from_key_file(initialized.layout.key_path)
+    persisted = initialized.layout.telegram_token_path.read_text(encoding="ascii")
+    assert cipher.decrypt(persisted) == BOT_TOKEN
+    assert resolve_bot_token(initialized.layout) == override
+
+
+def test_rotation_aborts_on_a_corrupt_persisted_token(initialized: InitResult) -> None:
+    prepare_account(initialized)
+    initialized.layout.telegram_token_path.write_text("not-a-fernet-token", encoding="ascii")
+    old_key = load_key(initialized.layout.key_path)
+
+    result = invoke("admin", "rotate-key")
+
+    assert result.exit_code == 1
+    assert "cannot decrypt the persisted Telegram token" in result.output
+    assert load_key(initialized.layout.key_path) == old_key
+
+
+def test_rotation_does_not_create_a_token_file_from_the_environment(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prepare_account(initialized)
+    monkeypatch.setenv("HERALDESK_TELEGRAM_BOT_TOKEN", BOT_TOKEN)
+
+    result = invoke("admin", "rotate-key")
+
+    assert result.exit_code == 0, result.output
+    assert not initialized.layout.telegram_token_path.exists()
+
+
+def test_session_revocation_failure_aborts_before_rotation(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from heraldesk.web.auth import AuthConfigError
+
+    account_id = prepare_account(initialized)
+    old_key = load_key(initialized.layout.key_path)
+
+    def fail(*_args: object, **_kwargs: object) -> int:
+        raise AuthConfigError("permission denied for the test")
+
+    monkeypatch.setattr("heraldesk.cli.rotate_key.rotate_session_epoch", fail)
+
+    result = invoke("admin", "rotate-key")
+
+    assert result.exit_code == 1
+    assert "cannot revoke existing sessions" in result.output
+    assert load_key(initialized.layout.key_path) == old_key
+    scope = account_scope(initialized)
+    with database_session(initialized.layout) as session:
+        account = SocialAccountRepository(session).get(scope, account_id)
+        assert account is not None
+        assert CredentialCipher(old_key).decrypt_json(account.credentials_encrypted) == {
+            "token": "plaintext-token"
+        }

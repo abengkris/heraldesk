@@ -6,6 +6,25 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.11.1] - 2026-11-19
+
+### Security
+
+- Key rotation now decrypts the persisted `telegram.token` directly. Environment and
+  `.env` overrides can no longer be copied into the persisted credential during rotation.
+  Missing or corrupt token files abort before any key or database change.
+- Session revocation is now a hard prerequisite. A failure exits non-zero with a clear
+  message and aborts before credentials are touched; it can no longer be silently
+  suppressed.
+- Added structured stage logging (counts and booleans only; no secrets).
+
+### Tests
+
+- Environment and `.env` overrides do not replace the persisted token.
+- A corrupt token file aborts with the old key intact.
+- Rotation does not create a token file from the environment.
+- Session-revocation failure exits non-zero and leaves credentials unchanged.
+
 ## [1.11.0] - 2026-11-19
 
 ### Added
