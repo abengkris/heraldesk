@@ -6,6 +6,15 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.9.1] - 2026-11-19
+
+### Changed
+
+- Updated CI and release actions: `setup-uv` v7, `upload-artifact` v7,
+  `download-artifact` v8, `docker/metadata-action` v6 and `softprops/action-gh-release`
+  v3. Dependabot's Python 3.15 base-image bump was rejected because the package pins
+  `requires-python` to 3.12.
+
 ## [1.9.0] - 2026-11-19
 
 ### Added
