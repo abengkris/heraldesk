@@ -1033,3 +1033,16 @@ never prints an API key, bot token or nsec.
   session epoch so old browser cookies cannot be reused.
 - **Not included:** `.env`, logs, generated reports, previous backups, and the session
   epoch itself (restore creates a fresh epoch).
+
+
+## Inbox retention (2026-11-19)
+
+- **Manual, audited pruning.** `heraldesk inbox prune --days N` deletes `telegram_messages`
+  with `status` in `handled|ignored` and `created_at` older than N days. Pending messages
+  stay until triaged unless `--include-pending` is passed. `--dry-run` only counts.
+- **No automatic job yet.** Retention is an explicit operator action; a scheduled job would
+  need a config key and a background trigger. This keeps deletion predictable and avoids
+  surprising data loss.
+- **Audit:** one `inbox.pruned` entry with days, deleted count and the pending flag. No
+  message text, chat id or sender id enters the payload.
+- **Backups:** pruned rows are gone from future backups; existing archives are unaffected.

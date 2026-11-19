@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -44,11 +44,18 @@ def ensure_profile(initialized: InitResult) -> None:
         assert invoke("profile", "new", "acme").exit_code == 0
 
 
-def make_message(initialized: InitResult, text: str = "hello") -> int:
+def make_message(
+    initialized: InitResult,
+    text: str = "hello",
+    *,
+    created_at: datetime | None = None,
+    handled: bool = False,
+) -> int:
     ensure_profile(initialized)
     with db(initialized) as session:
         scope: ProfileScope = resolve_scope(session, "acme")
         set_profile_status(session, scope, ProfileStatus.ACTIVE)
+        stamp = created_at or datetime(2026, 11, 17, 12, 0, tzinfo=UTC)
         message = TelegramMessageRepository(session).add(
             scope,
             chat_id=CHAT_ID,
@@ -57,8 +64,14 @@ def make_message(initialized: InitResult, text: str = "hello") -> int:
             command=None,
             content_item_id=None,
             response=None,
-            created_at=datetime(2026, 11, 17, 12, 0, tzinfo=UTC),
+            created_at=stamp,
         )
+        if handled:
+            InboxRepository(session).mark_handled(
+                message.id,
+                response="reply",
+                triaged_at=stamp,
+            )
         return message.id
 
 
@@ -222,3 +235,31 @@ def test_commands_fail_without_an_initialised_home(home: Path) -> None:
     assert "heraldesk init" in inbox.output
     assert report.exit_code == 1
     assert "heraldesk init" in report.output
+
+
+def test_inbox_prune_removes_only_old_triaged_messages(initialized: InitResult) -> None:
+    old = datetime.now(UTC) - timedelta(days=40)
+    old_handled = make_message(initialized, "old handled", created_at=old, handled=True)
+    old_pending = make_message(initialized, "old pending", created_at=old)
+    new_handled = make_message(initialized, "new handled", handled=True)
+
+    dry_run = invoke("inbox", "prune", "--days", "30", "--dry-run")
+    assert dry_run.exit_code == 0, dry_run.output
+    assert "Would prune" in dry_run.output
+    assert "1" in dry_run.output
+
+    pruned = invoke("inbox", "prune", "--days", "30")
+    assert pruned.exit_code == 0, pruned.output
+    assert "Pruned" in pruned.output
+    with db(initialized) as session:
+        repository = InboxRepository(session)
+        assert repository.get(old_handled) is None
+        assert repository.get(old_pending) is not None
+        assert repository.get(new_handled) is not None
+        actions = {entry.action for entry in AuditService(session).history(None, limit=100)}
+    assert "inbox.pruned" in actions
+
+    pending_too = invoke("inbox", "prune", "--days", "30", "--include-pending")
+    assert pending_too.exit_code == 0, pending_too.output
+    with db(initialized) as session:
+        assert InboxRepository(session).get(old_pending) is None

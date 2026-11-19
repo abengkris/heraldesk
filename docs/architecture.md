@@ -247,8 +247,8 @@ Cookies are not accepted; use `Authorization: Bearer`. OpenAPI/docs endpoints ar
   not fetched or fed to agents. When comment/DM handling is added, it must be treated as untrusted data.
 - **No telemetry, no phone-home.** Outbound traffic is limited to the configured LLM provider, platform APIs,
   Telegram and the Researcher's web search.
-- **Retention:** inbox text is currently kept until a human deletes it. A configurable retention purge is not
-  implemented yet.
+- **Retention:** `heraldesk inbox prune --days N` deletes handled/ignored inbox rows older than N days and
+  audits the count. Pending messages are kept unless `--include-pending` is passed; there is no automatic schedule.
 - **Supply chain:** locked dependencies, `uv sync --locked` in CI, `pip-audit` in CI, Dependabot and `SECURITY.md`
   for reporting.
 - **Acceptable use** (README and CONTRIBUTING): own or authorized accounts only; no fake-account networks,

@@ -24,6 +24,7 @@ current summary.
   limiter, trusted-proxy client key, request-size caps, admin-token doctor warning)
 - [x] M15 Backup/restore safety (telegram.token under credentials, pre-restore safety
   backup, staged replacement, post-restore migrations and session-epoch rotation)
+- [x] M16 Inbox retention (manual `inbox prune`, dry-run, pending opt-in, audit)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.

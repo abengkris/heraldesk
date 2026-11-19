@@ -65,7 +65,8 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
 - Store or inspect the encrypted bot token: `uv run heraldesk telegram token set|status`
 - Triage the manual inbox: `uv run heraldesk inbox list [--status pending|handled|ignored] [--limit N]`,
   `uv run heraldesk inbox show <id>`, `uv run heraldesk inbox reply <id> --text "..."`,
-  `uv run heraldesk inbox ignore <id> [--reason spam|off-topic|other]`
+  `uv run heraldesk inbox ignore <id> [--reason spam|off-topic|other]`,
+  `uv run heraldesk inbox prune [--days 30] [--dry-run] [--include-pending]`
 - Generate deterministic reports: `uv run heraldesk report weekly [--week YYYY-Www]`,
   `uv run heraldesk report monthly [--month YYYY-MM]` (written to `$HERALDESK_HOME/reports/`)
 - Show agent run traces and cost: `uv run heraldesk runs <slug>`

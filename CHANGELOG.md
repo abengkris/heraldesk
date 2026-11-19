@@ -6,6 +6,19 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.8.0] - 2026-11-19
+
+### Added
+
+- `heraldesk inbox prune --days N [--dry-run] [--include-pending]` deletes old
+  handled/ignored inbox messages and audits the count. Pending messages are preserved by
+  default.
+
+### Docs
+
+- README, AGENTS, security policy, architecture and decisions now describe the manual
+  retention workflow and its limits.
+
 ## [1.7.1] - 2026-11-19
 
 ### Fixed

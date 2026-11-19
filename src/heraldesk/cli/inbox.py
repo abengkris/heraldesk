@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import typer
@@ -18,7 +19,9 @@ from heraldesk.community import (
     reply_item,
     show_item,
 )
+from heraldesk.core.audit import AuditService
 from heraldesk.core.redact import SecretRegistry
+from heraldesk.db.repositories import InboxRepository
 from heraldesk.telegram.formatting import mask_chat_id, mask_sender_id, preview
 
 inbox_app = typer.Typer(
@@ -163,3 +166,46 @@ def ignore_command(
         f"for {_profile_label(item.profile_slug)} "
         f"(reason: [yellow]{item.ignore_reason}[/yellow])."
     )
+
+
+@inbox_app.command("prune")
+def prune_command(
+    days: Annotated[
+        int,
+        typer.Option("--days", min=1, max=3650, help="Retain messages newer than N days."),
+    ] = 30,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Count eligible messages without deleting."),
+    ] = False,
+    include_pending: Annotated[
+        bool,
+        typer.Option(
+            "--include-pending",
+            help="Also delete untriaged messages older than N days.",
+        ),
+    ] = False,
+) -> None:
+    """Delete handled/ignored inbox messages older than N days."""
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    with session_for() as (_, session):
+        repository = InboxRepository(session)
+        if dry_run:
+            count = repository.count_older_than(cutoff, include_pending=include_pending)
+            console.print(
+                f"[bold]Would prune:[/bold] {count} inbox message(s) older than {days} day(s)."
+            )
+            return
+        deleted = repository.delete_older_than(cutoff, include_pending=include_pending)
+        AuditService(session).record(
+            None,
+            actor="user",
+            action="inbox.pruned",
+            entity="inbox",
+            payload={
+                "days": days,
+                "deleted": deleted,
+                "include_pending": include_pending,
+            },
+        )
+    console.print(f"[green]Pruned[/green] {deleted} inbox message(s) older than {days} day(s).")

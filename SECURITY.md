@@ -14,8 +14,8 @@ credential backup before applying migrations.
 
 | Version | Supported |
 |---|---|
-| 1.7.x | yes |
-| 1.6.x | security fixes until 1.8.0 |
+| 1.8.x | yes |
+| 1.7.x | security fixes until 1.9.0 |
 | older | no |
 
 ## Scope

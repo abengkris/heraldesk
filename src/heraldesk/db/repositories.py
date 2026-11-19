@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from heraldesk.db.models import (
@@ -1169,6 +1169,33 @@ class InboxRepository:
         for status, count in rows:
             counts[str(status)] = int(count)
         return counts
+
+    def count_older_than(
+        self,
+        cutoff: datetime,
+        *,
+        include_pending: bool = False,
+    ) -> int:
+        """Count inbox rows older than *cutoff* eligible for retention."""
+        query = select(func.count(TelegramMessage.id)).where(TelegramMessage.created_at < cutoff)
+        if not include_pending:
+            query = query.where(TelegramMessage.status.in_(("handled", "ignored")))
+        return int(self._session.scalar(query) or 0)
+
+    def delete_older_than(
+        self,
+        cutoff: datetime,
+        *,
+        include_pending: bool = False,
+    ) -> int:
+        """Delete old inbox rows and return the number removed."""
+        query = delete(TelegramMessage).where(TelegramMessage.created_at < cutoff)
+        if not include_pending:
+            query = query.where(TelegramMessage.status.in_(("handled", "ignored")))
+        result = self._session.execute(query.execution_options(synchronize_session=False))
+        self._session.flush()
+        rowcount = getattr(result, "rowcount", 0)
+        return int(rowcount or 0)
 
     def mark_handled(
         self,
