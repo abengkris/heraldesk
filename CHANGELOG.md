@@ -6,6 +6,14 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.16.2] - 2026-11-19
+
+### Fixed
+
+- Pin `pypa/gh-action-pypi-publish` to its released tag (`v1.12.4`) instead of a commit
+  SHA. The action is Docker-based and has no container image for an arbitrary SHA, which
+  broke the newly enabled TestPyPI job.
+
 ## [1.16.1] - 2026-11-19
 
 ### Fixed

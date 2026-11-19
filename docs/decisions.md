@@ -1194,3 +1194,11 @@ never prints an API key, bot token or nsec.
   an event loop is already running, it runs the adapter coroutine in a short worker thread
   instead of calling `asyncio.run` on the running loop. No database session enters the
   worker.
+
+
+## Docker-based action pinning exception (2026-11-19)
+
+- GitHub Actions are normally pinned to commit SHAs. `pypa/gh-action-pypi-publish` is a
+  Docker container action whose image tag is derived from the action ref; there is no
+  image for an arbitrary commit SHA. It is therefore pinned to the released tag `v1.12.4`.
+  A SHA pin failed with `ghcr.io/pypa/gh-action-pypi-publish:<sha>: not found`.

@@ -253,7 +253,8 @@ publishing. Cookies are not accepted; use `Authorization: Bearer`. The OpenAPI s
 - **Retention:** `heraldesk inbox prune --days N` deletes handled/ignored inbox rows older than N days and
   audits the count. Pending messages are kept unless `--include-pending` is passed; there is no automatic schedule.
 - **Supply chain:** locked dependencies, `uv sync --locked` in CI, `pip-audit` in CI, SHA-pinned GitHub Actions,
-  container SBOM/provenance, Dependabot and `SECURITY.md` for reporting.
+  container SBOM/provenance, Dependabot and `SECURITY.md` for reporting. The Docker-based
+  PyPI publish action is pinned to a release tag because its image is not published per SHA.
 - **Acceptable use** (README and CONTRIBUTING): own or authorized accounts only; no fake-account networks,
   impersonation or spam. `disclose_ai` is parsed but not applied to post bodies yet. Users are responsible for
   platform ToS and local law.
