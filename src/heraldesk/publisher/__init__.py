@@ -47,7 +47,13 @@ from heraldesk.db.repositories import (
 )
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.content import ContentState, transition
-from heraldesk.domain.errors import ContentError, ContentItemNotFoundError
+from heraldesk.domain.errors import ContentError, ContentItemNotFoundError, ProfileValidationError
+from heraldesk.domain.profiles import load_policy
+from heraldesk.domain.scheduling import (
+    POLICY_UNAVAILABLE_REASON,
+    PublishGate,
+    evaluate_publish_gate,
+)
 from heraldesk.platforms.base import (
     AccountRef,
     PlatformAdapter,
@@ -131,6 +137,64 @@ def publish_block_reason(
 def policy_skips_scheduler(item: ContentItem) -> bool:
     """Return ``True`` when the policy says the scheduler must never auto-publish."""
     return item.publish_mode == "draft_only"
+
+
+def policy_skip_reason(
+    session: Session,
+    layout: paths.Layout,
+    scope: ProfileScope,
+    item: ContentItem,
+    *,
+    trigger: PublishTrigger,
+    current: datetime,
+    actor: str,
+) -> str | None:
+    """Apply quiet hours and the daily cap to one publish attempt.
+
+    Returns a stable reason code when an automatic attempt must be skipped. A human
+    ``manual`` publish overrides the gate and records ``publish.policy_override`` so the
+    exception stays auditable. A missing or malformed ``policy.yaml`` fails closed for
+    automatic publishing instead of pretending there is no limit.
+    """
+    try:
+        profile = ProfileRepository(session).require(scope)
+    except RecordNotFound as exc:
+        raise ContentError(str(exc)) from exc
+    try:
+        policy = load_policy(layout.profiles / profile.slug)
+        gate = evaluate_publish_gate(
+            session,
+            scope,
+            timezone=profile.timezone,
+            policy=policy,
+            now=current,
+        )
+    except ProfileValidationError as exc:
+        gate = PublishGate(
+            False,
+            POLICY_UNAVAILABLE_REASON,
+            f"cannot read policy.yaml: {exc}",
+        )
+    if gate.allowed:
+        return None
+    if trigger == "manual":
+        AuditService(session).record(
+            scope,
+            actor=actor,
+            action="publish.policy_override",
+            entity="content_item",
+            entity_id=item.id,
+            payload={
+                "content_item_id": item.id,
+                "platform": item.platform,
+                "reason": gate.reason or POLICY_UNAVAILABLE_REASON,
+                "detail": (gate.detail or "")[:MAX_AUDIT_TEXT],
+                "trigger": trigger,
+                "timezone": profile.timezone,
+            },
+        )
+        return None
+    return gate.reason or POLICY_UNAVAILABLE_REASON
 
 
 def approval_skip_reason(session: Session, scope: ProfileScope, item: ContentItem) -> str | None:
@@ -386,6 +450,24 @@ def publish_item(
             to_state=from_state,
             reason="item already has an external id",
             external_id=item.external_id,
+        )
+    policy_reason = policy_skip_reason(
+        session,
+        layout,
+        scope,
+        item,
+        trigger=trigger,
+        current=current,
+        actor=actor,
+    )
+    if policy_reason is not None:
+        return PublishOutcome(
+            item_id=item.id,
+            platform=item.platform,
+            status=PublishStatus.SKIPPED,
+            from_state=from_state,
+            to_state=from_state,
+            reason=policy_reason,
         )
 
     _prepare_state(session, scope, item, trigger=trigger, current=current, actor=actor)

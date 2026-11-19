@@ -803,6 +803,23 @@ class ContentItemRepository:
         self._session.flush()
         return item
 
+    def count_published_between(
+        self,
+        scope: ProfileScope,
+        *,
+        start: datetime,
+        end: datetime,
+    ) -> int:
+        """Count published items with ``published_at`` in ``[start, end)``."""
+        query = select(func.count(ContentItem.id)).where(
+            ContentItem.profile_id == scope.profile_id,
+            ContentItem.state == "published",
+            ContentItem.published_at.is_not(None),
+            ContentItem.published_at >= start,
+            ContentItem.published_at < end,
+        )
+        return int(self._session.scalar(query) or 0)
+
     def due_for_publish(
         self,
         scope: ProfileScope,

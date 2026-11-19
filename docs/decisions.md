@@ -863,3 +863,40 @@ These answers close the open questions raised after the first full read of the s
   covers login/cookie flags, CSRF, queue/inbox/reports/profiles, sanitized Markdown, no
   secret leakage and the auth boundary. `test_serve.py` and `test_cli.py` are updated for
   authenticated `/status` and the `admin` command group.
+
+## Quiet hours and daily-cap enforcement (2026-11-19)
+
+The parsed policy fields `quiet_hours` and `max_posts_per_day` were previously accepted
+but never enforced. They are now gates for automatic publishing, evaluated in the
+profile timezone.
+
+- **Where the gate lives.** `domain/scheduling.py` owns the quiet-hours window arithmetic,
+  the profile-local day boundaries and the gate result. `publisher.policy_skip_reason`
+  applies it to every non-manual publish (scheduler runs and retries); the scheduler's
+  dry-run path calls the same helper so its report matches a real run.
+- **Quiet hours are half-open** (`start` inclusive, `end` exclusive) and may cross
+  midnight. An item due inside the window stays due and is retried after the window ends;
+  no state changes and no retry counter increments occur while it waits.
+- **`auto`, `auto_publish` and `auto_after_delay` defer across quiet hours.** If the
+  computed schedule time lands inside the window, the pipeline records the end of the
+  window as `scheduled_at`. The same deferral applies when a human approves a pending
+  item whose mode schedules it automatically. This supersedes the narrower M5 wording
+  that only mentioned `auto_after_delay`.
+- **The daily cap counts PUBLISHED items per profile-local calendar day**, using
+  `published_at` and the profile timezone. Retries that eventually publish count once.
+  Items skipped by the cap remain scheduled and run on the next local day.
+- **`max_posts_per_day: 0` disables automatic publishing entirely.** A literal cap of
+  zero is safer than guessing the user meant "unlimited". Manual publishing still works.
+- **A human publish overrides the gate.** `heraldesk publish`, the Web UI and the REST API
+  call the publisher with `trigger="manual"`. An override records
+  `publish.policy_override` with the reason, the human-readable detail, the trigger and
+  the profile timezone; the payload never contains the body or credentials. Background
+  publishing and retries never override the gate.
+- **A missing or malformed `policy.yaml` fails closed for automatic publishing.** The item
+  is skipped with `policy_unavailable`, stays `scheduled` or `failed`, and resumes when
+  the file is fixed. The sweep itself does not crash. A manual publish still proceeds and
+  records the override.
+- **Daylight saving is handled with `zoneinfo`.** Local day boundaries convert midnight
+  separately on each side, so a DST day is 23 or 25 hours. Deferral uses the later
+  occurrence of an ambiguous end time (`fold=1`) so a fall-back hour cannot publish inside
+  the quiet window.

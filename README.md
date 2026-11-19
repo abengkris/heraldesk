@@ -1,26 +1,27 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.2.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.2.1)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.2.0.** Heraldesk runs a small deterministic team of AI roles (strategist,
+**Version 1.2.1.** Heraldesk runs a small deterministic team of AI roles (strategist,
 researcher, writer, designer, community manager, analyst, compliance) that draft, review,
 queue and schedule social media content for accounts you manage. You approve; Heraldesk
 does the legwork. It runs on your laptop or your own VPS. Your keys, your data.
 
 Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. The plugin
-loader and real Threads/X/Facebook/Instagram/LinkedIn adapters are not part of 1.2.0. The
+loader and real Threads/X/Facebook/Instagram/LinkedIn adapters are not part of 1.2.x. The
 fake platform adapter is the offline publishing path. A real Nostr adapter was added in
 1.1.0; see [Nostr publishing](#nostr-publishing).
 
-## What works in 1.2.0
+## What works in 1.2.1
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
 - Deterministic `daily_content` pipeline using the fake LLM provider or your own LiteLLM key.
 - CLI approval queue, edits, rejection and manual publishing.
 - Stateless scheduler with durable retries and at-most-once publishing.
+- Profile quiet hours and a local-day post cap gate automatic publishing; explicit publishes override them.
 - Telegram notifications, allowlisted commands and a stored inbound inbox.
 - Manual inbox triage: list, show, reply and ignore. No auto-reply and no AI-generated replies.
 - Deterministic weekly and monthly reports, with no LLM calls.
@@ -37,7 +38,7 @@ fake platform adapter is the offline publishing path. A real Nostr adapter was a
 
 ## Install from source
 
-The 1.2.0 release is installed from the repository. PyPI publishing and Docker images are
+The 1.2.1 release is installed from the repository. PyPI publishing and Docker images are
 not part of this release.
 
 ```bash
@@ -107,7 +108,10 @@ uv run heraldesk serve
 ```
 
 Approvals, publishing and replies obey the global kill switch, the per-profile kill
-switch, the profile status and `policy.yaml`. `heraldesk stop-all` halts everything;
+switch, the profile status and `policy.yaml`. Automatic publishing is refused inside
+`quiet_hours` and after `max_posts_per_day` has been reached, both in the profile
+timezone. An explicit `heraldesk publish` overrides those two limits and records a
+`publish.policy_override` audit entry. `heraldesk stop-all` halts everything;
 `heraldesk stop-all --off` clears the global switch.
 
 ## Telegram

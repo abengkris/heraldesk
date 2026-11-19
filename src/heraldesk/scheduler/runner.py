@@ -24,6 +24,13 @@ from heraldesk.core.crypto import CredentialCipher
 from heraldesk.db.repositories import ContentItemRepository, ProfileCatalog
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.approvals import expire_pending_approvals
+from heraldesk.domain.errors import ProfileValidationError
+from heraldesk.domain.policy import AutonomyPolicy
+from heraldesk.domain.profiles import load_policy
+from heraldesk.domain.scheduling import (
+    POLICY_UNAVAILABLE_REASON,
+    evaluate_publish_gate,
+)
 from heraldesk.platforms import publish_adapter_for
 from heraldesk.platforms.base import PlatformAdapter, PublishError
 from heraldesk.publisher import (
@@ -124,6 +131,13 @@ def run_scheduler(
         if not dry_run:
             expired += len(expire_pending_approvals(session, scope, now=current))
 
+        profile_policy: AutonomyPolicy | None = None
+        if dry_run:
+            try:
+                profile_policy = load_policy(layout.profiles / summary.slug)
+            except ProfileValidationError:
+                profile_policy = None
+
         due = items_repository.due_for_publish(
             scope,
             now=current,
@@ -163,6 +177,27 @@ def run_scheduler(
                 )
                 continue
             if dry_run:
+                if profile_policy is None:
+                    entries.append(
+                        replace(
+                            entry,
+                            outcome=PublishStatus.SKIPPED,
+                            reason=POLICY_UNAVAILABLE_REASON,
+                        )
+                    )
+                    continue
+                gate = evaluate_publish_gate(
+                    session,
+                    scope,
+                    timezone=summary.timezone,
+                    policy=profile_policy,
+                    now=current,
+                )
+                if not gate.allowed:
+                    entries.append(
+                        replace(entry, outcome=PublishStatus.SKIPPED, reason=gate.reason)
+                    )
+                    continue
                 entries.append(entry)
                 continue
 

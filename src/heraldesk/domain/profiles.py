@@ -51,9 +51,12 @@ DEFAULT_POLICY_YAML = """\
 # auto and auto_after_delay are reserved for the M5 scheduler.
 default_mode: draft_only
 rules: []
+# Automatic publishing is refused inside the profile-local quiet window.
 quiet_hours:
   start: "21:00"
   end: "07:00"
+# Published posts allowed per profile-local day. 0 disables automatic publishing;
+# an explicit `heraldesk publish` still overrides. Retries count as publishes.
 max_posts_per_day: 3
 disclose_ai: false
 # Telegram notifications for this profile: all, approvals_only or off.
@@ -331,6 +334,17 @@ def load_profile(profile_dir: Path) -> ProfileDefinition:
         config_hash=compute_config_hash(raw.items()),
         path=directory,
     )
+
+
+def load_policy(profile_dir: Path) -> AutonomyPolicy:
+    """Load and validate only ``policy.yaml`` from a profile directory.
+
+    The scheduler uses this to read publishing limits without loading the rest of the
+    profile. A missing or malformed file raises :class:`ProfileValidationError`, which
+    callers treat as a reason to skip automatic publishing.
+    """
+    path = profile_dir.expanduser() / "policy.yaml"
+    return parse_policy_yaml(_decode_text(path, _read_bytes(path)), source=str(path))
 
 
 def write_profile_skeleton(

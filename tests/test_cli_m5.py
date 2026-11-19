@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
+from heraldesk import paths
 from heraldesk.cli.main import app
 from heraldesk.core.audit import AuditService
 from heraldesk.core.bootstrap import InitResult
@@ -72,6 +73,10 @@ def add_item(
 
 def active_profile() -> None:
     assert invoke("profile", "new", "acme").exit_code == 0
+    # These scheduler tests run at the real wall clock, so a quiet-hours window would make
+    # them time-dependent. Keep scheduler publishing enabled and remove the window.
+    policy = paths.layout_for(paths.resolve_home()).profiles / "acme" / "policy.yaml"
+    policy.write_text("default_mode: require_approval\nmax_posts_per_day: 100\n", encoding="utf-8")
     resumed = invoke("profile", "resume", "acme")
     assert resumed.exit_code == 0, resumed.output
 

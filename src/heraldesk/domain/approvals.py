@@ -40,7 +40,10 @@ from heraldesk.domain.errors import (
     ApprovalStateError,
     ContentItemNotFoundError,
     IllegalContentTransition,
+    ProfileValidationError,
 )
+from heraldesk.domain.profiles import load_policy
+from heraldesk.domain.scheduling import defer_past_quiet_hours
 
 APPROVAL_TTL_HOURS: Final = 72
 APPROVAL_TTL: Final = timedelta(hours=APPROVAL_TTL_HOURS)
@@ -328,6 +331,20 @@ def approve(
         else:
             schedule_at = current
             reason = f"approved via {channel}; scheduled for the next publisher run"
+        try:
+            policy = load_policy(layout.profiles / profile.slug)
+        except ProfileValidationError:
+            # The scheduler gate fails closed on an unreadable policy; keep the approval.
+            pass
+        else:
+            deferred = defer_past_quiet_hours(
+                schedule_at,
+                profile.timezone,
+                policy.quiet_hours,
+            )
+            if deferred != schedule_at:
+                reason = f"{reason}; deferred past quiet hours"
+                schedule_at = deferred
         updated = transition(
             session,
             scope,

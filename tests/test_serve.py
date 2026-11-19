@@ -115,6 +115,14 @@ def pending_item(session: Session, setup: ProfileSetup) -> int:
     return item.id
 
 
+def disable_quiet_hours(setup: ProfileSetup) -> None:
+    """Server sweeps use the real clock, so remove the time-dependent default window."""
+    (setup.definition.path / "policy.yaml").write_text(
+        "default_mode: require_approval\nmax_posts_per_day: 100\n",
+        encoding="utf-8",
+    )
+
+
 def make_scheduled(session: Session, setup: ProfileSetup, *, when: datetime) -> int:
     set_profile_status(session, setup.scope, ProfileStatus.ACTIVE)
     repository = ContentItemRepository(session)
@@ -379,6 +387,7 @@ def test_background_scheduler_publishes_a_due_item_once(
     profile_setup: ProfileSetup,
     db_session: Session,
 ) -> None:
+    disable_quiet_hours(profile_setup)
     item_id = make_scheduled(
         db_session,
         profile_setup,
@@ -459,6 +468,7 @@ def test_scheduler_dry_run_sends_nothing(
     profile_setup: ProfileSetup,
     db_session: Session,
 ) -> None:
+    disable_quiet_hours(profile_setup)
     item_id = make_scheduled(
         db_session,
         profile_setup,

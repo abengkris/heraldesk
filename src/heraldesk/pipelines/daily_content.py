@@ -58,6 +58,7 @@ from heraldesk.domain.autonomy import AutonomyDecision, decide
 from heraldesk.domain.content import ContentState, can_transition, transition
 from heraldesk.domain.policy import PolicyAction, PolicyMode
 from heraldesk.domain.profiles import ProfileDefinition
+from heraldesk.domain.scheduling import defer_past_quiet_hours
 from heraldesk.llm.types import LLMProvider
 from heraldesk.platforms.base import PlatformAdapter, constraints_for
 from heraldesk.quality import lint
@@ -596,7 +597,11 @@ class _DailyContentRunner:
         if decision.decision is AutonomyDecision.AUTO_APPROVE:
             self._set_state(working, ContentState.PENDING_APPROVAL, decision.reason)
             self._set_state(working, ContentState.APPROVED, decision.reason)
-            schedule_at = self._now + timedelta(minutes=decision.delay_minutes)
+            schedule_at = defer_past_quiet_hours(
+                self._now + timedelta(minutes=decision.delay_minutes),
+                self._definition.timezone,
+                self._definition.policy.quiet_hours,
+            )
             self._set_state(
                 working,
                 ContentState.SCHEDULED,

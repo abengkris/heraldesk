@@ -2,7 +2,20 @@
 
 All notable changes to Heraldesk are recorded here. The `1.0.0` release folded the
 M0-M9 implementation milestones together; `1.1.0` adds the first real platform adapter;
-`1.2.0` adds the local Web UI + REST API.
+`1.2.0` adds the local Web UI + REST API; `1.2.1` enforces quiet hours and daily post caps.
+
+## [1.2.1] - 2026-11-19
+
+### Fixed
+
+- Enforced `quiet_hours` and `max_posts_per_day` for automatic publishing in the profile
+  timezone. Previously both fields were parsed and documented but never applied.
+- Deferred `auto`, `auto_publish` and `auto_after_delay` schedules that would land inside
+  quiet hours to the end of the window.
+- `heraldesk scheduler run --dry-run` now reports `quiet_hours`, `daily_post_cap` and
+  `policy_unavailable` skips just like a real sweep.
+- Automatic publishing fails closed when `policy.yaml` is missing or malformed; a manual
+  publish still works and records `publish.policy_override`.
 
 ## [1.2.0] - 2026-11-18
 

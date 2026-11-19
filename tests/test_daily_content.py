@@ -352,6 +352,24 @@ def test_auto_after_delay_records_the_cancellation_window(
     assert ApprovalRepository(db_session).list(profile_setup.scope) == []
 
 
+def test_auto_after_delay_crossing_quiet_hours_is_deferred(
+    profile_setup: ProfileSetup, db_session
+) -> None:
+    definition = with_policy(
+        profile_setup,
+        'default_mode: auto_after_delay\nquiet_hours: { start: "12:15", end: "13:00" }\n',
+    )
+    result = run_pipeline(db_session, profile_setup, FakeLLM(), definition=definition)
+
+    assert result.items[0].state == "scheduled"
+    item = ContentItemRepository(db_session).list(profile_setup.scope)[0]
+    scheduled_at = item.scheduled_at
+    assert scheduled_at is not None
+    if scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=UTC)
+    assert scheduled_at == datetime(2026, 11, 16, 13, 0, tzinfo=UTC)
+
+
 def test_auto_publish_high_risk_still_waits_for_a_human(
     profile_setup: ProfileSetup, db_session
 ) -> None:

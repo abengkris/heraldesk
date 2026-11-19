@@ -207,6 +207,36 @@ def test_approve_honours_the_auto_after_delay_window(
     assert as_utc(stored.scheduled_at) == NOW + timedelta(minutes=30)
 
 
+def test_approve_defers_an_auto_after_delay_item_past_quiet_hours(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    (profile_setup.definition.path / "policy.yaml").write_text(
+        'quiet_hours: { start: "12:15", end: "13:00" }\n',
+        encoding="utf-8",
+    )
+    item = make_item(db_session, profile_setup)
+    ContentItemRepository(db_session).set_publish_policy(
+        profile_setup.scope,
+        item.id,
+        mode="auto_after_delay",
+        delay_minutes=30,
+    )
+    request_approval(db_session, profile_setup.scope, item.id, now=NOW)
+
+    outcome = approve(
+        db_session,
+        profile_setup.layout,
+        profile_setup.scope,
+        item.id,
+        now=NOW,
+    )
+
+    assert outcome.to_state == "scheduled"
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item.id)
+    assert stored is not None
+    assert as_utc(stored.scheduled_at) == datetime(2026, 11, 16, 13, 0, tzinfo=UTC)
+
+
 def test_approve_keeps_draft_only_items_manual(
     profile_setup: ProfileSetup, db_session: Session
 ) -> None:
