@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.6.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.7.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.7.0)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.6.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.7.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.6.0
+## What works in 1.7.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -42,7 +42,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 
 ## Install from source
 
-The 1.6.0 release is available as a GitHub release wheel and as a repository checkout.
+The 1.7.0 release is available as a GitHub release wheel and as a repository checkout.
 A tag-triggered workflow builds PyPI and GHCR artifacts; PyPI publishing is enabled after
 the maintainer configures trusted publishing.
 
@@ -60,7 +60,7 @@ pipx install --python 3.12 .
 
 The release wheel is attached to each
 [GitHub release](https://github.com/abengkris/heraldesk/releases); install it with
-`pipx install --python 3.12 ./heraldesk-1.6.0-py3-none-any.whl`.
+`pipx install --python 3.12 ./heraldesk-1.7.0-py3-none-any.whl`.
 
 ### Docker
 
@@ -325,8 +325,8 @@ profiles/**
 agents/**             # user prompt overrides
 ```
 
-They never contain `.env`, logs, generated reports or previous backups. `secret.key` is
-included only when you ask for it:
+They never contain `.env`, logs, generated reports or previous backups. `secret.key` and
+the encrypted `telegram.token` are included only when you ask for credentials:
 
 ```bash
 # Private archive in $HERALDESK_HOME/backups/
@@ -344,8 +344,11 @@ Restore semantics are intentionally strict:
 - `--without-credentials` restores **config, profiles and agents only**. It does **not**
   restore `heraldesk.db` and does **not** restore `secret.key`. Run `heraldesk init`
   afterwards to create a new database and reload the profiles.
-- `--force` replaces existing data in the target folder. Without it, restore refuses to
-  overwrite an initialised instance.
+- `--force` replaces existing data in the target folder. Before replacing anything it
+  writes a credential safety backup into `backups/`. Without `--force`, restore refuses
+  to overwrite an initialised instance.
+- Restoring a database applies pending Alembic migrations before the server starts and
+  rotates the session epoch, invalidating old browser cookies.
 
 ```bash
 # Full restore from a credential backup
@@ -391,7 +394,8 @@ Online probes never print an API key, bot token or nsec.
 
 - `heraldesk.yaml` contains no credentials. LLM keys live in `.env` or the environment.
 - Social account credentials are encrypted at rest with `secret.key` (mode 600).
-- Backups exclude `.env`; protect credential backups like the original data folder.
+- Backups exclude `.env`; they include `telegram.token` with `--with-credentials`.
+  Protect credential backups like the original data folder.
 - The server binds to `127.0.0.1` by default. A non-loopback bind requires
   `--allow-remote`, an explicit `HERALDESK_ADMIN_TOKEN` of at least 32 characters and
   `HERALDESK_TRUST_PROXY=1` behind an HTTPS reverse proxy.

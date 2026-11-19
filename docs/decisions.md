@@ -1014,3 +1014,22 @@ never prints an API key, bot token or nsec.
 - **Audit scope.** Rejected Telegram webhook attempts are logged (not audited per request)
   to avoid turning a public endpoint into an audit-log write amplifier. API blocks are
   audited once per window/key.
+
+
+## Backup and restore safety (2026-11-19)
+
+- **Credential backups include `telegram.token`.** It is encrypted with `secret.key`, so
+  restoring both makes Telegram notifications work again. `.env` (LLM keys and the
+  explicit admin token) remains excluded and must be backed up separately.
+- **`restore --force` takes a safety backup first.** The archive is written into
+  `backups/` with credentials before any live file is touched. If the safety backup
+  cannot be written, the restore aborts.
+- **Replacement is staged.** Selected files are extracted and copied into a temporary
+  directory inside the data folder, then swapped into place. A failure during copying
+  leaves the live instance untouched; the safety backup covers the short replacement
+  window.
+- **Restore migrates and revokes.** The CLI runs `heraldesk init` after restoring a
+  database, applying pending migrations, then reports the schema revision. It rotates the
+  session epoch so old browser cookies cannot be reused.
+- **Not included:** `.env`, logs, generated reports, previous backups, and the session
+  epoch itself (restore creates a fresh epoch).

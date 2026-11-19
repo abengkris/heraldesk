@@ -22,6 +22,8 @@ current summary.
   stale-schema guard, full-draft approval views, CI wheel/audit/image gates)
 - [x] M14 Session revocation and API throttling (session epoch + logout-all, API Bearer
   limiter, trusted-proxy client key, request-size caps, admin-token doctor warning)
+- [x] M15 Backup/restore safety (telegram.token under credentials, pre-restore safety
+  backup, staged replacement, post-restore migrations and session-epoch rotation)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.

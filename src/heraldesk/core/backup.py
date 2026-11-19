@@ -31,11 +31,19 @@ MANIFEST_NAME = "manifest.json"
 DB_NAME = "heraldesk.db"
 CONFIG_NAME = "heraldesk.yaml"
 KEY_NAME = "secret.key"
+TELEGRAM_TOKEN_NAME = "telegram.token"
 PROFILES_DIRNAME = "profiles"
 AGENTS_DIRNAME = "agents"
 BACKUP_MODE = 0o600
 TREE_DIRS = (PROFILES_DIRNAME, AGENTS_DIRNAME)
-ALLOWED_TOP_LEVEL = {MANIFEST_NAME, DB_NAME, CONFIG_NAME, KEY_NAME, *TREE_DIRS}
+ALLOWED_TOP_LEVEL = {
+    MANIFEST_NAME,
+    DB_NAME,
+    CONFIG_NAME,
+    KEY_NAME,
+    TELEGRAM_TOKEN_NAME,
+    *TREE_DIRS,
+}
 NO_KEY_MESSAGE = (
     "Backup has no secret.key, cannot decrypt social credentials. "
     "Restore profiles and config only with --without-credentials, or provide secret.key"
@@ -64,6 +72,7 @@ class RestoreResult:
     restored_db: bool
     restored_credentials: bool
     entries: tuple[str, ...]
+    safety_backup: Path | None = None
 
 
 def _utc_now(now: datetime | None) -> datetime:
@@ -110,6 +119,7 @@ def _manifest(
     created_at: datetime,
     includes_credentials: bool,
     has_config: bool,
+    has_telegram_token: bool,
     profile_count: int,
     agent_count: int,
 ) -> dict[str, object]:
@@ -119,6 +129,7 @@ def _manifest(
         "created_at": created_at.isoformat(),
         "includes_credentials": includes_credentials,
         "has_config": has_config,
+        "has_telegram_token": has_telegram_token,
         "profile_files": profile_count,
         "agent_files": agent_count,
     }
@@ -145,7 +156,9 @@ def create_backup(
             layout.backups.mkdir(mode=0o700, parents=True, exist_ok=True)
         except OSError as exc:
             raise BackupError(f"cannot create {layout.backups}: {exc}") from exc
-        destination = layout.backups / f"heraldesk-backup-{current.strftime('%Y%m%dT%H%M%SZ')}.zip"
+        destination = layout.backups / (
+            f"heraldesk-backup-{current.strftime('%Y%m%dT%H%M%S%fZ')}.zip"
+        )
     else:
         destination = output.expanduser()
         if not destination.parent.is_dir():
@@ -155,11 +168,13 @@ def create_backup(
 
     profile_entries = _copy_tree_entries(layout.profiles, PROFILES_DIRNAME)
     agent_entries = _copy_tree_entries(layout.agents, AGENTS_DIRNAME)
+    include_token = include_credentials and layout.telegram_token_path.is_file()
     entries = [
         MANIFEST_NAME,
         DB_NAME,
         *([CONFIG_NAME] if layout.config_path.is_file() else []),
         *([KEY_NAME] if include_credentials else []),
+        *([TELEGRAM_TOKEN_NAME] if include_token else []),
         *(name for _path, name in profile_entries),
         *(name for _path, name in agent_entries),
     ]
@@ -173,6 +188,7 @@ def create_backup(
                 created_at=current,
                 includes_credentials=include_credentials,
                 has_config=layout.config_path.is_file(),
+                has_telegram_token=include_token,
                 profile_count=len(profile_entries),
                 agent_count=len(agent_entries),
             )
@@ -190,6 +206,8 @@ def create_backup(
                     archive.write(layout.config_path, CONFIG_NAME)
                 if include_credentials:
                     archive.write(layout.key_path, KEY_NAME)
+                    if include_token:
+                        archive.write(layout.telegram_token_path, TELEGRAM_TOKEN_NAME)
                 for path, name in profile_entries:
                     archive.write(path, name)
                 for path, name in agent_entries:
@@ -297,52 +315,76 @@ def _apply_restore(
     without_credentials: bool,
     force: bool,
 ) -> None:
+    """Stage the selected files, then swap them into the data folder.
+
+    Extraction and copying happen in a staging directory on the same filesystem, so a
+    failed copy leaves the live instance untouched. Replacing the final paths is quick;
+    callers still keep a pre-restore safety backup for the remaining window.
+    """
     try:
         paths.ensure_layout(layout.home)
     except (OSError, paths.LayoutError) as exc:
         raise BackupError(str(exc)) from exc
 
-    if force:
-        for path in (
-            layout.db_path,
-            Path(f"{layout.db_path}-wal"),
-            Path(f"{layout.db_path}-shm"),
-            layout.config_path,
-            layout.key_path,
-            layout.profiles,
-            layout.agents,
+    staging = Path(tempfile.mkdtemp(prefix=".heraldesk-restore-", dir=layout.home))
+    replacements: list[tuple[Path, Path]] = []
+    try:
+        staged_db = staging / DB_NAME
+        if not without_credentials:
+            database_source = root / DB_NAME
+            if not database_source.is_file():
+                raise BackupError("backup archive has no heraldesk.db")
+            _copy_file(database_source, staged_db)
+            replacements.append((staged_db, layout.db_path))
+
+        config_source = root / CONFIG_NAME
+        if config_source.is_file():
+            staged_config = staging / CONFIG_NAME
+            _copy_file(config_source, staged_config)
+            replacements.append((staged_config, layout.config_path))
+
+        if not without_credentials:
+            key_source = root / KEY_NAME
+            if key_source.is_file():
+                staged_key = staging / KEY_NAME
+                _copy_file(key_source, staged_key)
+                if os.name == "posix":
+                    staged_key.chmod(0o600)
+                replacements.append((staged_key, layout.key_path))
+            token_source = root / TELEGRAM_TOKEN_NAME
+            if token_source.is_file():
+                staged_token = staging / TELEGRAM_TOKEN_NAME
+                _copy_file(token_source, staged_token)
+                if os.name == "posix":
+                    staged_token.chmod(0o600)
+                replacements.append((staged_token, layout.telegram_token_path))
+
+        for directory_name, destination in (
+            (PROFILES_DIRNAME, layout.profiles),
+            (AGENTS_DIRNAME, layout.agents),
         ):
-            _remove_path(path)
-
-    if not without_credentials:
-        database_source = root / DB_NAME
-        if not database_source.is_file():
-            raise BackupError("backup archive has no heraldesk.db")
-        _copy_file(database_source, layout.db_path)
-
-    config_source = root / CONFIG_NAME
-    if config_source.is_file():
-        _copy_file(config_source, layout.config_path)
-
-    if not without_credentials:
-        key_source = root / KEY_NAME
-        if key_source.is_file():
-            _copy_file(key_source, layout.key_path)
-            _chmod_private(layout.key_path)
-
-    for directory_name, destination in (
-        (PROFILES_DIRNAME, layout.profiles),
-        (AGENTS_DIRNAME, layout.agents),
-    ):
-        source = root / directory_name
-        _remove_path(destination)
-        try:
+            source = root / directory_name
+            staged_directory = staging / directory_name
             if source.is_dir():
-                shutil.copytree(source, destination)
+                try:
+                    shutil.copytree(source, staged_directory)
+                except OSError as exc:
+                    raise BackupError(f"cannot stage {destination}: {exc}") from exc
             else:
-                destination.mkdir(mode=0o700, parents=True, exist_ok=True)
-        except OSError as exc:
-            raise BackupError(f"cannot restore {destination}: {exc}") from exc
+                staged_directory.mkdir(mode=0o700)
+            replacements.append((staged_directory, destination))
+
+        for staged, target in replacements:
+            if target == layout.db_path:
+                _remove_path(Path(f"{layout.db_path}-wal"))
+                _remove_path(Path(f"{layout.db_path}-shm"))
+            _remove_path(target)
+            try:
+                os.replace(staged, target)
+            except OSError as exc:
+                raise BackupError(f"cannot replace {target}: {exc}") from exc
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def _selected_members(names: list[str], *, without_credentials: bool) -> list[str]:
@@ -357,7 +399,7 @@ def _selected_members(names: list[str], *, without_credentials: bool) -> list[st
         if name.startswith(f"{AGENTS_DIRNAME}/"):
             selected.append(name)
             continue
-        if not without_credentials and name in {DB_NAME, KEY_NAME}:
+        if not without_credentials and name in {DB_NAME, KEY_NAME, TELEGRAM_TOKEN_NAME}:
             selected.append(name)
     return selected
 
@@ -390,6 +432,15 @@ def restore_backup(
                 raise BackupError("backup archive has no manifest.json")
 
             selected = _selected_members(names, without_credentials=without_credentials)
+            safety_backup: Path | None = None
+            if force and _target_has_data(layout) and layout.db_path.is_file():
+                try:
+                    safety_backup = create_backup(
+                        layout,
+                        include_credentials=True,
+                    ).path
+                except BackupError as exc:
+                    raise BackupError(f"cannot create a pre-restore safety backup: {exc}") from exc
             with tempfile.TemporaryDirectory(prefix="heraldesk-restore-") as temporary:
                 root = Path(temporary)
                 _extract_members(archive, selected, root)
@@ -420,4 +471,5 @@ def restore_backup(
         restored_db=not without_credentials,
         restored_credentials=has_key and not without_credentials,
         entries=tuple(selected),
+        safety_backup=safety_backup,
     )

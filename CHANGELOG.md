@@ -6,6 +6,20 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.7.0] - 2026-11-19
+
+### Added
+
+- Credential backups now include the encrypted `telegram.token`.
+- `restore --force` writes a pre-restore safety backup, stages files before replacing the
+  live instance, applies pending migrations, rotates the session epoch and reports the
+  schema revision.
+
+### Docs
+
+- Backup/restore scope, `.env` exclusion and the safety workflow are documented in the
+  README, architecture and decisions log.
+
 ## [1.6.0] - 2026-11-19
 
 ### Security

@@ -12,6 +12,7 @@ from heraldesk import paths
 from heraldesk.cli.common import abort, console, session_for
 from heraldesk.core.audit import AuditService
 from heraldesk.core.backup import BackupError, create_backup, restore_backup
+from heraldesk.core.bootstrap import BootstrapError, initialize
 from heraldesk.db.session import DatabaseNotInitialized, database_session
 from heraldesk.web.auth import AuthConfigError, rotate_session_epoch, session_epoch_path
 
@@ -95,6 +96,16 @@ def restore_command(
     with contextlib.suppress(AuthConfigError):
         rotate_session_epoch(session_epoch_path(layout))
 
+    revised = None
+    if result.restored_db:
+        try:
+            revised = initialize(layout.home)
+        except BootstrapError as exc:
+            safety = (
+                "" if result.safety_backup is None else f" Safety backup: {result.safety_backup}."
+            )
+            abort(f"database restored but migration failed: {exc}.{safety}")
+
     if result.restored_db:
         try:
             with database_session(layout) as session:
@@ -118,6 +129,10 @@ def restore_command(
     console.print(f"Data folder: {layout.home}")
     console.print(f"Database restored: {'yes' if result.restored_db else 'no'}")
     console.print(f"Credentials restored: {'yes' if result.restored_credentials else 'no'}")
+    if result.safety_backup is not None:
+        console.print(f"Safety backup: {result.safety_backup}")
+    if revised is not None:
+        console.print(f"Schema revision: {revised.revision}")
     if not result.restored_db:
         console.print(
             "[yellow]Files only:[/yellow] run 'heraldesk init' to create a new database, "

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from alembic import command
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
@@ -15,6 +16,8 @@ from heraldesk.cli.main import app
 from heraldesk.core.audit import AuditService
 from heraldesk.core.backup import NO_KEY_MESSAGE, create_backup
 from heraldesk.core.bootstrap import InitResult
+from heraldesk.db.engine import inspect_database
+from heraldesk.db.migrations import alembic_config
 from heraldesk.db.session import database_session
 
 pytestmark = pytest.mark.core
@@ -202,3 +205,16 @@ def test_version_matches_the_package() -> None:
 
     assert result.exit_code == 0
     assert f"heraldesk {__version__}" in result.output
+
+
+def test_restore_migrates_an_older_backup(initialized: InitResult, tmp_path: Path) -> None:
+    archive = make_archive(initialized, tmp_path, credentials=True)
+    command.downgrade(alembic_config(initialized.layout.db_path), "0009")
+    create_backup(initialized.layout, output=archive, include_credentials=True)
+
+    result = invoke("restore", str(archive), "--force")
+
+    assert result.exit_code == 0, result.output
+    assert "Schema revision: 0010" in result.output
+    assert "Safety backup:" in result.output
+    assert inspect_database(initialized.layout.db_path).revision == "0010"

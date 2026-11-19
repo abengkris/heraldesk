@@ -14,8 +14,8 @@ credential backup before applying migrations.
 
 | Version | Supported |
 |---|---|
-| 1.6.x | yes |
-| 1.5.x | security fixes until 1.7.0 |
+| 1.7.x | yes |
+| 1.6.x | security fixes until 1.8.0 |
 | older | no |
 
 ## Scope
@@ -41,7 +41,8 @@ supply-chain issues.
 - Keep `secret.key` mode 600. Losing it makes stored social credentials unreadable; there
   is no rotation command yet, so re-add accounts after a planned key rotation.
 - Back up with credentials (`heraldesk backup --with-credentials`) and store the archive
-  off the host. `.env` and `telegram.token` are not included; back up secrets separately.
+  off the host. This includes `secret.key` and `telegram.token`; `.env` is still excluded,
+  so back it up separately.
 - Run `heraldesk doctor` after every upgrade and `heraldesk upgrade` before starting a new
   release. `serve` refuses a stale schema.
 - Install platform adapter plugins only from sources you trust: plugin code runs in the

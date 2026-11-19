@@ -208,3 +208,52 @@ def test_restore_rejects_a_corrupt_archive(tmp_path: Path) -> None:
     target = paths.layout_for(tmp_path / "restored")
     with pytest.raises(BackupError, match="not a valid backup archive"):
         restore_backup(target, archive, without_credentials=True)
+
+
+def test_credential_backup_includes_the_telegram_token(
+    initialized: InitResult,
+    profile_setup,
+    tmp_path: Path,
+) -> None:
+    initialized.layout.telegram_token_path.write_text("encrypted-token", encoding="ascii")
+    archive = tmp_path / "backup.zip"
+
+    create_backup(initialized.layout, output=archive, include_credentials=True)
+
+    with zipfile.ZipFile(archive) as bundle:
+        assert "telegram.token" in bundle.namelist()
+
+    target = paths.layout_for(tmp_path / "restored")
+    result = restore_backup(target, archive)
+
+    assert result.restored_credentials is True
+    assert target.telegram_token_path.read_text(encoding="ascii") == "encrypted-token"
+    if sys.platform != "win32":
+        assert stat.S_IMODE(target.telegram_token_path.stat().st_mode) == 0o600
+
+
+def test_default_backup_excludes_the_telegram_token(
+    initialized: InitResult, profile_setup, tmp_path: Path
+) -> None:
+    initialized.layout.telegram_token_path.write_text("encrypted-token", encoding="ascii")
+    archive = tmp_path / "backup.zip"
+
+    create_backup(initialized.layout, output=archive)
+
+    with zipfile.ZipFile(archive) as bundle:
+        assert "telegram.token" not in bundle.namelist()
+
+
+def test_force_restore_creates_a_safety_backup(
+    initialized: InitResult,
+    profile_setup,
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "backup.zip"
+    create_backup(initialized.layout, output=archive, include_credentials=True)
+
+    result = restore_backup(initialized.layout, archive, force=True)
+
+    assert result.safety_backup is not None
+    assert result.safety_backup.is_file()
+    assert result.safety_backup.parent == initialized.layout.backups

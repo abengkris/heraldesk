@@ -273,7 +273,9 @@ Cookies are not accepted; use `Authorization: Bearer`. OpenAPI/docs endpoints ar
 - `heraldesk upgrade` creates a credential backup, then applies Alembic migrations and audits the change.
 - `heraldesk serve` refuses to start on a schema that is not at the packaged Alembic head.
 - `heraldesk backup` copies `heraldesk.db` (SQLite online backup API), `profiles/`, `agents/` and `heraldesk.yaml`;
-  `secret.key` only when explicitly requested. `.env` and `telegram.token` are not included.
+  `secret.key` and `telegram.token` only when explicitly requested. `.env` is not included.
+- `restore --force` writes a credential safety backup first, stages files before swapping
+  them in, applies pending migrations and rotates the session epoch.
 
 ## 13. Implementation roadmap
 The completed milestones and the planned next work live in `ROADMAP.md`. Summary: M0–M14 shipped, covering the
