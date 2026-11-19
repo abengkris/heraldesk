@@ -15,12 +15,13 @@ import sys
 import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 
 from heraldesk import paths
 from heraldesk.config import Config, ConfigError, is_loopback, load_config
-from heraldesk.core.crypto import CryptoError, key_is_secure, validate_key
+from heraldesk.core.crypto import CredentialCipher, CryptoError, key_is_secure, validate_key
 from heraldesk.db.engine import WAL_MODE, build_engine, inspect_database
 from heraldesk.db.migrations import MigrationError, head_revision
 from heraldesk.db.repositories import ProfileCatalog, SocialAccountRepository
@@ -70,6 +71,7 @@ def run_checks(home: Path | None = None, *, online: bool = False) -> list[CheckR
         _check_migrations(layout),
         _check_config(layout),
         _check_admin_token(layout),
+        _check_threads_tokens(layout),
         _check_telegram(layout),
         _check_reports(layout),
         _check_env_file(layout),
@@ -438,3 +440,70 @@ def _check_admin_token(layout: paths.Layout) -> CheckResult:
             "remote mode refuses it",
         )
     return CheckResult("admin token", CheckStatus.PASS, f"explicit token ({resolution.source})")
+
+
+def _check_threads_tokens(layout: paths.Layout) -> CheckResult:
+    """Warn when recorded Threads token expiry is near, missing or unreadable."""
+    status = inspect_database(layout.db_path)
+    if not status.exists or status.error is not None or not layout.key_path.is_file():
+        return CheckResult("threads tokens", CheckStatus.PASS, "skipped")
+    try:
+        cipher = CredentialCipher.from_key_file(layout.key_path)
+    except CryptoError as exc:
+        return CheckResult("threads tokens", CheckStatus.WARN, str(exc))
+
+    now = datetime.now(UTC)
+    soonest: datetime | None = None
+    missing = 0
+    checked = 0
+    engine = build_engine(layout.db_path)
+    try:
+        session = session_factory(engine)()
+        try:
+            accounts = SocialAccountRepository(session)
+            for summary in ProfileCatalog(session).list():
+                scoped = accounts.list(ProfileScope(summary.id))
+                for account in scoped:
+                    if account.platform != "threads":
+                        continue
+                    checked += 1
+                    try:
+                        credentials = cipher.decrypt_json(account.credentials_encrypted)
+                    except CryptoError:
+                        continue
+                    raw_expiry = credentials.get("expires_at", "").strip()
+                    if not raw_expiry:
+                        missing += 1
+                        continue
+                    try:
+                        expiry = datetime.fromisoformat(raw_expiry)
+                    except ValueError:
+                        continue
+                    if expiry.tzinfo is None:
+                        expiry = expiry.replace(tzinfo=UTC)
+                    if soonest is None or expiry < soonest:
+                        soonest = expiry
+        finally:
+            session.close()
+    finally:
+        engine.dispose()
+
+    if checked == 0:
+        return CheckResult("threads tokens", CheckStatus.PASS, "no Threads accounts")
+    if soonest is not None:
+        remaining = soonest - now
+        if remaining <= timedelta(days=7):
+            days = max(0, remaining.days)
+            return CheckResult(
+                "threads tokens",
+                CheckStatus.WARN,
+                f"a Threads token expires in {days} day(s); run 'heraldesk account refresh'",
+            )
+    if missing:
+        return CheckResult(
+            "threads tokens",
+            CheckStatus.WARN,
+            f"{missing} Threads account(s) have no recorded expiry; "
+            "run 'heraldesk account refresh'",
+        )
+    return CheckResult("threads tokens", CheckStatus.PASS, "expiry is more than 7 days away")

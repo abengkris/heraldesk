@@ -6,6 +6,23 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.12.0] - 2026-11-19
+
+### Added
+
+- Rotating, secret-redacted file logs at `$HERALDESK_HOME/logs/heraldesk.log` and an
+  authenticated readiness endpoint (`/api/v1/ready`).
+- Content calendar (`/calendar`, `/api/v1/calendar`) and a validated Web UI editor for
+  `soul.md`, `brief.md`, `policy.yaml` and `banned.yaml`.
+- Runnable `examples/acme` profile and `examples/plugin` adapter template.
+- `heraldesk account refresh --platform threads`, encrypted token expiry storage and a
+  `doctor` warning when expiry is missing or within 7 days.
+
+### Docs
+
+- README, architecture, decisions, roadmap and Threads docs cover the new operations,
+  editing, examples and refresh workflow.
+
 ## [1.11.1] - 2026-11-19
 
 ### Security

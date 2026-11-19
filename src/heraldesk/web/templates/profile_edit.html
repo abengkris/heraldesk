@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ state.slug }} · Heraldesk{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Edit {{ state.slug }}</h1>
+    <p class="muted">Changes are validated with the same loader as <code>profile reload</code>.</p>
+  </div>
+  <a class="button" href="/profiles">Back to profiles</a>
+</div>
+
+{% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
+
+<form method="post" action="/profiles/{{ state.slug }}/edit" class="card">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% for name in files %}
+  <label for="file-{{ name }}"><strong>{{ name }}</strong></label>
+  <textarea id="file-{{ name }}" name="{{ name }}" rows="{{ 8 if name.endswith('.md') else 12 }}"
+            spellcheck="false">{{ state.files[name] }}</textarea>
+  {% endfor %}
+  <button type="submit" class="button primary">Validate and save</button>
+</form>
+{% endblock %}

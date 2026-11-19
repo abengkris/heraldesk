@@ -252,3 +252,41 @@ def test_short_explicit_admin_token_warns(
 
     monkeypatch.setenv("HERALDESK_ADMIN_TOKEN", "x" * 32)
     assert by_name(initialized.layout.home)["admin token"] is CheckStatus.PASS
+
+
+def test_threads_token_expiry_is_reported(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from heraldesk.core.crypto import CredentialCipher
+    from heraldesk.db.repositories import SocialAccountRepository
+    from heraldesk.domain.accounts import add_account
+
+    cipher = CredentialCipher.from_key_file(initialized.layout.key_path)
+    account = add_account(
+        db_session,
+        profile_setup.scope,
+        platform="threads",
+        handle="@acme",
+        credentials={
+            "access_token": "token",
+            "expires_at": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+        },
+        cipher=cipher,
+    )
+    db_session.commit()
+    assert by_name(initialized.layout.home)["threads tokens"] is CheckStatus.WARN
+
+    SocialAccountRepository(db_session).set_credentials(
+        profile_setup.scope,
+        account.id,
+        credentials_encrypted=cipher.encrypt_json(
+            {
+                "access_token": "token",
+                "expires_at": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
+            }
+        ),
+    )
+    db_session.commit()
+    assert by_name(initialized.layout.home)["threads tokens"] is CheckStatus.PASS

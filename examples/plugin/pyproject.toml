@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hd-example-plugin"
+version = "0.1.0"
+description = "Minimal Heraldesk platform adapter plugin template"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[project.entry-points."heraldesk.platforms"]
+example = "hd_example_plugin:ExampleAdapter"

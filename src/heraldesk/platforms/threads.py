@@ -52,6 +52,14 @@ FAILED_STATES: Final = frozenset({"ERROR", "EXPIRED"})
 
 
 @dataclass(frozen=True, slots=True)
+class ThreadsToken:
+    """A refreshed long-lived token and its remaining lifetime."""
+
+    access_token: str
+    expires_in: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class ThreadsResponse:
     """One HTTP response. Errors keep the body so the Graph envelope can be parsed."""
 
@@ -149,6 +157,8 @@ class ThreadsAdapter:
         if poll_timeout_seconds <= 0:
             raise PublishError("Threads poll timeout must be positive")
         self._base_url = cleaned
+        token_root = cleaned[: -len("/v1.0")] if cleaned.endswith("/v1.0") else cleaned
+        self._refresh_url = f"{token_root}/refresh_access_token"
         self._client: ThreadsClient = client or UrllibThreadsClient()
         self._timeout = timeout_seconds
         self._poll_interval = poll_interval_seconds
@@ -173,6 +183,24 @@ class ThreadsAdapter:
         if self._error_code(response) in AUTH_ERROR_CODES | PERMISSION_ERROR_CODES:
             return False
         raise PublishError(self._error_message(response))
+
+    async def refresh_token(self, access_token: str) -> ThreadsToken:
+        """Exchange a long-lived token for a new one with a fresh 60-day lifetime."""
+        token = access_token.strip()
+        if not token:
+            raise PublishError("Threads refresh requires a non-empty access token")
+        response = await self._client.get(
+            self._refresh_url,
+            {"grant_type": "th_refresh_token", "access_token": token},
+            timeout=self._timeout,
+        )
+        payload = self._checked_json(response)
+        refreshed = payload.get("access_token")
+        if not isinstance(refreshed, str) or not refreshed.strip():
+            raise PublishError("Threads did not return a refreshed access token")
+        raw_expiry = payload.get("expires_in")
+        expires_in = int(raw_expiry) if isinstance(raw_expiry, (int, float)) else None
+        return ThreadsToken(access_token=refreshed.strip(), expires_in=expires_in)
 
     async def publish(self, account: AccountRef, request: PublishRequest) -> PublishResult:
         """Create, wait for, publish and resolve one text thread."""

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Calendar · Heraldesk{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Calendar</h1>
+    <p class="muted">Scheduled and published items from the last 7 days through {{ days }} days ahead (UTC).</p>
+  </div>
+</div>
+
+{% if entries %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">When (UTC)</th>
+        <th scope="col">Profile</th>
+        <th scope="col">Platform</th>
+        <th scope="col">State</th>
+        <th scope="col">Preview</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in entries %}
+      <tr>
+        <td class="nowrap">{{ entry.when.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ entry.profile_slug }}</td>
+        <td>{{ entry.platform }}</td>
+        <td>{{ entry.state }}</td>
+        <td class="preview">{{ entry.preview }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">Nothing scheduled or published in this window.</p>
+{% endif %}
+{% endblock %}

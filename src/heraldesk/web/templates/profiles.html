@@ -25,7 +25,7 @@
     <tbody>
       {% for profile in profiles %}
       <tr>
-        <td><strong>{{ profile.slug }}</strong></td>
+        <td><strong><a href="/profiles/{{ profile.slug }}/edit">{{ profile.slug }}</a></strong></td>
         <td>{{ profile.name }}</td>
         <td>{{ profile.status }}</td>
         <td>{{ "on" if profile.kill_switch else "off" }}</td>

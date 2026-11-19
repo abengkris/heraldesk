@@ -9,12 +9,14 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from heraldesk.analyst import ReportError
 from heraldesk.community import InboxError, InboxItemNotFoundError, InboxStateError
 from heraldesk.db.engine import inspect_database
-from heraldesk.db.repositories import AgentRunRepository, ProfileCatalog
+from heraldesk.db.migrations import MigrationError, head_revision
+from heraldesk.db.repositories import AgentRunRepository, AuditRepository, ProfileCatalog
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.approvals import as_utc
 from heraldesk.domain.errors import ApprovalError, ContentError
@@ -29,6 +31,7 @@ from heraldesk.web.service import (
     get_queue_detail,
     ignore_inbox,
     list_audit_views,
+    list_calendar_views,
     list_inbox_views,
     list_queue_views,
     publish_content,
@@ -92,6 +95,43 @@ class IgnoreBody(BaseModel):
 
 
 dependencies = [Depends(require_api_auth)]
+
+
+@router.get("/ready", dependencies=dependencies)
+def api_ready(request: Request) -> JSONResponse:
+    """Return operational readiness: schema, scheduler and Telegram state."""
+    context = _context(request)
+    reachable = context.database.is_healthy()
+    revision = inspect_database(context.layout.db_path).revision if reachable else None
+    try:
+        expected = head_revision(context.layout.db_path)
+    except MigrationError:
+        expected = None
+    schema_ok = reachable and expected is not None and revision == expected
+    scheduler_last_run = None
+    if reachable:
+        with context.database.session() as session:
+            latest = AuditRepository(session).latest(None, action="scheduler.run")
+            if latest is not None:
+                scheduler_last_run = as_utc(latest.created_at).isoformat()
+    body: dict[str, Any] = {
+        "status": "ok" if schema_ok else "degraded",
+        "db": {
+            "ok": schema_ok,
+            "revision": revision,
+            "expected_revision": expected,
+        },
+        "scheduler": {
+            "running": context.jobs.running,
+            "last_run_at": scheduler_last_run,
+        },
+        "telegram": {
+            "enabled": context.telegram_active,
+            "mode": context.config.telegram.mode,
+            "polling": context.jobs.polls_telegram,
+        },
+    }
+    return JSONResponse(body, status_code=200 if schema_ok else 503)
 
 
 @router.get("/openapi.json", dependencies=dependencies)
@@ -179,6 +219,18 @@ def api_cost(request: Request) -> dict[str, Any]:
     context = _context(request)
     with context.database.session() as session:
         return cost_summary(session)
+
+
+@router.get("/calendar", dependencies=dependencies)
+def api_calendar(
+    request: Request,
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
+) -> dict[str, Any]:
+    """Return scheduled/published items in the calendar window."""
+    context = _context(request)
+    with context.database.session() as session:
+        views = list_calendar_views(session, context.redactor, days=days)
+        return {"items": [view.as_dict() for view in views], "count": len(views)}
 
 
 @router.get("/audit", dependencies=dependencies)

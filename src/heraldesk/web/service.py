@@ -112,6 +112,28 @@ class QueueView:
 
 
 @dataclass(frozen=True, slots=True)
+class CalendarView:
+    """One scheduled or published item in the calendar window."""
+
+    content_item_id: int
+    profile_slug: str
+    platform: str
+    state: str
+    when: datetime
+    preview: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "content_item_id": self.content_item_id,
+            "profile": self.profile_slug,
+            "platform": self.platform,
+            "state": self.state,
+            "when": self.when.isoformat(),
+            "preview": self.preview,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class AuditView:
     """One audit entry safe for the UI and API."""
 
@@ -763,3 +785,44 @@ def cost_summary(session: Session, *, now: datetime | None = None) -> dict[str, 
         },
         "profiles": [view.as_dict() for view in profiles],
     }
+
+
+def list_calendar_views(
+    session: Session,
+    redactor: SecretRegistry,
+    *,
+    days: int = 30,
+    now: datetime | None = None,
+) -> list[CalendarView]:
+    """Return scheduled/published items from 7 days ago through *days* ahead."""
+    if days < 1 or days > 365:
+        raise BadRequest("days must be between 1 and 365", "invalid_days")
+    current = as_utc(datetime.now(UTC) if now is None else now)
+    start = current - timedelta(days=7)
+    end = current + timedelta(days=days)
+    views: list[CalendarView] = []
+    for summary in ProfileCatalog(session).list():
+        items = ContentItemRepository(session).list(
+            ProfileScope(summary.id),
+            states=("scheduled", "published"),
+            limit=500,
+        )
+        for item in items:
+            station = item.published_at if item.state == "published" else item.scheduled_at
+            if station is None:
+                continue
+            when = as_utc(station)
+            if when < start or when > end:
+                continue
+            views.append(
+                CalendarView(
+                    content_item_id=item.id,
+                    profile_slug=summary.slug,
+                    platform=item.platform,
+                    state=item.state,
+                    when=when,
+                    preview=preview(redactor.redact(item.body), limit=120),
+                )
+            )
+    views.sort(key=lambda view: (view.when, view.content_item_id))
+    return views

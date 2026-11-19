@@ -258,3 +258,28 @@ def test_errors_never_include_the_access_token() -> None:
 def test_registry_exposes_threads_as_a_built_in() -> None:
     assert isinstance(publish_adapter_for("threads"), ThreadsAdapter)
     assert isinstance(adapter_for("threads"), ThreadsAdapter)
+
+
+def test_refresh_token_uses_the_root_endpoint() -> None:
+    client = FakeClient(
+        get=[
+            response(
+                200,
+                {
+                    "access_token": "th-refreshed-token",
+                    "token_type": "bearer",
+                    "expires_in": 5_184_000,
+                },
+            )
+        ]
+    )
+    instance = adapter(client)
+
+    result = asyncio.run(instance.refresh_token(TOKEN))
+
+    assert result.access_token == "th-refreshed-token"
+    assert result.expires_in == 5_184_000
+    url, params, _ = client.gets[0]
+    assert url == "https://graph.threads.com/refresh_access_token"
+    assert params["grant_type"] == "th_refresh_token"
+    assert params["access_token"] == TOKEN

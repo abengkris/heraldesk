@@ -14,6 +14,7 @@ import uvicorn
 from heraldesk import paths
 from heraldesk.api.app import AppOptions, create_app
 from heraldesk.config import is_loopback, load_config
+from heraldesk.core.logging import configure_logging
 from heraldesk.db.engine import inspect_database
 from heraldesk.db.migrations import MigrationError, head_revision
 from heraldesk.telegram.credentials import TelegramConfigError
@@ -119,6 +120,15 @@ def run_server(
 
     try:
         admin = resolve_admin_token(layout)
+        configure_logging(layout, extra_secrets=(admin.token,))
+        logger.info(
+            "server starting host=%s port=%s web=%s telegram=%s remote=%s",
+            resolved_host,
+            resolved_port,
+            enable_web,
+            enable_telegram,
+            remote,
+        )
         app = create_app(
             AppOptions(
                 layout=layout,

@@ -223,13 +223,14 @@ heraldesk stop-all [--off]
 **Telegram:** notifications are plain text, not inline buttons. The allowlisted bot handles `/approve`, `/reject`,
 `/queue`, `/help` and `/start`. An optional `telegram.allowed_user_ids` restricts command senders.
 
-**Web UI (local):** dashboard, approval queue with a full-draft detail page, manual inbox, report viewer,
-LLM cost page, read-only audit log and a read-only profile list. There is no calendar or profile editor yet.
-Server-rendered (HTMX), no frontend build step.
+**Web UI (local):** dashboard, approval queue with a full-draft detail page, content calendar, manual inbox,
+report viewer, LLM cost page, read-only audit log, profile list and a validated editor for the four profile text
+files. Server-rendered (HTMX), no frontend build step.
 
-**REST API:** authenticated `/api/v1` for status, queue (list + detail), approvals, inbox, reports, audit, cost,
-profiles, agent-run traces and publishing. Cookies are not accepted; use `Authorization: Bearer`. The OpenAPI
-schema is served at `/api/v1/openapi.json` behind auth; FastAPI's public docs routes stay disabled.
+**REST API:** authenticated `/api/v1` for status, readiness, queue (list + detail), approvals, calendar, inbox,
+reports, audit, cost, profiles, agent-run traces and publishing. Cookies are not accepted; use
+`Authorization: Bearer`. The OpenAPI schema is served at `/api/v1/openapi.json` behind auth; FastAPI's public docs
+routes stay disabled.
 
 ## 10. Security for self-hosting
 - **Bind `127.0.0.1` by default.** A non-loopback bind requires `--allow-remote`, an explicit
@@ -258,7 +259,8 @@ schema is served at `/api/v1/openapi.json` behind auth; FastAPI's public docs ro
   platform ToS and local law.
 
 ## 11. Observability and testing
-- Standard-library logging; uvicorn access-log query strings are stripped. There are no structured request ids yet.
+- Rotating file logging at `logs/heraldesk.log` (5 MiB × 3, mode 600, redacted) plus uvicorn console logs;
+  access-log query strings are stripped. There are no request ids yet.
 - Cost summary (tokens and USD) per profile and agent via `heraldesk runs` and the reports.
 - **Fake LLM provider** returning fixture outputs, so every pipeline is testable offline for free.
 - Contract tests for the fake, Nostr and Threads adapters; every external call is mocked.

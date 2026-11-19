@@ -33,6 +33,13 @@ from heraldesk.web.auth import (
 )
 from heraldesk.web.context import WebContext
 from heraldesk.web.errors import BadRequest, NotFound, WebError
+from heraldesk.web.profile_editor import (
+    PROFILE_FILES,
+    ProfileEditError,
+    ProfileEditState,
+    read_profile_files,
+    save_profile_files,
+)
 from heraldesk.web.rendering import render_markdown
 from heraldesk.web.service import (
     approve_by_id,
@@ -44,6 +51,7 @@ from heraldesk.web.service import (
     ignore_inbox,
     latest_report_file,
     list_audit_views,
+    list_calendar_views,
     list_inbox_views,
     list_queue_views,
     list_report_files,
@@ -655,6 +663,27 @@ def cost_page(request: Request) -> HTMLResponse:
     return _page(request, session, "cost.html", "cost", summary=summary)
 
 
+@router.get("/calendar", response_class=HTMLResponse)
+def calendar_page(request: Request, days: int = 30) -> HTMLResponse:
+    """Show scheduled and recently published content."""
+    session = _session(request)
+    context = _context(request)
+    with context.database.session() as db:
+        try:
+            entries = list_calendar_views(db, context.redactor, days=days)
+        except WebError as exc:
+            return _page(
+                request,
+                session,
+                "error.html",
+                "calendar",
+                status_code=exc.status_code,
+                code=exc.code,
+                message=exc.message,
+            )
+    return _page(request, session, "calendar.html", "calendar", entries=entries, days=days)
+
+
 @router.get("/audit", response_class=HTMLResponse)
 def audit_page(request: Request, limit: int = 100) -> HTMLResponse:
     """Show the newest audit entries across profiles."""
@@ -663,6 +692,62 @@ def audit_page(request: Request, limit: int = 100) -> HTMLResponse:
     with context.database.session() as db:
         entries = list_audit_views(db, context.redactor, limit=limit)
     return _page(request, session, "audit.html", "audit", entries=entries)
+
+
+@router.get("/profiles/{slug}/edit", response_class=HTMLResponse)
+def profile_edit_page(request: Request, slug: str) -> HTMLResponse:
+    """Show the profile text files in a validated editor."""
+    session = _session(request)
+    context = _context(request)
+    try:
+        state = read_profile_files(context.layout, slug)
+    except ProfileEditError as exc:
+        return _page(
+            request,
+            session,
+            "error.html",
+            "profiles",
+            status_code=404,
+            code="profile_not_found",
+            message=context.redactor.redact(str(exc)) or "profile not found",
+        )
+    return _page(
+        request,
+        session,
+        "profile_edit.html",
+        "profiles",
+        state=state,
+        files=PROFILE_FILES,
+        error=None,
+        notice=None,
+    )
+
+
+@router.post("/profiles/{slug}/edit", response_class=HTMLResponse)
+async def profile_edit_save(request: Request, slug: str) -> Response:
+    """Validate and save the four profile files, then reload the profile."""
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    submitted = {name: _form_value(form, name) for name in PROFILE_FILES}
+    context = _context(request)
+    try:
+        with context.database.session() as db:
+            save_profile_files(db, context.layout, slug, submitted)
+    except ProfileEditError as exc:
+        state = ProfileEditState(slug=slug, files=submitted)
+        return _page(
+            request,
+            session,
+            "profile_edit.html",
+            "profiles",
+            status_code=400,
+            state=state,
+            files=PROFILE_FILES,
+            error=context.redactor.redact(str(exc)) or "profile edit failed",
+            notice=None,
+        )
+    return RedirectResponse("/profiles?ok=edited", status_code=303)
 
 
 @router.get("/profiles", response_class=HTMLResponse)

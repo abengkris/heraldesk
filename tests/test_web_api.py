@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -503,3 +503,58 @@ def test_api_openapi_requires_auth_and_lists_routes(initialized: InitResult) -> 
     assert "/api/v1/profiles" in paths
     assert "/api/v1/runs" in paths
     assert "/api/v1/audit" in paths
+
+
+def test_api_ready_reports_schema_and_services(initialized: InitResult) -> None:
+    with make_app(initialized) as client:
+        response = client.get("/api/v1/ready", headers=HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["db"]["ok"] is True
+    assert body["db"]["revision"] == "0010"
+    assert body["db"]["expected_revision"] == "0010"
+    assert body["scheduler"]["running"] is True
+    assert body["telegram"]["mode"] == "polling"
+
+
+def test_api_ready_returns_503_for_a_stale_schema(initialized: InitResult) -> None:
+    from alembic import command
+
+    from heraldesk.db.migrations import alembic_config
+
+    command.downgrade(alembic_config(initialized.layout.db_path), "0009")
+    with make_app(initialized) as client:
+        response = client.get("/api/v1/ready", headers=HEADERS)
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["db"]["revision"] == "0009"
+    assert body["db"]["expected_revision"] == "0010"
+
+
+def test_api_calendar_lists_scheduled_items(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item = ContentItemRepository(db_session).add(
+        profile_setup.scope,
+        platform="fake",
+        body="A calendar item about faster dashboards.",
+        state=ContentState.SCHEDULED.value,
+    )
+    ContentItemRepository(db_session).set_scheduled_at(
+        profile_setup.scope,
+        item.id,
+        scheduled_at=datetime.now(UTC) + timedelta(days=1),
+    )
+    db_session.commit()
+    with make_app(initialized) as client:
+        response = client.get("/api/v1/calendar?days=30", headers=HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["items"][0]["content_item_id"] == item.id
+    assert body["items"][0]["state"] == "scheduled"

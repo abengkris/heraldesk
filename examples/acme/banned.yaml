@@ -1,0 +1,6 @@
+# Words and topics this example profile never publishes.
+banned_words:
+  - "game-changer"
+  - "revolutionary"
+banned_topics: []
+required_disclaimers: []

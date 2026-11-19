@@ -39,8 +39,10 @@ GET  https://graph.threads.com/access_token?grant_type=th_exchange_token
 GET  https://graph.threads.com/refresh_access_token?grant_type=th_refresh_token
 ```
 
-Short-lived tokens last 1 hour; long-lived tokens last 60 days. A refresh returns a **new**
-token string, so store it again. Refreshing requires a token at least 24 hours old, and a
+Short-lived tokens last 1 hour; long-lived tokens last 60 days. Refresh a stored token with
+`heraldesk account refresh acme --platform threads`; the new token and expiry are encrypted
+with `secret.key` and `heraldesk doctor` warns when expiry is within 7 days. A refresh
+returns a **new** token string. Refreshing requires a token at least 24 hours old, and a
 private profile cannot extend the 90-day permission grant.
 
 Advanced access (publishing for accounts other than your testers) requires App Review and

@@ -1105,3 +1105,24 @@ never prints an API key, bot token or nsec.
   tokens are unchanged.
 - **Operational rule:** stop `heraldesk serve` before rotating. The CLI cannot detect an
   open server, and SQLite WAL locks differ by platform.
+
+
+## Operations, editing and Threads lifecycle (2026-11-19)
+
+- **File logs** live at `logs/heraldesk.log`, rotate at 5 MiB with three backups, mode 600,
+  and pass through `SecretRegistry` before formatting. Setup failure never stops the
+  server; uvicorn console logging remains. `reset_logging()` exists for tests.
+- **Readiness** is authenticated at `GET /api/v1/ready`. It reports schema match, scheduler
+  running/last run and Telegram mode/polling. A stale schema returns 503.
+- **Calendar** shows scheduled and published items from 7 days ago to N days ahead (UTC),
+  across profiles, with redacted previews.
+- **Profile editor** stages a copy of the four text files, validates it with
+  `load_profile`, atomically replaces each file, reloads the registration and audits
+  `profile.edited`. Arbitrary paths are impossible: the slug is validated, the directory
+  must be registered and filenames are fixed.
+- **Examples:** `examples/acme` is a safe draft-only profile; `examples/plugin` is a
+  minimal `heraldesk.platforms` package. Tests keep both valid.
+- **Threads lifecycle:** `account refresh` calls `/refresh_access_token`, stores the new
+  token and `expires_at` in the encrypted blob, and audits the result without the token.
+  `doctor` warns when expiry is missing or within 7 days. Live acceptance still needs a
+  tester account; CI stays mocked.

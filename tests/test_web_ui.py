@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -463,3 +463,107 @@ def test_cost_page_shows_agent_run_totals(
     assert page.status_code == 200
     assert "$0.1200" in page.text
     assert "acme" in page.text
+
+
+def test_calendar_page_lists_scheduled_items(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item = ContentItemRepository(db_session).add(
+        profile_setup.scope,
+        platform="fake",
+        body="A calendar item about faster dashboards.",
+        state=ContentState.SCHEDULED.value,
+    )
+    ContentItemRepository(db_session).set_scheduled_at(
+        profile_setup.scope,
+        item.id,
+        scheduled_at=datetime.now(UTC) + timedelta(days=1),
+    )
+    db_session.commit()
+
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/calendar")
+
+    assert page.status_code == 200
+    assert "A calendar item about faster dashboards." in page.text
+    assert "scheduled" in page.text
+
+
+def test_profile_editor_saves_valid_changes(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    from heraldesk.core.audit import AuditService
+    from heraldesk.domain.profiles import load_profile
+
+    directory = initialized.layout.profiles / "acme"
+    form = {
+        "soul.md": (directory / "soul.md").read_text(encoding="utf-8"),
+        "brief.md": "# Updated brief\n\nNew audience and goals.\n",
+        "policy.yaml": (directory / "policy.yaml").read_text(encoding="utf-8"),
+        "banned.yaml": (directory / "banned.yaml").read_text(encoding="utf-8"),
+    }
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/profiles/acme/edit")
+        assert page.status_code == 200
+        csrf = csrf_from(page.text)
+        form["csrf"] = csrf
+        saved = client.post(
+            "/profiles/acme/edit",
+            data=form,
+            follow_redirects=False,
+        )
+
+    assert saved.status_code == 303
+    assert (directory / "brief.md").read_text(encoding="utf-8").startswith("# Updated brief")
+    assert load_profile(directory).brief.startswith("# Updated brief")
+    from heraldesk.db.session import database_session
+
+    with database_session(initialized.layout) as audit_session:
+        actions = {
+            entry.action
+            for entry in AuditService(audit_session).history(profile_setup.scope, limit=100)
+        }
+    assert "profile.edited" in actions
+
+
+def test_profile_editor_rejects_invalid_policy_without_writing(
+    initialized: InitResult, profile_setup: ProfileSetup
+) -> None:
+    directory = initialized.layout.profiles / "acme"
+    original = (directory / "policy.yaml").read_text(encoding="utf-8")
+    with make_client(initialized) as client:
+        login(client)
+        csrf = csrf_from(client.get("/profiles/acme/edit").text)
+        response = client.post(
+            "/profiles/acme/edit",
+            data={
+                "csrf": csrf,
+                "soul.md": (directory / "soul.md").read_text(encoding="utf-8"),
+                "brief.md": (directory / "brief.md").read_text(encoding="utf-8"),
+                "policy.yaml": "default_mode: not-a-mode\n",
+                "banned.yaml": (directory / "banned.yaml").read_text(encoding="utf-8"),
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 400
+    assert (directory / "policy.yaml").read_text(encoding="utf-8") == original
+
+
+def test_profile_editor_requires_csrf(initialized: InitResult, profile_setup: ProfileSetup) -> None:
+    directory = initialized.layout.profiles / "acme"
+    with make_client(initialized) as client:
+        login(client)
+        response = client.post(
+            "/profiles/acme/edit",
+            data={
+                "soul.md": (directory / "soul.md").read_text(encoding="utf-8"),
+                "brief.md": (directory / "brief.md").read_text(encoding="utf-8"),
+                "policy.yaml": (directory / "policy.yaml").read_text(encoding="utf-8"),
+                "banned.yaml": (directory / "banned.yaml").read_text(encoding="utf-8"),
+            },
+            follow_redirects=False,
+        )
+    assert response.status_code == 403

@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.11.1)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.12.0)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.11.1.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.12.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.11.1
+## What works in 1.12.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -26,12 +26,13 @@ an installed plugin. The fake adapter is the offline publishing path. See
 - Official Threads (text) and Nostr publishers, plus `heraldesk.platforms` adapter plugins.
 - `heraldesk upgrade` takes a credential backup before applying migrations.
 - Docker, Compose, systemd and Caddy deployment examples for a VPS.
+- Runnable profile and adapter-plugin examples under `examples/`.
 - Telegram notifications, allowlisted commands and a stored inbound inbox.
 - Manual inbox triage: list, show, reply and ignore. No auto-reply and no AI-generated replies.
 - Deterministic weekly and monthly reports, with no LLM calls.
 - Backup and restore, doctor hardening, global and per-profile kill switches.
 - Real Nostr publishing (NIP-01 kind 1 notes) with a throwaway key.
-- Local Web UI and authenticated `/api/v1` for queue (including full-draft detail), inbox, reports, cost, audit, profiles, run traces and manual publishing.
+- Local Web UI and authenticated `/api/v1` for queue (including full-draft detail), calendar, inbox, reports, cost, audit, profiles, run traces, readiness and manual publishing.
 - SQLite only. No Redis, Postgres, Node, telemetry or phone-home.
 
 ## Requirements
@@ -42,7 +43,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 
 ## Install from source
 
-The 1.11.1 release is available as a GitHub release wheel and as a repository checkout.
+The 1.12.0 release is available as a GitHub release wheel and as a repository checkout.
 A tag-triggered workflow builds PyPI and GHCR artifacts; PyPI publishing is enabled after
 the maintainer configures trusted publishing.
 
@@ -60,7 +61,7 @@ pipx install --python 3.12 .
 
 The release wheel is attached to each
 [GitHub release](https://github.com/abengkris/heraldesk/releases); install it with
-`pipx install --python 3.12 ./heraldesk-1.11.1-py3-none-any.whl`.
+`pipx install --python 3.12 ./heraldesk-1.12.0-py3-none-any.whl`.
 
 ### Docker
 
@@ -212,8 +213,9 @@ uv run heraldesk account add acme --platform threads --handle @acme \
 uv run heraldesk account test acme --platform threads   # calls GET /me
 ```
 
-A long-lived token lasts 60 days; refresh it with the official token endpoint and store
-the new value. Text is limited to 500 UTF-8 bytes and the platform allows 250 posts per
+A long-lived token lasts 60 days. Refresh it with
+`heraldesk account refresh acme --platform threads`; the new token and expiry are encrypted
+and `doctor` warns when expiry is within 7 days. Text is limited to 500 UTF-8 bytes and the platform allows 250 posts per
 rolling 24 hours. CI mocks every HTTP call; the manual acceptance steps and sources are in
 [docs/platforms/threads.md](docs/platforms/threads.md).
 
@@ -231,8 +233,9 @@ uv run heraldesk serve                # http://127.0.0.1:8000
 ```
 
 Open `http://127.0.0.1:8000/login` and enter the token. The UI has a dashboard, approval
-queue with full-draft detail, inbox triage, report viewer, LLM cost page, audit log and
-profile list. HTMX and CSS are vendored; there is no Node build and no external CDN.
+queue with full-draft detail, content calendar, inbox triage, report viewer, LLM cost page,
+audit log, profile list and a validated profile/policy editor. HTMX and CSS are vendored;
+there is no Node build and no external CDN.
 
 The API uses `Authorization: Bearer <token>` only. `GET /api/v1/queue/{approval_id}`
 returns the full redacted draft so scripts can inspect content before deciding:
@@ -264,6 +267,9 @@ curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
 `/health` is public liveness/schema readiness and returns 503 when the database is behind the packaged migration. `/api/v1`, `/status` and every UI page require auth. API Bearer failures are limited to 10 per minute per client and return `429` with `Retry-After`.
 Tokens in a URL query string are rejected. Login is rate limited to five failed attempts
 per minute per IP.
+
+Server logs rotate in `$HERALDESK_HOME/logs/heraldesk.log` (5 MiB × 3, mode 600) with
+secret redaction. `GET /api/v1/ready` reports schema, scheduler and Telegram readiness.
 
 `heraldesk admin rotate-key` creates a credential backup, re-encrypts every account and the persisted Telegram token, revokes sessions, swaps `secret.key` and verifies the result. It reads the token file directly, so an environment or `.env` override is never copied over the persisted token. Session revocation failure aborts before credentials change. Stop `heraldesk serve` first. `heraldesk admin logout-all` rotates the session epoch and invalidates every signed-in browser; the dashboard has the same action. `heraldesk admin token --show` prints the raw token for your own terminal. Never put it in
 chat, a GitHub issue, a screenshot or a shell history you do not control.

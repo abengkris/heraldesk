@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from urllib.parse import urlsplit
 
 import typer
+from rich.markup import escape
 from rich.table import Table
 
 from heraldesk.cli.common import abort, console, session_for
+from heraldesk.core.audit import AuditService
 from heraldesk.core.crypto import CredentialCipher, CryptoError
 from heraldesk.db.repositories import SocialAccountRepository
 from heraldesk.domain.accounts import add_account, check_accounts
@@ -25,6 +28,7 @@ from heraldesk.platforms import adapter_for
 from heraldesk.platforms.base import PublishError
 from heraldesk.platforms.nostr import parse_relay_list
 from heraldesk.platforms.nostr_keys import is_npub, mask_npub
+from heraldesk.platforms.threads import ThreadsAdapter
 
 account_app = typer.Typer(
     no_args_is_help=True,
@@ -270,3 +274,78 @@ def test_command(
         console.print(table)
     if failed:
         raise typer.Exit(code=1)
+
+
+@account_app.command("refresh")
+def refresh_command(
+    profile: Annotated[str, typer.Argument(help="Profile slug.")],
+    platform: Annotated[
+        str,
+        typer.Option("--platform", help="Platform to refresh. Currently only threads."),
+    ] = "threads",
+    handle: Annotated[
+        str | None,
+        typer.Option("--handle", help="Only refresh this handle."),
+    ] = None,
+) -> None:
+    """Refresh a long-lived Threads access token and store its new expiry."""
+    if platform.strip().lower() != "threads":
+        abort("token refresh is currently implemented for --platform threads only")
+
+    adapter = ThreadsAdapter()
+    with session_for() as (layout, session):
+        try:
+            scope = resolve_scope(session, profile)
+            cipher = CredentialCipher.from_key_file(layout.key_path)
+            repository = SocialAccountRepository(session)
+            accounts = [
+                account
+                for account in repository.list(scope)
+                if account.platform == "threads"
+                and (handle is None or account.handle == handle.strip())
+            ]
+        except (ProfileNotFoundError, ProfileValidationError, CryptoError) as exc:
+            abort(str(exc))
+        if not accounts:
+            abort("no matching threads account is configured")
+
+        refreshed: list[tuple[str, datetime | None]] = []
+        for account in accounts:
+            try:
+                credentials = cipher.decrypt_json(account.credentials_encrypted)
+                token = credentials.get("access_token", "").strip()
+                if not token:
+                    raise PublishError("stored account has no access_token")
+                result = asyncio.run(adapter.refresh_token(token))
+            except (CryptoError, PublishError) as exc:
+                abort(f"cannot refresh {account.handle}: {exc}")
+
+            credentials["access_token"] = result.access_token
+            expires_at: datetime | None = None
+            if result.expires_in is not None:
+                expires_at = datetime.now(UTC) + timedelta(seconds=result.expires_in)
+                credentials["expires_at"] = expires_at.isoformat()
+            repository.set_credentials(
+                scope,
+                account.id,
+                credentials_encrypted=cipher.encrypt_json(credentials),
+            )
+            AuditService(session).record(
+                scope,
+                actor="user",
+                action="account.refreshed",
+                entity="social_account",
+                entity_id=account.id,
+                payload={
+                    "platform": account.platform,
+                    "handle": account.handle,
+                    "expires_in_seconds": result.expires_in,
+                    "expires_at": None if expires_at is None else expires_at.isoformat(),
+                },
+            )
+            refreshed.append((account.handle, expires_at))
+
+    for account_handle, expires_at in refreshed:
+        expiry = "unknown" if expires_at is None else expires_at.isoformat()
+        console.print(f"[green]Refreshed[/green] {escape(account_handle)}; expires {expiry}")
+    console.print("The new token is encrypted with secret.key and was not printed.")

@@ -29,6 +29,9 @@ current summary.
 - [x] M18 API contract and read models (authenticated OpenAPI, profiles and run traces)
 - [x] M19 Secret-key rotation (mandatory backup, staged re-encryption, verification,
   rollback on swap failure, session revocation)
+- [x] M20 Operations and editing (rotating redacted logs, `/api/v1/ready`, content
+  calendar, validated profile/policy editor, examples and plugin template)
+- [x] M21 Threads lifecycle (token refresh command, recorded expiry, doctor warning)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.
