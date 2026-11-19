@@ -19,6 +19,15 @@ from starlette.datastructures import FormData
 from heraldesk import __version__
 from heraldesk.analyst import ReportError, monthly_period, weekly_period
 from heraldesk.community import InboxError
+from heraldesk.core.audit import AuditService
+from heraldesk.core.locks import (
+    KillSwitchError,
+    engage_global_kill_switch,
+    is_global_kill_switch_enabled,
+    release_global_kill_switch,
+)
+from heraldesk.db.repositories import ApprovalLocator
+from heraldesk.domain.approvals import edit_item
 from heraldesk.domain.errors import ApprovalError, ContentError
 from heraldesk.web.auth import (
     LOGIN_CSRF_COOKIE,
@@ -56,6 +65,7 @@ from heraldesk.web.service import (
     list_queue_views,
     list_report_files,
     profiles_payload,
+    publish_content,
     read_report,
     reject_by_id,
     reply_inbox,
@@ -280,7 +290,7 @@ async def logout_all(request: Request) -> Response:
 
 
 @router.get("/", response_class=HTMLResponse)
-def dashboard(request: Request) -> HTMLResponse:
+def dashboard(request: Request, ok: str | None = None) -> HTMLResponse:
     """Show queue counts, inbox counts, profiles and the newest report."""
     session = _session(request)
     context = _context(request)
@@ -293,7 +303,49 @@ def dashboard(request: Request) -> HTMLResponse:
         "dashboard",
         counts=counts,
         last_report=latest_report_file(context.layout),
+        killswitch=is_global_kill_switch_enabled(context.layout),
+        notice="Kill switch updated." if ok == "killswitch" else None,
+        error=None,
     )
+
+
+@router.post("/killswitch")
+async def killswitch_toggle(request: Request) -> Response:
+    """Engage or clear the global kill switch from the dashboard."""
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    action = _form_value(form, "action").strip().lower()
+    if action not in {"engage", "clear"}:
+        raise BadRequest("kill switch action must be engage or clear", "invalid_action")
+    context = _context(request)
+    try:
+        with context.database.session() as db:
+            if action == "engage":
+                changed = engage_global_kill_switch(context.layout)
+                verb = "engaged"
+            else:
+                changed = release_global_kill_switch(context.layout)
+                verb = "disengaged"
+            if changed:
+                AuditService(db).record(
+                    None,
+                    actor="user",
+                    action=f"killswitch.{verb}",
+                    entity="killswitch",
+                    payload={"scope": "global", "enabled": action == "engage", "source": "web"},
+                )
+    except KillSwitchError as exc:
+        return _page(
+            request,
+            session,
+            "error.html",
+            "dashboard",
+            status_code=500,
+            code="killswitch_failed",
+            message=context.redactor.redact(str(exc)) or "kill switch update failed",
+        )
+    return RedirectResponse("/?ok=killswitch", status_code=303)
 
 
 @router.get("/queue", response_class=HTMLResponse)
@@ -315,7 +367,12 @@ def queue_page(request: Request, ok: str | None = None) -> HTMLResponse:
 
 
 @router.get("/queue/{approval_id}", response_class=HTMLResponse)
-def queue_detail_page(request: Request, approval_id: int) -> HTMLResponse:
+def queue_detail_page(
+    request: Request,
+    approval_id: int,
+    ok: str | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
     """Show the full redacted draft before a human approves or rejects it."""
     session = _session(request)
     context = _context(request)
@@ -332,7 +389,95 @@ def queue_detail_page(request: Request, approval_id: int) -> HTMLResponse:
                 code=exc.code,
                 message=exc.message,
             )
-    return _page(request, session, "queue_detail.html", "queue", detail=detail)
+    notice: str | None = None
+    if ok is not None:
+        notice = {
+            "edited": "Draft saved.",
+            "published": "Item published.",
+            "skipped": "Publish skipped.",
+        }.get(ok)
+    return _page(
+        request,
+        session,
+        "queue_detail.html",
+        "queue",
+        detail=detail,
+        notice=notice,
+        error=error,
+    )
+
+
+@router.post("/queue/{approval_id}/edit", response_class=HTMLResponse)
+async def queue_edit(request: Request, approval_id: int) -> Response:
+    """Edit the draft body through the audited approval service."""
+    ui_session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), ui_session, form)
+    body = _form_value(form, "body").strip()
+    context = _context(request)
+    try:
+        with context.database.session() as db:
+            resolved = ApprovalLocator(db).resolve(approval_id)
+            if resolved is None:
+                raise NotFound("approval not found")
+            scope, item_id = resolved
+            edit_item(db, scope, item_id, body=body, actor="user", channel="web")
+    except (ApprovalError, ContentError, WebError) as exc:
+        return _queue_detail_with_error(request, ui_session, approval_id, exc)
+    return RedirectResponse(f"/queue/{approval_id}?ok=edited", status_code=303)
+
+
+@router.post("/queue/{approval_id}/publish", response_class=HTMLResponse)
+async def queue_publish(request: Request, approval_id: int) -> Response:
+    """Publish one approved/scheduled/failed item from the Web UI."""
+    ui_session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), ui_session, form)
+    context = _context(request)
+    try:
+        with context.database.session() as db:
+            resolved = ApprovalLocator(db).resolve(approval_id)
+            if resolved is None:
+                raise NotFound("approval not found")
+            _scope, item_id = resolved
+            outcome = publish_content(db, context, item_id, actor="web")
+    except (ApprovalError, ContentError, WebError) as exc:
+        return _queue_detail_with_error(request, ui_session, approval_id, exc)
+    if outcome.status.value == "published":
+        return RedirectResponse(f"/queue/{approval_id}?ok=published", status_code=303)
+    return RedirectResponse(f"/queue/{approval_id}?ok=skipped", status_code=303)
+
+
+def _queue_detail_with_error(
+    request: Request,
+    ui_session: UISession,
+    approval_id: int,
+    exc: Exception,
+) -> HTMLResponse:
+    context = _context(request)
+    with context.database.session() as db:
+        try:
+            detail = get_queue_detail(db, context.redactor, approval_id)
+        except WebError as inner:
+            return _page(
+                request,
+                ui_session,
+                "error.html",
+                "queue",
+                status_code=inner.status_code,
+                code=inner.code,
+                message=inner.message,
+            )
+    return _page(
+        request,
+        ui_session,
+        "queue_detail.html",
+        "queue",
+        detail=detail,
+        notice=None,
+        error=context.redactor.redact(str(exc)) or "action failed",
+        status_code=400,
+    )
 
 
 @router.post("/queue/{approval_id}/approve", response_class=HTMLResponse)

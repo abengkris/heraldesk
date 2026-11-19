@@ -24,7 +24,7 @@ from heraldesk.domain.approvals import request_approval
 pytestmark = pytest.mark.core
 
 runner = CliRunner()
-NOW = datetime(2026, 11, 16, 12, 0, tzinfo=UTC)
+NOW = datetime.now(UTC)
 SECRET = "sk-ABCDEFGHIJKLMNOP1234"
 
 

@@ -17,9 +17,10 @@ from heraldesk.db.repositories import (
     ContentItemRepository,
     TelegramMessageRepository,
 )
-from heraldesk.domain.approvals import request_approval
+from heraldesk.domain.approvals import approve, request_approval
 from heraldesk.domain.content import ContentState
 from heraldesk.domain.profiles import ProfileStatus, set_profile_status
+from heraldesk.platforms.fake import FakeAdapter
 from heraldesk.telegram.fake import FakeTelegramAdapter
 from tests.conftest import ProfileSetup
 
@@ -57,6 +58,7 @@ def make_client(
     telegram: bool = False,
     adapter: FakeTelegramAdapter | None = None,
     cookie_secure: bool = False,
+    adapter_factory=None,
 ) -> TestClient:
     return TestClient(
         create_app(
@@ -67,7 +69,7 @@ def make_client(
                 telegram_adapter=adapter,
                 admin_token=ADMIN_TOKEN,
                 cookie_secure=cookie_secure,
-                adapter_factory=lambda platform: None,
+                adapter_factory=adapter_factory or (lambda platform: None),
                 scheduler_interval_seconds=3600.0,
             )
         )
@@ -567,3 +569,101 @@ def test_profile_editor_requires_csrf(initialized: InitResult, profile_setup: Pr
             follow_redirects=False,
         )
     assert response.status_code == 403
+
+
+def test_queue_detail_edits_the_draft(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item = ContentItemRepository(db_session).add(
+        profile_setup.scope,
+        platform="fake",
+        body="Original draft",
+        state=ContentState.PENDING_APPROVAL.value,
+        risk_level="low",
+    )
+    ContentItemRepository(db_session).set_publish_policy(
+        profile_setup.scope,
+        item.id,
+        mode="require_approval",
+        delay_minutes=None,
+    )
+    approval = request_approval(db_session, profile_setup.scope, item.id, now=NOW)
+    set_profile_status(db_session, profile_setup.scope, ProfileStatus.ACTIVE)
+    db_session.commit()
+
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get(f"/queue/{approval.id}")
+        csrf = csrf_from(page.text)
+        response = client.post(
+            f"/queue/{approval.id}/edit",
+            data={"csrf": csrf, "body": "Edited from the web UI."},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item.id)
+    assert stored is not None
+    assert stored.body == "Edited from the web UI."
+
+
+def test_queue_detail_publishes_an_approved_item(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item = ContentItemRepository(db_session).add(
+        profile_setup.scope,
+        platform="fake",
+        body="Publish from the UI.",
+        state=ContentState.PENDING_APPROVAL.value,
+        risk_level="low",
+    )
+    ContentItemRepository(db_session).set_publish_policy(
+        profile_setup.scope,
+        item.id,
+        mode="require_approval",
+        delay_minutes=None,
+    )
+    approval = request_approval(db_session, profile_setup.scope, item.id, now=NOW)
+    set_profile_status(db_session, profile_setup.scope, ProfileStatus.ACTIVE)
+    approve(db_session, profile_setup.layout, profile_setup.scope, item.id, now=NOW)
+    db_session.commit()
+
+    with make_client(initialized, adapter_factory=lambda _platform: FakeAdapter()) as client:
+        login(client)
+        page = client.get(f"/queue/{approval.id}")
+        csrf = csrf_from(page.text)
+        response = client.post(
+            f"/queue/{approval.id}/publish",
+            data={"csrf": csrf},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    db_session.expire_all()
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item.id)
+    assert stored is not None
+    assert stored.state == "published"
+
+
+def test_dashboard_toggles_the_global_kill_switch(initialized: InitResult) -> None:
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/")
+        csrf = csrf_from(page.text)
+        engaged = client.post(
+            "/killswitch",
+            data={"csrf": csrf, "action": "engage"},
+            follow_redirects=False,
+        )
+        dashboard = client.get("/")
+        cleared = client.post(
+            "/killswitch",
+            data={"csrf": csrf_from(dashboard.text), "action": "clear"},
+            follow_redirects=False,
+        )
+
+    assert engaged.status_code == 303
+    assert "Engaged." in dashboard.text
+    assert cleared.status_code == 303
+    assert not initialized.layout.killswitch_path.exists()

@@ -1,16 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard · Heraldesk<section class="card" aria-labelledby="sessions">
-  <h2 id="sessions">Sessions</h2>
-  <p class="muted">
-    Rotate the session epoch to invalidate every signed-in browser immediately. You will
-    be asked to sign in again.
-  </p>
-  <form method="post" action="/logout-all">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button type="submit" class="button danger">Log out everywhere</button>
-  </form>
-</section>
-{% endblock %}
+{% block title %}Dashboard · Heraldesk{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -18,6 +7,9 @@
     <p class="muted">Approvals, inbox and reports at a glance.</p>
   </div>
 </div>
+
+{% if notice %}<p class="alert ok" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
 
 <section class="grid" aria-label="Counts">
   <a class="card stat" href="/queue">
@@ -53,6 +45,28 @@
   <p class="muted">No report has been generated yet. <a href="/reports">Generate one</a>.</p>
   {% endif %}
 </section>
+
+<section class="card" aria-labelledby="killswitch">
+  <h2 id="killswitch">Global kill switch</h2>
+  <p class="muted">
+    {% if killswitch %}
+    <strong class="danger-text">Engaged.</strong> Publishing, approvals and replies are halted for every profile.
+    {% else %}
+    Clear. Publishing obeys each profile's policy.
+    {% endif %}
+  </p>
+  <form method="post" action="/killswitch">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if killswitch %}
+    <input type="hidden" name="action" value="clear">
+    <button type="submit" class="button">Clear kill switch</button>
+    {% else %}
+    <input type="hidden" name="action" value="engage">
+    <button type="submit" class="button danger">Engage kill switch</button>
+    {% endif %}
+  </form>
+</section>
+
 <section class="card" aria-labelledby="sessions">
   <h2 id="sessions">Sessions</h2>
   <p class="muted">

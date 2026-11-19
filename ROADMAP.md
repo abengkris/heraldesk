@@ -37,6 +37,7 @@ current summary.
 - [x] M24 Backup lifecycle (pruning with audit, dry-run, server-lock restore guard)
 - [x] M25 PyPI readiness (TestPyPI/PyPI trusted-publishing workflow, twine checks, sdist
   install smoke, release runbook)
+- [x] M26 Web UI daily controls (draft edit, publish now, global kill switch)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.

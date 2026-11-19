@@ -1172,3 +1172,16 @@ never prints an API key, bot token or nsec.
   environments.
 - **Artifacts:** wheel/sdist on PyPI and the GitHub release, GHCR image with SBOM and
   provenance, and the release notes.
+
+
+## Web UI daily controls (2026-11-19)
+
+- **Draft edit** on the queue detail page calls `domain.approvals.edit_item` with
+  `channel="web"`, so the existing state rules, redaction and audit apply. The route only
+  resolves the approval id to its scoped item.
+- **Publish now** calls `web.service.publish_content` with `trigger="manual"`, preserving
+  policy gates, the manual override audit, adapter routing, retries and notifications.
+- **Global kill switch** on the dashboard engages/clears the existing marker and audits
+  `killswitch.engaged|disengaged` with `source=web`. It does not cancel already scheduled
+  items.
+- **CSRF** is required on both actions; all error messages are redacted.

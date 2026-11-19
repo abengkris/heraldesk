@@ -223,9 +223,9 @@ heraldesk stop-all [--off]
 **Telegram:** notifications are plain text, not inline buttons. The allowlisted bot handles `/approve`, `/reject`,
 `/queue`, `/help` and `/start`. An optional `telegram.allowed_user_ids` restricts command senders.
 
-**Web UI (local):** dashboard, approval queue with a full-draft detail page, content calendar, manual inbox,
-report viewer, LLM cost page, read-only audit log, profile list and a validated editor for the four profile text
-files. Server-rendered (HTMX), no frontend build step.
+**Web UI (local):** dashboard with global kill-switch control, approval queue with a full-draft detail page and
+edit/publish controls, content calendar, manual inbox, report viewer, LLM cost page, read-only audit log, profile
+list and a validated editor for the four profile text files. Server-rendered (HTMX), no frontend build step.
 
 **REST API:** authenticated `/api/v1` for status, readiness, queue (list + detail, paged and profile-filtered),
 approvals, calendar, inbox, reports, audit (paged/action-filtered), cost, profiles, accounts, agent-run traces and

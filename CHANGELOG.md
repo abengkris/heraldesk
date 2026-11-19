@@ -6,6 +6,18 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.16.0] - 2026-11-19
+
+### Added
+
+- Queue detail edit form using the audited approval service.
+- "Publish now" from the Web UI for approved/scheduled/failed items.
+- Global kill-switch control on the dashboard with audit coverage.
+
+### Docs
+
+- README, architecture, decisions and roadmap describe the new daily controls.
+
 ## [1.15.0] - 2026-11-19
 
 ### Added
