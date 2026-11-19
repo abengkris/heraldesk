@@ -14,8 +14,8 @@ credential backup before applying migrations.
 
 | Version | Supported |
 |---|---|
-| 1.10.x | yes |
-| 1.9.x | security fixes until 1.11.0 |
+| 1.11.x | yes |
+| 1.10.x | security fixes until 1.12.0 |
 | older | no |
 
 ## Scope
@@ -38,8 +38,9 @@ supply-chain issues.
 - Use `POST /logout-all` or `heraldesk admin logout-all` after suspected cookie theft; this rotates the
   instance session epoch immediately.
 - Keep the reverse proxy as the only client of the Heraldesk port and make it overwrite `X-Forwarded-For`.
-- Keep `secret.key` mode 600. Losing it makes stored social credentials unreadable; there
-  is no rotation command yet, so re-add accounts after a planned key rotation.
+- Keep `secret.key` mode 600. Rotate it with `heraldesk admin rotate-key` while the server
+  is stopped; it takes a mandatory credential backup first. Losing the key without a backup
+  makes stored credentials unreadable.
 - Back up with credentials (`heraldesk backup --with-credentials`) and store the archive
   off the host. This includes `secret.key` and `telegram.token`; `.env` is still excluded,
   so back it up separately.

@@ -27,6 +27,8 @@ current summary.
 - [x] M16 Inbox retention (manual `inbox prune`, dry-run, pending opt-in, audit)
 - [x] M17 Audit and cost visibility (read-only UI pages and `/api/v1/audit|cost`)
 - [x] M18 API contract and read models (authenticated OpenAPI, profiles and run traces)
+- [x] M19 Secret-key rotation (mandatory backup, staged re-encryption, verification,
+  rollback on swap failure, session revocation)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.

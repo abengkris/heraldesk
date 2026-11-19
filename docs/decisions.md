@@ -1076,3 +1076,25 @@ never prints an API key, bot token or nsec.
   error. Inputs and outputs stay in the local database; they can contain draft content.
 - **Scoped lookups.** Run reads resolve the slug through `ProfileCatalog`, then use
   `AgentRunRepository.list(ProfileScope(...))`.
+
+
+## Secret-key rotation (2026-11-19)
+
+- **Command:** `heraldesk admin rotate-key [--dry-run]`. It re-encrypts every
+  `social_accounts.credentials_encrypted` blob and, when present, the encrypted
+  `telegram.token`.
+- **Mandatory backup:** a credential backup (including the old `secret.key`) is written
+  before any change. If it cannot be written, rotation aborts.
+- **Ordering:** decrypt everything, generate and stage the new key, update the database in
+  one transaction, swap `secret.key` and the token file, then verify every stored blob
+  with the new key.
+- **Failure handling:** before the key swap, failures leave the old key and database
+  untouched. If the token swap fails after the key swap, the old key file is restored from
+  memory, the database is re-encrypted with the old key and the command aborts. A failure
+  restoring the old key points the operator at the backup. Verification failure also
+  points at the backup.
+- **Sessions:** rotation revokes UI sessions. If the admin token is secret.key-derived, the
+  token changes; `heraldesk admin token --show` prints the new value. Explicit environment
+  or `.env` tokens are unchanged.
+- **Operational rule:** stop `heraldesk serve` before rotating. The CLI cannot detect an
+  open server, and SQLite WAL locks differ by platform.

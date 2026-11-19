@@ -6,6 +6,19 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.11.0] - 2026-11-19
+
+### Added
+
+- `heraldesk admin rotate-key [--dry-run]` re-encrypts social accounts and the stored
+  Telegram token with a new `secret.key`, after a mandatory credential backup. It stages,
+  swaps, verifies, rolls back the database on key-swap failure and revokes UI sessions.
+
+### Docs
+
+- SECURITY, README, architecture, decisions and roadmap document the rotation procedure,
+  the backup requirement and the stop-the-server rule.
+
 ## [1.10.0] - 2026-11-19
 
 ### Added

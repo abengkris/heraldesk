@@ -243,7 +243,8 @@ schema is served at `/api/v1/openapi.json` behind auth; FastAPI's public docs ro
   `HERALDESK_TELEGRAM_WEBHOOK_SECRET`; the server refuses to start without it. `telegram.allowed_user_ids` is an
   optional second gate.
 - **Platform credentials** encrypted at rest, decrypted only inside adapters at use time, never placed in prompts,
-  logs or agent output. Logs mask secrets.
+  logs or agent output. Logs mask secrets. `heraldesk admin rotate-key` re-encrypts accounts and the stored
+  Telegram token after a mandatory backup.
 - **Prompt injection:** only profile files and agent payloads are sent to LLM roles today; platform comments are
   not fetched or fed to agents. When comment/DM handling is added, it must be treated as untrusted data.
 - **No telemetry, no phone-home.** Outbound traffic is limited to the configured LLM provider, platform APIs,
@@ -272,6 +273,8 @@ schema is served at `/api/v1/openapi.json` behind auth; FastAPI's public docs ro
 - Docker: `Dockerfile` with a non-root user and `/data` volume, `docker-compose.yml`, and a `/health` healthcheck.
 - `deploy/` contains a systemd unit, a Caddyfile and a VPS runbook.
 - `heraldesk upgrade` creates a credential backup, then applies Alembic migrations and audits the change.
+- `heraldesk admin rotate-key` stages a new key, re-encrypts accounts and the Telegram token, swaps files,
+  verifies the result and rolls back the database if the key swap fails. Stop the server first.
 - `heraldesk serve` refuses to start on a schema that is not at the packaged Alembic head.
 - `heraldesk backup` copies `heraldesk.db` (SQLite online backup API), `profiles/`, `agents/` and `heraldesk.yaml`;
   `secret.key` and `telegram.token` only when explicitly requested. `.env` is not included.

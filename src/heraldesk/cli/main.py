@@ -24,6 +24,7 @@ from heraldesk.cli.profile import profile_app
 from heraldesk.cli.publish import publish_command
 from heraldesk.cli.queue import queue_app
 from heraldesk.cli.report import report_app
+from heraldesk.cli.rotate_key import rotate_key_command
 from heraldesk.cli.run import run_app
 from heraldesk.cli.runs import runs_command
 from heraldesk.cli.scheduler import scheduler_app
@@ -253,6 +254,9 @@ admin_app = typer.Typer(
     help="Inspect the single-admin authentication token.",
 )
 app.add_typer(admin_app, name="admin")
+
+
+admin_app.command("rotate-key")(rotate_key_command)
 
 
 @admin_app.command("logout-all")

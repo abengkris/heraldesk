@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.10.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.11.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.11.0)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.10.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.11.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.10.0
+## What works in 1.11.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -42,7 +42,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 
 ## Install from source
 
-The 1.10.0 release is available as a GitHub release wheel and as a repository checkout.
+The 1.11.0 release is available as a GitHub release wheel and as a repository checkout.
 A tag-triggered workflow builds PyPI and GHCR artifacts; PyPI publishing is enabled after
 the maintainer configures trusted publishing.
 
@@ -60,7 +60,7 @@ pipx install --python 3.12 .
 
 The release wheel is attached to each
 [GitHub release](https://github.com/abengkris/heraldesk/releases); install it with
-`pipx install --python 3.12 ./heraldesk-1.10.0-py3-none-any.whl`.
+`pipx install --python 3.12 ./heraldesk-1.11.0-py3-none-any.whl`.
 
 ### Docker
 
@@ -265,7 +265,7 @@ curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
 Tokens in a URL query string are rejected. Login is rate limited to five failed attempts
 per minute per IP.
 
-`heraldesk admin logout-all` rotates the session epoch and invalidates every signed-in browser; the dashboard has the same action. `heraldesk admin token --show` prints the raw token for your own terminal. Never put it in
+`heraldesk admin rotate-key` creates a credential backup, re-encrypts every account and the stored Telegram token, swaps `secret.key`, verifies the result and revokes sessions. Stop `heraldesk serve` first. `heraldesk admin logout-all` rotates the session epoch and invalidates every signed-in browser; the dashboard has the same action. `heraldesk admin token --show` prints the raw token for your own terminal. Never put it in
 chat, a GitHub issue, a screenshot or a shell history you do not control.
 
 ### VPS hardening (Caddy + HTTPS)
@@ -414,6 +414,7 @@ Online probes never print an API key, bot token or nsec.
 
 - `heraldesk.yaml` contains no credentials. LLM keys live in `.env` or the environment.
 - Social account credentials are encrypted at rest with `secret.key` (mode 600).
+- Rotate it with `heraldesk admin rotate-key`; a credential backup is mandatory and the old key remains the restore source if the swap is interrupted.
 - Backups exclude `.env`; they include `telegram.token` with `--with-credentials`.
   Protect credential backups like the original data folder.
 - The server binds to `127.0.0.1` by default. A non-loopback bind requires

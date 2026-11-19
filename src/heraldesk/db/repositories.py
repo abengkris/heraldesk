@@ -223,6 +223,22 @@ class SocialAccountRepository:
             )
         )
 
+    def set_credentials(
+        self,
+        scope: ProfileScope,
+        account_id: int,
+        *,
+        credentials_encrypted: str,
+    ) -> SocialAccount | None:
+        """Replace one account's encrypted credential blob."""
+        account = self.get(scope, account_id)
+        if account is None:
+            return None
+        account.credentials_encrypted = credentials_encrypted
+        account.updated_at = utcnow()
+        self._session.flush()
+        return account
+
     def mark_checked(
         self,
         scope: ProfileScope,
