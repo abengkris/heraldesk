@@ -6,9 +6,10 @@ publishing or report logic is duplicated.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -35,10 +36,13 @@ from heraldesk.core.audit import AuditService
 from heraldesk.core.crypto import CredentialCipher
 from heraldesk.core.redact import SecretRegistry
 from heraldesk.db.repositories import (
+    AgentRunRepository,
     ApprovalLocator,
     ApprovalRepository,
+    AuditCatalog,
     AuditRepository,
     ContentItemRepository,
+    GlobalCostRepository,
     InboxRepository,
     ProfileCatalog,
     ProfileRepository,
@@ -104,6 +108,32 @@ class QueueView:
             "preview": self.preview,
             "reason": self.reason,
             "expires_at": None if self.expires_at is None else self.expires_at.isoformat(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AuditView:
+    """One audit entry safe for the UI and API."""
+
+    id: int
+    profile_slug: str | None
+    actor: str
+    action: str
+    entity: str
+    entity_id: str | None
+    payload: str
+    created_at: datetime
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "profile": self.profile_slug,
+            "actor": self.actor,
+            "action": self.action,
+            "entity": self.entity,
+            "entity_id": self.entity_id,
+            "payload": self.payload,
+            "created_at": self.created_at.isoformat(),
         }
 
 
@@ -642,3 +672,94 @@ def get_queue_detail(
         created_at=as_utc(item.created_at),
         scheduled_at=None if item.scheduled_at is None else as_utc(item.scheduled_at),
     )
+
+
+def list_audit_views(
+    session: Session,
+    redactor: SecretRegistry,
+    *,
+    limit: int = 100,
+) -> list[AuditView]:
+    """Return newest audit entries with redacted, truncated payloads."""
+    if limit < 1 or limit > 500:
+        raise BadRequest("limit must be between 1 and 500", "invalid_limit")
+    slugs = {profile.id: profile.slug for profile in ProfileCatalog(session).list()}
+    views: list[AuditView] = []
+    for entry in AuditCatalog(session).recent(limit=limit):
+        payload = json.dumps(entry.payload, ensure_ascii=True, sort_keys=True)
+        views.append(
+            AuditView(
+                id=entry.id,
+                profile_slug=None if entry.profile_id is None else slugs.get(entry.profile_id),
+                actor=entry.actor,
+                action=entry.action,
+                entity=entry.entity,
+                entity_id=entry.entity_id,
+                payload=redactor.redact(payload)[:500],
+                created_at=as_utc(entry.created_at),
+            )
+        )
+    return views
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileCostView:
+    """Cost rollup for one profile."""
+
+    profile_slug: str
+    runs_today: int
+    cost_today: float
+    cost_7d: float
+    cost_30d: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "profile": self.profile_slug,
+            "runs_today": self.runs_today,
+            "cost_today": self.cost_today,
+            "cost_7d": self.cost_7d,
+            "cost_30d": self.cost_30d,
+        }
+
+
+def cost_summary(session: Session, *, now: datetime | None = None) -> dict[str, Any]:
+    """Return instance and per-profile LLM cost rollups. Read-only."""
+    current = as_utc(datetime.now(UTC) if now is None else now)
+    day_start = datetime(current.year, current.month, current.day, tzinfo=UTC)
+    week_start = day_start - timedelta(days=7)
+    month_start = day_start - timedelta(days=30)
+    global_repository = GlobalCostRepository(session)
+    totals = {
+        "today": global_repository.totals_since(day_start),
+        "last_7_days": global_repository.totals_since(week_start),
+        "last_30_days": global_repository.totals_since(month_start),
+    }
+    profiles: list[ProfileCostView] = []
+    for summary in ProfileCatalog(session).list():
+        repository = AgentRunRepository(session)
+        scope = ProfileScope(summary.id)
+        today = repository.totals_since(scope, day_start)
+        week = repository.totals_since(scope, week_start)
+        month = repository.totals_since(scope, month_start)
+        profiles.append(
+            ProfileCostView(
+                profile_slug=summary.slug,
+                runs_today=today.runs,
+                cost_today=today.cost_usd,
+                cost_7d=week.cost_usd,
+                cost_30d=month.cost_usd,
+            )
+        )
+    return {
+        "as_of": current.isoformat(),
+        "totals": {
+            name: {
+                "runs": value.runs,
+                "tokens_in": value.tokens_in,
+                "tokens_out": value.tokens_out,
+                "cost_usd": value.cost_usd,
+            }
+            for name, value in totals.items()
+        },
+        "profiles": [view.as_dict() for view in profiles],
+    }

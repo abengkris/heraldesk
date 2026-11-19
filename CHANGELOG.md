@@ -6,6 +6,20 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.9.0] - 2026-11-19
+
+### Added
+
+- Read-only audit log page (`/audit`) and `GET /api/v1/audit`, with redacted and truncated
+  payloads across profiles.
+- LLM cost page (`/cost`) and `GET /api/v1/cost` with today, 7-day and 30-day rollups per
+  profile and instance-wide.
+
+### Docs
+
+- README and architecture list the new audit/cost surfaces and the cross-profile read
+  exceptions.
+
 ## [1.8.0] - 2026-11-19
 
 ### Added

@@ -1046,3 +1046,18 @@ never prints an API key, bot token or nsec.
 - **Audit:** one `inbox.pruned` entry with days, deleted count and the pending flag. No
   message text, chat id or sender id enters the payload.
 - **Backups:** pruned rows are gone from future backups; existing archives are unaffected.
+
+
+## Audit and cost visibility (2026-11-19)
+
+- **Read-only views.** `GET /audit`, `GET /cost`, `/api/v1/audit` and `/api/v1/cost` are
+  authenticated read models over `audit_log` and `agent_runs`. They never mutate state.
+- **Redaction.** Audit payloads are JSON-serialized, passed through `SecretRegistry` and
+  truncated to 500 characters before rendering. Profile slugs are resolved from the
+  profile catalog; a missing profile renders as `null`.
+- **Costs are exact database sums,** not estimates: today (UTC midnight), last 7 days and
+  last 30 days, per profile and instance-wide. Token counts include input plus output in
+  the UI summary.
+- **Cross-profile reads are narrow.** `AuditCatalog.recent` and
+  `GlobalCostRepository` are the documented diagnostic exceptions; every write and every
+  content-bearing query still goes through `ProfileScope`.

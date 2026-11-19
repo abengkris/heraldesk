@@ -37,11 +37,13 @@ from heraldesk.web.rendering import render_markdown
 from heraldesk.web.service import (
     approve_by_id,
     audit_login,
+    cost_summary,
     dashboard_counts,
     generate_report,
     get_queue_detail,
     ignore_inbox,
     latest_report_file,
+    list_audit_views,
     list_inbox_views,
     list_queue_views,
     list_report_files,
@@ -641,6 +643,26 @@ def report_download(request: Request, filename: str) -> FileResponse:
         media_type="text/markdown; charset=utf-8",
         filename=path.name,
     )
+
+
+@router.get("/cost", response_class=HTMLResponse)
+def cost_page(request: Request) -> HTMLResponse:
+    """Show LLM cost rollups for the instance and each profile."""
+    session = _session(request)
+    context = _context(request)
+    with context.database.session() as db:
+        summary = cost_summary(db)
+    return _page(request, session, "cost.html", "cost", summary=summary)
+
+
+@router.get("/audit", response_class=HTMLResponse)
+def audit_page(request: Request, limit: int = 100) -> HTMLResponse:
+    """Show the newest audit entries across profiles."""
+    session = _session(request)
+    context = _context(request)
+    with context.database.session() as db:
+        entries = list_audit_views(db, context.redactor, limit=limit)
+    return _page(request, session, "audit.html", "audit", entries=entries)
 
 
 @router.get("/profiles", response_class=HTMLResponse)

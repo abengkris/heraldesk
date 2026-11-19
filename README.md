@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.8.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.8.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.9.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.9.0)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.8.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.9.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.8.0
+## What works in 1.9.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -31,7 +31,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 - Deterministic weekly and monthly reports, with no LLM calls.
 - Backup and restore, doctor hardening, global and per-profile kill switches.
 - Real Nostr publishing (NIP-01 kind 1 notes) with a throwaway key.
-- Local Web UI and authenticated `/api/v1` for queue (including full-draft detail), inbox, reports and manual publishing.
+- Local Web UI and authenticated `/api/v1` for queue (including full-draft detail), inbox, reports, cost, audit and manual publishing.
 - SQLite only. No Redis, Postgres, Node, telemetry or phone-home.
 
 ## Requirements
@@ -42,7 +42,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 
 ## Install from source
 
-The 1.8.0 release is available as a GitHub release wheel and as a repository checkout.
+The 1.9.0 release is available as a GitHub release wheel and as a repository checkout.
 A tag-triggered workflow builds PyPI and GHCR artifacts; PyPI publishing is enabled after
 the maintainer configures trusted publishing.
 
@@ -60,7 +60,7 @@ pipx install --python 3.12 .
 
 The release wheel is attached to each
 [GitHub release](https://github.com/abengkris/heraldesk/releases); install it with
-`pipx install --python 3.12 ./heraldesk-1.8.0-py3-none-any.whl`.
+`pipx install --python 3.12 ./heraldesk-1.9.0-py3-none-any.whl`.
 
 ### Docker
 
@@ -231,8 +231,8 @@ uv run heraldesk serve                # http://127.0.0.1:8000
 ```
 
 Open `http://127.0.0.1:8000/login` and enter the token. The UI has a dashboard, approval
-queue, inbox triage, report viewer and profile list. HTMX and CSS are vendored; there is no
-Node build and no external CDN.
+queue with full-draft detail, inbox triage, report viewer, LLM cost page, audit log and
+profile list. HTMX and CSS are vendored; there is no Node build and no external CDN.
 
 The API uses `Authorization: Bearer <token>` only. `GET /api/v1/queue/{approval_id}`
 returns the full redacted draft so scripts can inspect content before deciding:
@@ -243,6 +243,12 @@ curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
 
 curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
   http://127.0.0.1:8000/api/v1/queue?status=pending
+
+curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
+  http://127.0.0.1:8000/api/v1/audit?limit=20
+
+curl -H "Authorization: Bearer $HERALDESK_ADMIN_TOKEN" \
+  http://127.0.0.1:8000/api/v1/cost
 ```
 
 `/health` is public liveness/schema readiness and returns 503 when the database is behind the packaged migration. `/api/v1`, `/status` and every UI page require auth. API Bearer failures are limited to 10 per minute per client and return `429` with `Retry-After`.

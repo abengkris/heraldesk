@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session
 from heraldesk.api.app import AppOptions, create_app
 from heraldesk.config import Config, load_config
 from heraldesk.core.bootstrap import InitResult
-from heraldesk.db.repositories import ContentItemRepository, TelegramMessageRepository
+from heraldesk.db.repositories import (
+    AgentRunRepository,
+    ContentItemRepository,
+    TelegramMessageRepository,
+)
 from heraldesk.domain.approvals import request_approval
 from heraldesk.domain.content import ContentState
 from heraldesk.domain.profiles import ProfileStatus, set_profile_status
@@ -424,3 +428,38 @@ def test_logout_all_revokes_the_current_session(initialized: InitResult) -> None
     assert response.headers["location"] == "/login"
     assert after.status_code == 303
     assert after.headers["location"] == "/login"
+
+
+def test_audit_page_lists_entries(initialized: InitResult) -> None:
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/audit")
+
+    assert page.status_code == 200
+    assert "Audit" in page.text
+    assert "serve.started" in page.text
+
+
+def test_cost_page_shows_agent_run_totals(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    AgentRunRepository(db_session).add(
+        profile_setup.scope,
+        agent="writer",
+        status="succeeded",
+        model="fake/fake",
+        input={},
+        started_at=datetime.now(UTC),
+        tokens_in=10,
+        tokens_out=5,
+        cost_usd=0.12,
+    )
+    db_session.commit()
+
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/cost")
+
+    assert page.status_code == 200
+    assert "$0.1200" in page.text
+    assert "acme" in page.text

@@ -22,8 +22,10 @@ from heraldesk.web.errors import BadRequest, Conflict, NotFound, WebError
 from heraldesk.web.service import (
     approve_by_id,
     build_status,
+    cost_summary,
     get_queue_detail,
     ignore_inbox,
+    list_audit_views,
     list_inbox_views,
     list_queue_views,
     publish_content,
@@ -105,6 +107,26 @@ def api_status(request: Request) -> dict[str, Any]:
             telegram_mode=context.config.telegram.mode,
             allowed_chats=len(context.allowed_chat_ids),
         )
+
+
+@router.get("/cost", dependencies=dependencies)
+def api_cost(request: Request) -> dict[str, Any]:
+    """Return instance and per-profile LLM cost rollups."""
+    context = _context(request)
+    with context.database.session() as session:
+        return cost_summary(session)
+
+
+@router.get("/audit", dependencies=dependencies)
+def api_audit(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> dict[str, Any]:
+    """Return recent audit entries with redacted payloads."""
+    context = _context(request)
+    with context.database.session() as session:
+        views = list_audit_views(session, context.redactor, limit=limit)
+        return {"items": [view.as_dict() for view in views], "count": len(views)}
 
 
 @router.get("/queue", dependencies=dependencies)

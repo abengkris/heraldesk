@@ -14,6 +14,7 @@ from heraldesk.config import Config, load_config
 from heraldesk.core.audit import AuditService
 from heraldesk.core.bootstrap import InitResult
 from heraldesk.db.repositories import (
+    AgentRunRepository,
     ContentItemRepository,
     TelegramMessageRepository,
 )
@@ -398,3 +399,39 @@ def test_security_headers_and_hsts(initialized: InitResult) -> None:
     assert plain.headers["permissions-policy"]
     assert "strict-transport-security" not in plain.headers
     assert tls.headers["strict-transport-security"].startswith("max-age=31536000")
+
+
+def test_api_audit_lists_recent_entries(initialized: InitResult) -> None:
+    with make_app(initialized) as client:
+        response = client.get("/api/v1/audit?limit=10", headers=HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] >= 1
+    assert any(item["action"] == "serve.started" for item in body["items"])
+    assert "payload" in body["items"][0]
+
+
+def test_api_cost_summarises_agent_runs(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    AgentRunRepository(db_session).add(
+        profile_setup.scope,
+        agent="writer",
+        status="succeeded",
+        model="fake/fake",
+        input={},
+        started_at=datetime.now(UTC),
+        tokens_in=10,
+        tokens_out=5,
+        cost_usd=0.12,
+    )
+    db_session.commit()
+    with make_app(initialized) as client:
+        response = client.get("/api/v1/cost", headers=HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["totals"]["today"]["cost_usd"] == pytest.approx(0.12)
+    assert body["profiles"][0]["profile"] == "acme"
+    assert body["profiles"][0]["cost_today"] == pytest.approx(0.12)

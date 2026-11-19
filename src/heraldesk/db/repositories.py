@@ -297,6 +297,27 @@ class AuditRepository:
         return self._session.scalar(query.order_by(AuditLog.id.desc()).limit(1))
 
 
+class AuditCatalog:
+    """Read-only cross-profile audit view for the authenticated audit page.
+
+    This is a narrow diagnostic exception, like :class:`ProfileCatalog` and
+    :class:`InboxRepository`: it returns redacted audit rows only, never profile content,
+    and it has no write method.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def recent(self, *, limit: int = 100) -> list[AuditLog]:
+        """Return the newest audit entries across every profile."""
+        if limit < 1 or limit > 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        entries = self._session.scalars(
+            select(AuditLog).order_by(AuditLog.id.desc()).limit(limit)
+        ).all()
+        return list(entries)
+
+
 class JobRepository:
     """Scoped access to the business jobs table. The scheduler arrives in M5."""
 

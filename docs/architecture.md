@@ -223,12 +223,12 @@ heraldesk stop-all [--off]
 **Telegram:** notifications are plain text, not inline buttons. The allowlisted bot handles `/approve`, `/reject`,
 `/queue`, `/help` and `/start`. An optional `telegram.allowed_user_ids` restricts command senders.
 
-**Web UI (local):** dashboard, approval queue with a full-draft detail page, manual inbox, report viewer and a
-read-only profile list. There is no calendar, profile editor, audit viewer or cost page yet. Server-rendered
-(HTMX), no frontend build step.
+**Web UI (local):** dashboard, approval queue with a full-draft detail page, manual inbox, report viewer,
+LLM cost page, read-only audit log and a read-only profile list. There is no calendar or profile editor yet.
+Server-rendered (HTMX), no frontend build step.
 
-**REST API:** authenticated `/api/v1` for status, queue (list + detail), approvals, inbox, reports and publishing.
-Cookies are not accepted; use `Authorization: Bearer`. OpenAPI/docs endpoints are disabled.
+**REST API:** authenticated `/api/v1` for status, queue (list + detail), approvals, inbox, reports, audit, cost
+and publishing. Cookies are not accepted; use `Authorization: Bearer`. OpenAPI/docs endpoints are disabled.
 
 ## 10. Security for self-hosting
 - **Bind `127.0.0.1` by default.** A non-loopback bind requires `--allow-remote`, an explicit
