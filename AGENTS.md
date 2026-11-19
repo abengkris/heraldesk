@@ -18,7 +18,7 @@ The full design is in `docs/architecture.md`. Read it before writing code.
 10. No telemetry, no phone-home.
 
 ## Tech stack
-Python 3.12–3.13 (default 3.12), FastAPI, SQLAlchemy 2 + Alembic (SQLite WAL), APScheduler, LiteLLM, Typer + Rich,
+Python 3.12–3.14 (default 3.12; 3.14 uses the pure BIP-340 fallback), FastAPI, SQLAlchemy 2 + Alembic (SQLite WAL), APScheduler, LiteLLM, Typer + Rich,
 Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv.
 
 ## Commands (keep this section up to date as the project grows)

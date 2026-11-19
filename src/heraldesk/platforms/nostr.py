@@ -1,8 +1,10 @@
 """Nostr adapter: publish NIP-01 kind 1 text notes to relays.
 
-Signing uses BIP-340 Schnorr over libsecp256k1 through ``coincurve``. The private key is
-read from the encrypted account credential (``nsec``) for the duration of one publish,
-never logged, never put in an event and never returned in an error.
+Signing uses BIP-340 Schnorr. Python 3.12/3.13 prefer libsecp256k1 through ``coincurve``;
+where that optional binding is unavailable (notably CPython 3.14) a small pure-Python
+BIP-340 fallback is used. The private key is read from the encrypted account credential
+(``nsec``) for the duration of one publish, never logged, never put in an event and never
+returned in an error.
 
 Relay policy: broadcast to every configured relay, accept the event when at least one
 relay answers ``["OK", <id>, true, ...]``. One rejecting or timing-out relay does not fail
@@ -25,11 +27,18 @@ from datetime import UTC, datetime
 from typing import Any, Final, Protocol
 from urllib.parse import urlsplit
 
-from coincurve import PrivateKey, PublicKeyXOnly
+try:
+    from coincurve import PrivateKey, PublicKeyXOnly
+
+    _HAS_COINCURVE = True
+except ImportError:  # CPython 3.14 currently has no coincurve wheel
+    _HAS_COINCURVE = False
+
 from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
 
 from heraldesk.config import DEFAULT_NOSTR_RELAYS, DEFAULT_NOSTR_TIMEOUT_SECONDS
+from heraldesk.platforms import bip340
 from heraldesk.platforms.base import (
     AccountRef,
     PlatformAdapter,
@@ -180,13 +189,12 @@ def build_event(secret: bytes, content: str, created_at: datetime) -> NostrEvent
     The signature is deterministic: BIP-340 allows a 32-byte zero auxiliary value, so the
     same key, time and content always produce the same event id and signature.
     """
-    private_key = _private_key(secret)
-    pubkey = PublicKeyXOnly.from_secret(secret).format().hex()
+    pubkey = _public_key(secret).hex()
     timestamp = int(_as_utc(created_at).timestamp())
     tags = tuple(("t", tag) for tag in hashtags_in(content))
     identifier = event_id_for(pubkey, timestamp, KIND_TEXT_NOTE, tags, content)
     try:
-        signature = private_key.sign_schnorr(bytes.fromhex(identifier), bytes(32))
+        signature = _sign(secret, bytes.fromhex(identifier))
     except ValueError as exc:
         raise NostrKeyError("cannot sign the Nostr event with this nsec key") from exc
     return NostrEvent(
@@ -200,11 +208,22 @@ def build_event(secret: bytes, content: str, created_at: datetime) -> NostrEvent
     )
 
 
-def _private_key(secret: bytes) -> PrivateKey:
-    try:
-        return PrivateKey(secret)
-    except ValueError as exc:
-        raise NostrKeyError("invalid nsec key") from exc
+def _public_key(secret: bytes) -> bytes:
+    if _HAS_COINCURVE:
+        return PublicKeyXOnly.from_secret(secret).format()
+    return bip340.pubkey_gen(secret)
+
+
+def _sign(secret: bytes, message: bytes) -> bytes:
+    if _HAS_COINCURVE:
+        return PrivateKey(secret).sign_schnorr(message, bytes(32))
+    return bip340.sign(message, secret)
+
+
+def _verify(pubkey: bytes, signature: bytes, message: bytes) -> bool:
+    if _HAS_COINCURVE:
+        return PublicKeyXOnly(pubkey).verify(signature, message)
+    return bip340.verify(pubkey, message, signature)
 
 
 def verify_event(event: NostrEvent) -> bool:
@@ -219,8 +238,10 @@ def verify_event(event: NostrEvent) -> bool:
     if computed != event.id:
         return False
     try:
-        return PublicKeyXOnly(bytes.fromhex(event.pubkey)).verify(
-            bytes.fromhex(event.sig), bytes.fromhex(event.id)
+        return _verify(
+            bytes.fromhex(event.pubkey),
+            bytes.fromhex(event.sig),
+            bytes.fromhex(event.id),
         )
     except ValueError:
         return False
@@ -228,7 +249,7 @@ def verify_event(event: NostrEvent) -> bool:
 
 def npub_from_secret(secret: bytes) -> str:
     """Return the public ``npub1...`` identifier for a 32-byte secret."""
-    return encode_npub(PublicKeyXOnly.from_secret(secret).format())
+    return encode_npub(_public_key(secret))
 
 
 class WebSocketRelayClient:

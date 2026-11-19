@@ -9,7 +9,7 @@ description = "Your autonomous social media department. Self-hosted, open source
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.15"
 authors = [{ name = "Abeng" }]
 keywords = ["social-media", "automation", "self-hosted", "llm", "agents"]
 classifiers = [
@@ -24,13 +24,14 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
 dependencies = [
   "alembic>=1.14,<2",
   "apscheduler>=3.10,<4",
   # BIP-340 Schnorr signing for the Nostr adapter (libsecp256k1 via cffi).
-  "coincurve>=21.0,<22",
+  "coincurve>=21.0,<22; python_version < '3.14'",
   "cryptography>=43,<52",
   "fastapi>=0.115,<1",
   # Server-rendered Web UI (M11) and safe Markdown report rendering.

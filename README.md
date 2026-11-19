@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.17.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.17.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.18.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.18.0)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.17.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.18.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.17.0
+## What works in 1.18.0
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -37,16 +37,15 @@ an installed plugin. The fake adapter is the offline publishing path. See
 
 ## Requirements
 
-- Python 3.12 or 3.13 (3.14 is currently blocked by the `coincurve` dependency)
-- `pipx install --python 3.12 ...` if your default interpreter is 3.13 or 3.14
+- Python 3.12, 3.13 or 3.14 (3.12 is recommended)
+- `pipx install --python 3.12 ...` if your default interpreter is newer
 - [`uv`](https://docs.astral.sh/uv/) for the recommended source install
 - A Linux, macOS or Windows machine; the CLI is tested on all three
 
 ## Install from PyPI
 
-Heraldesk supports **Python 3.12 and 3.13**. If your default `python3` is 3.14, pass a
-3.12/3.13 interpreter explicitly; otherwise pipx reports `from versions: none`.
-Python 3.14 is currently blocked by `coincurve` (no cp314 wheel).
+Heraldesk supports **Python 3.12, 3.13 and 3.14**. Python 3.14 uses a pure-Python BIP-340
+signing fallback because `coincurve` has no cp314 wheel; 3.12/3.13 use libsecp256k1.
 
 ```bash
 pipx install --python 3.12 heraldesk
@@ -75,7 +74,7 @@ uv run heraldesk init
 pipx install --python 3.12 .
 
 # Or install the release wheel
-pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.16.3/heraldesk-1.17.0-py3-none-any.whl
+pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.18.0/heraldesk-1.18.0-py3-none-any.whl
 ```
 
 ### Docker

@@ -1205,13 +1205,15 @@ never prints an API key, bot token or nsec.
   A SHA pin failed with `ghcr.io/pypa/gh-action-pypi-publish:<sha>: not found`.
 
 
-## Python 3.13 support; 3.14 blocked (2026-11-19)
+## Python 3.13/3.14 support (2026-11-19)
 
-- **3.13 is supported.** The full test suite passes on CPython 3.13.18 and CI runs it on
-  Ubuntu.
-- **3.14 is blocked by `coincurve 21.0.0`.** There is no cp314 wheel, and its sdist build
-  fails because the bundled cffi distribution has no LICENSE file. The package keeps
-  `requires-python = ">=3.12,<3.14"` until coincurve (or a replacement secp256k1 binding)
-  supports 3.14.
-- `doctor` accepts 3.12–3.13 and fails clearly on other versions.
-- The Docker image and default development interpreter remain 3.12.
+- **3.12, 3.13 and 3.14 are supported.** The full suite passes on all three and CI runs
+  3.13 and 3.14 on Ubuntu.
+- **3.14 has no coincurve wheel.** The dependency is conditional
+  (`python_version < '3.14'`); 3.14 uses `platforms/bip340.py`, a tested pure-Python BIP-340
+  implementation. 3.12/3.13 keep libsecp256k1 via coincurve.
+- **Trade-off:** the pure-Python fallback is not constant-time. It keeps Nostr usable on
+  3.14, but is not a general-purpose signing service. The preferred path remains coincurve
+  where available.
+- `doctor` accepts 3.12–3.14; the Docker image and default development interpreter remain
+  3.12.

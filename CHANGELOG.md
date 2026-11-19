@@ -6,6 +6,19 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.0] - 2026-11-19
+
+### Added
+
+- Python 3.14 support. `coincurve` is conditional on `<3.14`; 3.14 uses a pure-Python
+  BIP-340 implementation with known-answer tests and the existing Nostr event vector.
+  CI adds a full 3.14 Ubuntu job. `requires-python` is now `>=3.12,<3.15`.
+
+### Security note
+
+- The pure-Python BIP-340 fallback is not constant-time. It keeps Nostr usable on 3.14;
+  Python 3.12/3.13 continue to use libsecp256k1 through coincurve.
+
 ## [1.17.0] - 2026-11-19
 
 ### Added

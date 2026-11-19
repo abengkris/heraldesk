@@ -38,7 +38,9 @@ current summary.
 - [x] M25 PyPI publishing (PyPI + TestPyPI trusted publishing live, twine checks, sdist
   install smoke, release runbook)
 - [x] M26 Web UI daily controls (draft edit, publish now, global kill switch)
-- [x] M27 Python 3.13 support (full suite and CI; 3.14 blocked upstream by coincurve)
+- [x] M27 Python 3.13 support (full suite and CI)
+- [x] M28 Python 3.14 support (coincurve conditional; pure-Python BIP-340 fallback,
+  3.14 CI job)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.

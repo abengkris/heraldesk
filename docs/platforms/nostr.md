@@ -12,7 +12,8 @@ platform returns `NotSupportedError` unless an installed plugin supplies it.
   lowercased, deduplicated and capped at ten.
 - `id` is the SHA-256 of the canonical NIP-01 serialization
   `[0, pubkey, created_at, kind, tags, content]`.
-- `sig` is a BIP-340 Schnorr signature over the 32-byte event id.
+- `sig` is a BIP-340 Schnorr signature over the 32-byte event id. Python 3.12/3.13 use
+  libsecp256k1 via `coincurve`; 3.14 uses the pure-Python `platforms/bip340.py` fallback.
 - The public handle is the account `npub1...` identifier. The secret is the `nsec1...`
   credential, encrypted at rest with `secret.key`.
 

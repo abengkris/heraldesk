@@ -40,8 +40,8 @@ from heraldesk.telegram.credentials import (
 from heraldesk.web.auth import explicit_admin_token
 
 MIN_PYTHON = (3, 12)
-MAX_PYTHON = (3, 14)
-SUPPORTED_PYTHON = "Python 3.12-3.13"
+MAX_PYTHON = (3, 15)
+SUPPORTED_PYTHON = "Python 3.12-3.14"
 
 
 class CheckStatus(StrEnum):

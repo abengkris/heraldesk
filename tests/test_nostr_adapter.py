@@ -13,12 +13,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from coincurve import PublicKeyXOnly
 
 from heraldesk.config import ConfigError, load_config
 from heraldesk.core.bootstrap import InitResult
 from heraldesk.core.redact import SecretRegistry, looks_like_secret_name
-from heraldesk.platforms import publish_adapter_for
+from heraldesk.platforms import bip340, publish_adapter_for
 from heraldesk.platforms.base import AccountRef, PublishError, PublishRequest
 from heraldesk.platforms.nostr import (
     NostrAdapter,
@@ -110,7 +109,7 @@ def test_nsec_round_trip_and_npub_derivation() -> None:
     assert decode_nsec(NSEC) == SECRET
     assert npub_from_secret(SECRET) == NPUB
     assert is_npub(NPUB)
-    assert encode_npub(PublicKeyXOnly.from_secret(SECRET).format()) == NPUB
+    assert encode_npub(bip340.pubkey_gen(SECRET)) == NPUB
     assert mask_npub(NPUB) == f"{NPUB[:10]}…{NPUB[-4:]}"
     assert "nsec" not in mask_npub(NPUB)
 
@@ -133,7 +132,7 @@ def test_event_matches_reference_id_and_signature() -> None:
     event = build_event(SECRET, BODY, NOW)
     assert event.id == EVENT_ID
     assert event.sig == SIGNATURE
-    assert event.pubkey == PublicKeyXOnly.from_secret(SECRET).format().hex()
+    assert event.pubkey == bip340.pubkey_gen(SECRET).hex()
     assert event.kind == 1
     assert event.created_at == int(NOW.timestamp())
     assert event.tags == ()
@@ -281,3 +280,13 @@ def test_invalid_relay_config_is_rejected(initialized: InitResult) -> None:
 def test_adapter_defaults_are_the_two_documented_relays() -> None:
     instance = NostrAdapter(relay_client=FakeRelayClient())
     assert instance.relays == ("wss://relay.damus.io", "wss://nos.lol")
+
+
+def test_pure_python_signing_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("heraldesk.platforms.nostr._HAS_COINCURVE", False)
+
+    event = build_event(SECRET, BODY, NOW)
+
+    assert event.sig == SIGNATURE
+    assert verify_event(event)
+    assert npub_from_secret(SECRET) == NPUB
