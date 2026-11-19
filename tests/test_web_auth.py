@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from starlette.requests import Request
 from typer.testing import CliRunner
 
 from heraldesk.cli.main import app as cli_app
@@ -21,6 +22,8 @@ from heraldesk.web.auth import (
     explicit_admin_token,
     mask_token,
     resolve_admin_token,
+    rotate_session_epoch,
+    session_epoch_path,
     token_in_query,
     trust_proxy_enabled,
 )
@@ -217,3 +220,78 @@ def test_explicit_false_trust_proxy_overrides_dotenv(
 
     monkeypatch.setenv("HERALDESK_TRUST_PROXY", "1")
     assert trust_proxy_enabled(initialized.layout) is True
+
+
+def _request(headers: dict[str, str], host: str = "10.0.0.5") -> Request:
+    raw = [(key.lower().encode(), value.encode()) for key, value in headers.items()]
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "query_string": b"",
+            "headers": raw,
+            "client": (host, 1234),
+            "server": ("testserver", 80),
+            "scheme": "http",
+        }
+    )
+
+
+def test_client_key_uses_the_proxy_appended_hop() -> None:
+    auth = AdminAuth(token=TOKEN, trust_proxy=True)
+
+    key = auth.client_key(_request({"x-forwarded-for": "6.6.6.6, 203.0.113.9"}))
+
+    assert key == "203.0.113.9"
+
+
+def test_client_key_ignores_forwarded_headers_without_proxy_mode() -> None:
+    auth = AdminAuth(token=TOKEN, trust_proxy=False)
+
+    key = auth.client_key(_request({"x-forwarded-for": "203.0.113.9"}))
+
+    assert key == "10.0.0.5"
+
+
+def test_session_epoch_revokes_existing_sessions(tmp_path: Path) -> None:
+    path = tmp_path / "session_epoch"
+    auth = AdminAuth(token=TOKEN, epoch_path=path)
+    now = datetime(2026, 11, 19, 12, 0, tzinfo=UTC)
+    _, cookie = auth.issue_session(now=now)
+    assert auth.read_session(cookie, now=now) is not None
+
+    rotate_session_epoch(path)
+
+    assert auth.read_session(cookie, now=now) is None
+    _, fresh = auth.issue_session(now=now)
+    assert auth.read_session(fresh, now=now) is not None
+
+    rotate_session_epoch(path)
+    assert auth.read_session(fresh, now=now) is None
+
+
+def test_invalid_session_epoch_file_invalidates_old_sessions(tmp_path: Path) -> None:
+    path = tmp_path / "session_epoch"
+    auth = AdminAuth(token=TOKEN, epoch_path=path)
+    now = datetime(2026, 11, 19, 12, 0, tzinfo=UTC)
+    _, cookie = auth.issue_session(now=now)
+    assert auth.read_session(cookie, now=now) is not None
+
+    path.write_text("not-a-number", encoding="ascii")
+
+    assert auth.read_session(cookie, now=now) is None
+
+
+def test_cli_logout_all_rotates_the_epoch(initialized: InitResult) -> None:
+    path = session_epoch_path(initialized.layout)
+    auth = AdminAuth(token=TOKEN, epoch_path=path)
+    now = datetime(2026, 11, 19, 12, 0, tzinfo=UTC)
+    _, cookie = auth.issue_session(now=now)
+    assert auth.read_session(cookie, now=now) is not None
+
+    result = runner.invoke(cli_app, ["admin", "logout-all"])
+
+    assert result.exit_code == 0, result.output
+    assert "Sessions revoked" in result.output
+    assert auth.read_session(cookie, now=now) is None

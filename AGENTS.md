@@ -32,6 +32,7 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
 - Run the single-process server: `uv run heraldesk serve [--host 127.0.0.1] [--port 8000] [--no-web] [--no-telegram]`
   (Web UI at `/`, JSON API at `/api/v1`, public liveness at `/health`; scheduler sweep every 60 s; Telegram
   polling every 10 s when `telegram.enabled` and `telegram.mode: polling`)
+- Revoke all Web UI sessions: `uv run heraldesk admin logout-all`
 - Show the admin token source/fingerprint: `uv run heraldesk admin token` (`--show` prints the raw secret only
   when explicitly requested; never log or screenshot it)
 - Allow a non-loopback bind only behind HTTPS: `uv run heraldesk serve --host 0.0.0.0 --allow-remote` with an

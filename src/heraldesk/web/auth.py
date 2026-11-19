@@ -22,6 +22,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Final
 from urllib.parse import parse_qs
 
@@ -39,6 +40,9 @@ LOGIN_CSRF_COOKIE: Final = "heraldesk_login_csrf"
 SESSION_TTL_SECONDS: Final = 12 * 60 * 60
 LOGIN_ATTEMPTS: Final = 5
 LOGIN_WINDOW_SECONDS: Final = 60.0
+API_ATTEMPTS: Final = 10
+API_WINDOW_SECONDS: Final = 60.0
+SESSION_EPOCH_FILENAME: Final = "session_epoch"
 QUERY_TOKEN_KEYS: Final = frozenset({"token", "access_token", "admin_token"})
 _DERIVATION_LABEL: Final = b"heraldesk-admin-v1"
 _SESSION_LABEL: Final = b"heraldesk-session-v1"
@@ -204,13 +208,25 @@ class LoginRateLimiter:
         with self._lock:
             return len(self._recent(key, self.clock())) < self.limit
 
-    def record_failure(self, key: str) -> None:
-        """Record one failed attempt."""
+    def record_failure(self, key: str) -> int:
+        """Record one failed attempt and return the failures in the window."""
         with self._lock:
             now = self.clock()
+            if len(self._failures) > 1024:
+                self._prune(now)
             recent = self._recent(key, now)
             recent.append(now)
             self._failures[key] = recent
+            return len(recent)
+
+    def _prune(self, now: float) -> None:
+        """Drop expired keys so spoofed addresses cannot grow the map without bound."""
+        cutoff = now - self.window_seconds
+        self._failures = {
+            key: [stamp for stamp in stamps if stamp >= cutoff]
+            for key, stamps in self._failures.items()
+            if any(stamp >= cutoff for stamp in stamps)
+        }
 
     def reset(self, key: str) -> None:
         """Clear the window after a successful login."""
@@ -235,6 +251,13 @@ class AdminAuth:
     trust_proxy: bool = False
     session_ttl_seconds: int = SESSION_TTL_SECONDS
     rate_limiter: LoginRateLimiter = field(default_factory=LoginRateLimiter)
+    api_limiter: LoginRateLimiter = field(
+        default_factory=lambda: LoginRateLimiter(
+            limit=API_ATTEMPTS,
+            window_seconds=API_WINDOW_SECONDS,
+        )
+    )
+    epoch_path: Path | None = None
 
     def __post_init__(self) -> None:
         if not self.token.strip():
@@ -288,6 +311,12 @@ class AdminAuth:
         signed = self._verified(cookie_value)
         return signed is not None and hmac.compare_digest(signed, form_value)
 
+    def _epoch(self) -> int:
+        """Return the current session epoch (0 when no epoch file exists)."""
+        if self.epoch_path is None:
+            return 0
+        return read_session_epoch(self.epoch_path)
+
     def issue_session(self, *, now: datetime | None = None) -> tuple[UISession, str]:
         """Create a signed session and return it with the cookie value."""
         current = datetime.now(UTC) if now is None else now
@@ -302,6 +331,7 @@ class AdminAuth:
             "iat": int(current.timestamp()),
             "exp": int(expires.timestamp()),
             "csrf": session.csrf,
+            "ep": self._epoch(),
         }
         encoded = _b64encode(
             json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -328,10 +358,13 @@ class AdminAuth:
             issued = datetime.fromtimestamp(int(payload["iat"]), tz=UTC)
             expires = datetime.fromtimestamp(int(payload["exp"]), tz=UTC)
             csrf = str(payload["csrf"])
+            epoch = int(payload["ep"])
         except (KeyError, TypeError, ValueError, OverflowError):
             return None
         current = datetime.now(UTC) if now is None else now
         if expires <= current or issued > current:
+            return None
+        if epoch != self._epoch():
             return None
         return UISession(csrf=csrf, issued_at=issued, expires_at=expires)
 
@@ -342,12 +375,18 @@ class AdminAuth:
         return hmac.compare_digest(session.csrf, form_value)
 
     def client_key(self, request: Request) -> str:
-        """Return the rate-limit key, trusting forwarded IPs only behind a proxy."""
+        """Return the rate-limit key, trusting only the proxy-appended hop.
+
+        Heraldesk documents a single TLS-terminating reverse proxy. That proxy appends
+        the address it saw to ``X-Forwarded-For``; using the rightmost value ignores any
+        client-supplied spoofed prefix. Deployments with multiple proxies must configure
+        the outermost proxy to overwrite the header.
+        """
         if self.trust_proxy:
             forwarded = request.headers.get("x-forwarded-for", "")
-            first = forwarded.split(",", 1)[0].strip()
-            if first:
-                return first
+            last = forwarded.rsplit(",", 1)[-1].strip()
+            if last:
+                return last
         return request.client.host if request.client is not None else "unknown"
 
 
@@ -355,3 +394,43 @@ def token_in_query(query_string: bytes | str) -> bool:
     """Return ``True`` when a sensitive token key appears in a query string."""
     raw = query_string.decode("latin-1") if isinstance(query_string, bytes) else query_string
     return any(key in parse_qs(raw, keep_blank_values=True) for key in QUERY_TOKEN_KEYS)
+
+
+def session_epoch_path(layout: paths.Layout) -> Path:
+    """Return the instance-local session epoch file path."""
+    return layout.home / SESSION_EPOCH_FILENAME
+
+
+def read_session_epoch(path: Path) -> int:
+    """Read the session epoch. A missing file is 0; an invalid file fails closed."""
+    if not path.is_file():
+        return 0
+    try:
+        return int(path.read_text(encoding="ascii").strip())
+    except (OSError, UnicodeDecodeError, ValueError):
+        return -1
+
+
+def rotate_session_epoch(path: Path) -> int:
+    """Increment and persist the session epoch with atomic, mode-600 replacement."""
+    current = read_session_epoch(path)
+    if current < 0:
+        current = 0
+    value = current + 1
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            0o600,
+        )
+        with os.fdopen(descriptor, "w", encoding="ascii") as handle:
+            handle.write(f"{value}\n")
+        os.replace(temporary, path)
+        if os.name == "posix":
+            path.chmod(0o600)
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise AuthConfigError(f"cannot rotate the session epoch: {exc}") from exc
+    return value

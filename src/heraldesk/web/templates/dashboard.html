@@ -1,5 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Dashboard · Heraldesk{% endblock %}
+{% block title %}Dashboard · Heraldesk<section class="card" aria-labelledby="sessions">
+  <h2 id="sessions">Sessions</h2>
+  <p class="muted">
+    Rotate the session epoch to invalidate every signed-in browser immediately. You will
+    be asked to sign in again.
+  </p>
+  <form method="post" action="/logout-all">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="button danger">Log out everywhere</button>
+  </form>
+</section>
+{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -41,5 +52,16 @@
   {% else %}
   <p class="muted">No report has been generated yet. <a href="/reports">Generate one</a>.</p>
   {% endif %}
+</section>
+<section class="card" aria-labelledby="sessions">
+  <h2 id="sessions">Sessions</h2>
+  <p class="muted">
+    Rotate the session epoch to invalidate every signed-in browser immediately. You will
+    be asked to sign in again.
+  </p>
+  <form method="post" action="/logout-all">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="button danger">Log out everywhere</button>
+  </form>
 </section>
 {% endblock %}

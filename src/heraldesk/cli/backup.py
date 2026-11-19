@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from typing import Annotated
 
@@ -12,6 +13,7 @@ from heraldesk.cli.common import abort, console, session_for
 from heraldesk.core.audit import AuditService
 from heraldesk.core.backup import BackupError, create_backup, restore_backup
 from heraldesk.db.session import DatabaseNotInitialized, database_session
+from heraldesk.web.auth import AuthConfigError, rotate_session_epoch, session_epoch_path
 
 
 def backup_command(
@@ -89,6 +91,9 @@ def restore_command(
         )
     except BackupError as exc:
         abort(str(exc))
+
+    with contextlib.suppress(AuthConfigError):
+        rotate_session_epoch(session_epoch_path(layout))
 
     if result.restored_db:
         try:

@@ -234,7 +234,10 @@ Cookies are not accepted; use `Authorization: Bearer`. OpenAPI/docs endpoints ar
 - **Bind `127.0.0.1` by default.** A non-loopback bind requires `--allow-remote`, an explicit
   `HERALDESK_ADMIN_TOKEN` of at least 32 characters and `HERALDESK_TRUST_PROXY=1` behind an HTTPS reverse proxy.
 - **Single admin token:** Bearer token for `/api/v1`, a signed HttpOnly session cookie for the UI, CSRF on every
-  UI POST, login rate limiting and query-token rejection. There is no password store.
+  UI POST, login and API-failure rate limiting, request-size caps and query-token rejection. There is no password
+  store. Session cookies carry an instance epoch; `logout-all` revokes every browser.
+- **Proxy mode** uses the rightmost `X-Forwarded-For` hop from the documented single TLS proxy; the outer proxy
+  must overwrite client-supplied prefixes.
 - **Telegram webhooks are signed.** Webhook mode (and any remote Telegram deployment) requires
   `HERALDESK_TELEGRAM_WEBHOOK_SECRET`; the server refuses to start without it. `telegram.allowed_user_ids` is an
   optional second gate.
@@ -273,7 +276,7 @@ Cookies are not accepted; use `Authorization: Bearer`. OpenAPI/docs endpoints ar
   `secret.key` only when explicitly requested. `.env` and `telegram.token` are not included.
 
 ## 13. Implementation roadmap
-The completed milestones and the planned next work live in `ROADMAP.md`. Summary: M0–M13 shipped, covering the
+The completed milestones and the planned next work live in `ROADMAP.md`. Summary: M0–M14 shipped, covering the
 foundation, domain, LLM runtime, daily pipeline, approvals, scheduler/publisher, Telegram, server, reports,
 hardening, Nostr, Web UI/API, adapter plugins, the Threads text adapter and production distribution.
 

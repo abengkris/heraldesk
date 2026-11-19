@@ -46,14 +46,17 @@ from heraldesk.web.auth import (
     Unauthorized,
     resolve_admin_token,
     resolve_webhook_secret,
+    session_epoch_path,
     token_in_query,
 )
 from heraldesk.web.context import AdapterFactory, WebContext
 from heraldesk.web.errors import WebError, json_error
-from heraldesk.web.service import build_status
+from heraldesk.web.service import audit_login, build_status
 
 ACCEPTED_INBOX_STATUSES = frozenset({"ok", "stored", "help"})
 _STATIC_DIR = Path(__file__).resolve().parents[1] / "web" / "static"
+MAX_JSON_BODY_BYTES = 1 * 1024 * 1024
+MAX_FORM_BODY_BYTES = 64 * 1024
 
 logger = logging.getLogger("heraldesk.web")
 
@@ -166,6 +169,7 @@ def create_app(options: AppOptions) -> FastAPI:
         token=admin_token,
         cookie_secure=options.cookie_secure,
         trust_proxy=options.trust_proxy,
+        epoch_path=session_epoch_path(options.layout),
     )
     redactor = SecretRegistry.from_environment(
         extra_values=[
@@ -259,10 +263,34 @@ def create_app(options: AppOptions) -> FastAPI:
         if token_in_query(request.url.query):
             logger.warning("admin token supplied in the URL query; request rejected")
             return json_error(400, "token_in_query", "tokens are not accepted in URLs")
-        if request.url.path.startswith("/api/v1") and not auth.verify_bearer(
-            request.headers.get("authorization")
-        ):
-            return json_error(401, "unauthorized", "a valid Bearer admin token is required")
+
+        if request.method in {"POST", "PUT", "PATCH"}:
+            limit = MAX_FORM_BODY_BYTES if request.url.path in {"/login"} else MAX_JSON_BODY_BYTES
+            raw_length = request.headers.get("content-length")
+            if raw_length is not None:
+                try:
+                    length = int(raw_length)
+                except ValueError:
+                    return json_error(400, "invalid_content_length", "invalid request body")
+                if length > limit:
+                    return json_error(413, "request_too_large", "request body is too large")
+
+        if request.url.path.startswith("/api/v1"):
+            client = auth.client_key(request)
+            if not auth.api_limiter.allowed(client):
+                return json_error(
+                    429,
+                    "rate_limited",
+                    "too many authentication failures; retry later",
+                    headers={"Retry-After": str(auth.api_limiter.retry_after(client))},
+                )
+            if not auth.verify_bearer(request.headers.get("authorization")):
+                count = auth.api_limiter.record_failure(client)
+                if count == auth.api_limiter.limit:
+                    with context.database.session() as session:
+                        audit_login(session, "auth.api_rate_limited", detail="bearer")
+                return json_error(401, "unauthorized", "a valid Bearer admin token is required")
+            auth.api_limiter.reset(client)
         response: Response = await call_next(request)
         if auth.cookie_secure:
             response.headers.setdefault(
@@ -385,6 +413,7 @@ def create_app(options: AppOptions) -> FastAPI:
             request.headers.get("x-telegram-bot-api-secret-token"),
             ctx.webhook_secret,
         ):
+            logger.warning("rejected an unsigned Telegram webhook request")
             return {"ok": False, "status": "unauthorized"}
         if not ctx.telegram_active:
             return {"ok": False, "status": "ignored"}

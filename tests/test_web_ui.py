@@ -405,3 +405,22 @@ def test_htmx_inbox_error_returns_200_and_message(
         assert response.status_code == 200
         assert "does not exist" in response.text
         assert "<tr" in response.text
+
+
+def test_logout_all_revokes_the_current_session(initialized: InitResult) -> None:
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/")
+        csrf = csrf_from(page.text)
+
+        response = client.post(
+            "/logout-all",
+            data={"csrf": csrf},
+            follow_redirects=False,
+        )
+        after = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+    assert after.status_code == 303
+    assert after.headers["location"] == "/login"

@@ -242,3 +242,13 @@ def test_initialize_helper_is_used_by_fixture(initialized: InitResult) -> None:
     home = initialized.layout.home
     assert (home / "heraldesk.db").is_file()
     assert initialize(home).revision == "0010"
+
+
+def test_short_explicit_admin_token_warns(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HERALDESK_ADMIN_TOKEN", "short")
+    assert by_name(initialized.layout.home)["admin token"] is CheckStatus.WARN
+
+    monkeypatch.setenv("HERALDESK_ADMIN_TOKEN", "x" * 32)
+    assert by_name(initialized.layout.home)["admin token"] is CheckStatus.PASS

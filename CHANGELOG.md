@@ -6,6 +6,20 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.6.0] - 2026-11-19
+
+### Security
+
+- Added a separate `/api/v1` Bearer-failure limiter (10/min per client) with `429`,
+  `Retry-After` and one audit entry per block window.
+- Added an instance session epoch: `POST /logout-all` and `heraldesk admin logout-all`
+  revoke every UI session immediately. Restoration rotates the epoch.
+- Trust-proxy rate-limit keys now use the proxy-appended (rightmost) `X-Forwarded-For`
+  hop instead of a spoofable client-supplied prefix.
+- Added request-size caps (64 KiB login, 1 MiB other mutations) and the remaining
+  hardening headers already covered by CSP/HSTS.
+- Short explicit admin tokens now warn in `doctor`; remote mode already refuses them.
+
 ## [1.5.1] - 2026-11-19
 
 ### Fixed

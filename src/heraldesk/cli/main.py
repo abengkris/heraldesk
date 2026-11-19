@@ -255,6 +255,27 @@ admin_app = typer.Typer(
 app.add_typer(admin_app, name="admin")
 
 
+@admin_app.command("logout-all")
+def admin_logout_all_command() -> None:
+    """Invalidate every Web UI session by rotating the session epoch."""
+    from heraldesk.web.auth import AuthConfigError, rotate_session_epoch, session_epoch_path
+
+    layout = paths.layout_for(paths.resolve_home())
+    try:
+        epoch = rotate_session_epoch(session_epoch_path(layout))
+    except AuthConfigError as exc:
+        abort(str(exc))
+    with session_for() as (_, session):
+        AuditService(session).record(
+            None,
+            actor="user",
+            action="auth.logout_all",
+            entity="auth",
+            payload={"source": "cli", "epoch": epoch},
+        )
+    console.print(f"[green]Sessions revoked:[/green] epoch {epoch}. Sign in again.")
+
+
 @admin_app.command("token")
 def admin_token_command(
     show: Annotated[

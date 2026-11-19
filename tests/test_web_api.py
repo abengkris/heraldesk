@@ -11,11 +11,13 @@ from sqlalchemy.orm import Session
 from heraldesk.analyst import weekly_period, write_report
 from heraldesk.api.app import AppOptions, create_app
 from heraldesk.config import Config, load_config
+from heraldesk.core.audit import AuditService
 from heraldesk.core.bootstrap import InitResult
 from heraldesk.db.repositories import (
     ContentItemRepository,
     TelegramMessageRepository,
 )
+from heraldesk.db.session import database_session
 from heraldesk.domain.approvals import request_approval
 from heraldesk.domain.content import ContentState
 from heraldesk.domain.profiles import ProfileStatus, set_profile_status
@@ -342,3 +344,57 @@ def test_api_inbox_invalid_status_preserves_code(initialized: InitResult) -> Non
         response = client.get("/api/v1/inbox?status=bogus", headers=HEADERS)
         assert response.status_code == 400
         assert response.json()["code"] == "invalid_status"
+
+
+def test_api_bearer_failures_are_rate_limited(
+    initialized: InitResult,
+) -> None:
+    with make_app(initialized) as client:
+        client.app.state.auth.api_limiter.limit = 2
+        bad = {"Authorization": "Bearer wrong-token"}
+        first = client.get("/api/v1/status", headers=bad)
+        second = client.get("/api/v1/status", headers=bad)
+        blocked = client.get("/api/v1/status", headers=bad)
+
+    assert first.status_code == 401
+    assert second.status_code == 401
+    assert blocked.status_code == 429
+    assert blocked.headers["Retry-After"]
+    with database_session(initialized.layout) as session:
+        actions = {entry.action for entry in AuditService(session).history(None, limit=100)}
+    assert "auth.api_rate_limited" in actions
+
+
+def test_oversized_requests_are_rejected(initialized: InitResult) -> None:
+    with make_app(initialized) as client:
+        response = client.post(
+            "/webhook/telegram",
+            content=b"x" * (1024 * 1024 + 1),
+            headers={"content-type": "application/json"},
+        )
+
+    assert response.status_code == 413
+    assert response.json()["code"] == "request_too_large"
+
+
+def test_security_headers_and_hsts(initialized: InitResult) -> None:
+    with make_app(initialized) as client:
+        plain = client.get("/health")
+    with TestClient(
+        create_app(
+            AppOptions(
+                layout=initialized.layout,
+                config=config_for(initialized),
+                admin_token=ADMIN_TOKEN,
+                cookie_secure=True,
+                trust_proxy=True,
+                scheduler_interval_seconds=3600.0,
+            )
+        )
+    ) as secure:
+        tls = secure.get("/health")
+
+    assert plain.headers["cache-control"] == "no-store"
+    assert plain.headers["permissions-policy"]
+    assert "strict-transport-security" not in plain.headers
+    assert tls.headers["strict-transport-security"].startswith("max-age=31536000")

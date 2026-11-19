@@ -24,9 +24,12 @@ from heraldesk.web.auth import (
     LOGIN_CSRF_COOKIE,
     SESSION_COOKIE,
     AdminAuth,
+    AuthConfigError,
     Forbidden,
     UISession,
     Unauthorized,
+    rotate_session_epoch,
+    session_epoch_path,
 )
 from heraldesk.web.context import WebContext
 from heraldesk.web.errors import BadRequest, NotFound, WebError
@@ -235,6 +238,32 @@ async def logout(request: Request) -> RedirectResponse:
     context = _context(request)
     with context.database.session() as session_db:
         audit_login(session_db, "auth.logout")
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
+
+
+@router.post("/logout-all")
+async def logout_all(request: Request) -> Response:
+    """Invalidate every UI session by rotating the instance session epoch."""
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    context = _context(request)
+    try:
+        rotate_session_epoch(session_epoch_path(context.layout))
+    except AuthConfigError as exc:
+        return _page(
+            request,
+            session,
+            "error.html",
+            "dashboard",
+            status_code=500,
+            code="session_epoch_failed",
+            message=context.redactor.redact(str(exc)) or "cannot revoke sessions",
+        )
+    with context.database.session() as db:
+        audit_login(db, "auth.logout_all", detail="epoch rotated")
     response = RedirectResponse("/login", status_code=303)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response

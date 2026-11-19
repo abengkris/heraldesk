@@ -36,6 +36,7 @@ from heraldesk.telegram.credentials import (
     resolve_bot_token,
     token_source,
 )
+from heraldesk.web.auth import explicit_admin_token
 
 REQUIRED_PYTHON = (3, 12)
 
@@ -68,6 +69,7 @@ def run_checks(home: Path | None = None, *, online: bool = False) -> list[CheckR
         _check_database(layout),
         _check_migrations(layout),
         _check_config(layout),
+        _check_admin_token(layout),
         _check_telegram(layout),
         _check_reports(layout),
         _check_env_file(layout),
@@ -421,3 +423,18 @@ def _has_nostr_account(layout: paths.Layout) -> bool:
             session.close()
     finally:
         engine.dispose()
+
+
+def _check_admin_token(layout: paths.Layout) -> CheckResult:
+    """Warn when an explicit admin token is too short for remote mode."""
+    resolution = explicit_admin_token(layout)
+    if resolution is None:
+        return CheckResult("admin token", CheckStatus.PASS, "derived from secret.key")
+    if len(resolution.token) < 32:
+        return CheckResult(
+            "admin token",
+            CheckStatus.WARN,
+            f"explicit token from {resolution.source} is shorter than 32 characters; "
+            "remote mode refuses it",
+        )
+    return CheckResult("admin token", CheckStatus.PASS, f"explicit token ({resolution.source})")

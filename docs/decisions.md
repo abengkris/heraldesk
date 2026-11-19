@@ -990,3 +990,27 @@ never prints an API key, bot token or nsec.
   trusted publishing configuration.
 - **Security headers:** HSTS in proxy mode, `Cache-Control: no-store` outside `/static`,
   `Permissions-Policy`, COOP and CORP complement the existing CSP and frame/referrer rules.
+
+
+## Session revocation and API throttling (2026-11-19)
+
+- **Session epoch.** UI session cookies include an integer `ep` read from
+  `$HERALDESK_HOME/session_epoch` (mode 600, atomic replacement). `read_session` rejects a
+  cookie whose epoch differs. `POST /logout-all` and `heraldesk admin logout-all` increment
+  the file, revoking every browser immediately without rotating the admin token. A missing
+  file is epoch 0; an unreadable/invalid file fails closed for existing cookies. Restoring
+  a backup rotates the epoch.
+- **API throttling.** `/api/v1` Bearer failures use a separate limiter (10 per minute per
+  client key). Blocked requests return 429 with `Retry-After`; the first block in a window
+  writes one `auth.api_rate_limited` audit entry. Successful authentication resets the key.
+  The limiter prunes expired keys above 1024 entries.
+- **Proxy client address.** With `HERALDESK_TRUST_PROXY=1`, the rate-limit key is the
+  rightmost `X-Forwarded-For` value, the hop appended by the documented single TLS proxy.
+  Client-supplied prefixes are ignored. Deployments with multiple proxies must configure
+  the outer proxy to overwrite the header.
+- **Request size caps.** POST/PUT/PATCH bodies with `Content-Length` over 64 KiB on
+  `/login`, or 1 MiB elsewhere, are rejected with 413 before parsing. Chunked bodies are
+  not capped at the ASGI layer yet; the reverse proxy should enforce the same limit.
+- **Audit scope.** Rejected Telegram webhook attempts are logged (not audited per request)
+  to avoid turning a public endpoint into an audit-log write amplifier. API blocks are
+  audited once per window/key.

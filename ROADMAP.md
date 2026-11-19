@@ -20,6 +20,8 @@ current summary.
 - [x] M13 Production distribution and hardening (Threads text adapter, `upgrade` with a
   pre-migration backup, Docker/Compose/systemd/Caddy, release workflow, webhook secret,
   stale-schema guard, full-draft approval views, CI wheel/audit/image gates)
+- [x] M14 Session revocation and API throttling (session epoch + logout-all, API Bearer
+  limiter, trusted-proxy client key, request-size caps, admin-token doctor warning)
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.

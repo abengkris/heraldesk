@@ -40,9 +40,16 @@ class Conflict(WebError):
         super().__init__(409, code, message)
 
 
-def json_error(status_code: int, code: str, message: str) -> JSONResponse:
+def json_error(
+    status_code: int,
+    code: str,
+    message: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
     """Return the single documented API error shape."""
     return JSONResponse(
         {"error": message, "code": code},
         status_code=status_code,
+        headers=headers,
     )
