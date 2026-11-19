@@ -1200,5 +1200,6 @@ never prints an API key, bot token or nsec.
 
 - GitHub Actions are normally pinned to commit SHAs. `pypa/gh-action-pypi-publish` is a
   Docker container action whose image tag is derived from the action ref; there is no
-  image for an arbitrary commit SHA. It is therefore pinned to the released tag `v1.12.4`.
+  image for an arbitrary commit SHA. It is therefore pinned to the released tag `v1.14.3` (newer releases bundle a twine that accepts
+  Metadata-Version 2.5).
   A SHA pin failed with `ghcr.io/pypa/gh-action-pypi-publish:<sha>: not found`.

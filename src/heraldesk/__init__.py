@@ -1,3 +1,3 @@
 """Heraldesk: a self-hosted autonomous social media department."""
 
-__version__ = "1.16.2"
+__version__ = "1.16.3"

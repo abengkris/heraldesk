@@ -6,6 +6,14 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.16.3] - 2026-11-19
+
+### Fixed
+
+- Update `pypa/gh-action-pypi-publish` to `v1.14.3`, whose bundled twine accepts
+  Metadata-Version 2.5 produced by current hatchling. This unblocks the TestPyPI upload
+  after the publisher was configured.
+
 ## [1.16.2] - 2026-11-19
 
 ### Fixed

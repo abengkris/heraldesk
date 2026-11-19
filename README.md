@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.16.2-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.16.2)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.16.3-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.16.3)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.16.2.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.16.3.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.16.2
+## What works in 1.16.3
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -43,7 +43,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 
 ## Install from source
 
-The 1.16.2 release is available as a GitHub release wheel and as a repository checkout.
+The 1.16.3 release is available as a GitHub release wheel and as a repository checkout.
 A tag-triggered workflow builds PyPI and GHCR artifacts; PyPI publishing is enabled after
 the maintainer configures trusted publishing. The exact TestPyPI/PyPI runbook is in
 [docs/releasing.md](docs/releasing.md).
@@ -62,7 +62,7 @@ pipx install --python 3.12 .
 
 The release wheel is attached to each
 [GitHub release](https://github.com/abengkris/heraldesk/releases); install it with
-`pipx install --python 3.12 ./heraldesk-1.16.2-py3-none-any.whl`.
+`pipx install --python 3.12 ./heraldesk-1.16.3-py3-none-any.whl`.
 
 ### Docker
 
