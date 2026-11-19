@@ -6,6 +6,14 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.7.1] - 2026-11-19
+
+### Fixed
+
+- The pre-restore safety-backup test now restores into a separate target instance instead
+  of holding the source SQLite WAL open. This fixes the Windows CI failure; runtime code
+  is unchanged.
+
 ## [1.7.0] - 2026-11-19
 
 ### Added

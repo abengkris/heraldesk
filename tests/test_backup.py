@@ -18,7 +18,7 @@ from heraldesk.core.backup import (
     create_backup,
     restore_backup,
 )
-from heraldesk.core.bootstrap import InitResult
+from heraldesk.core.bootstrap import InitResult, initialize
 from heraldesk.db.engine import inspect_database
 
 pytestmark = pytest.mark.core
@@ -251,9 +251,11 @@ def test_force_restore_creates_a_safety_backup(
 ) -> None:
     archive = tmp_path / "backup.zip"
     create_backup(initialized.layout, output=archive, include_credentials=True)
+    target = paths.layout_for(tmp_path / "target-home")
+    initialize(target.home)
 
-    result = restore_backup(initialized.layout, archive, force=True)
+    result = restore_backup(target, archive, force=True)
 
     assert result.safety_backup is not None
     assert result.safety_backup.is_file()
-    assert result.safety_backup.parent == initialized.layout.backups
+    assert result.safety_backup.parent == target.backups
