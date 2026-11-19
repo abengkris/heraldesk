@@ -35,7 +35,7 @@ current summary.
 - [x] M22 API pagination/filters and account read model
 - [x] M23 Automatic inbox retention and supply-chain pinning (SHA actions, SBOM/provenance)
 - [x] M24 Backup lifecycle (pruning with audit, dry-run, server-lock restore guard)
-- [x] M25 PyPI readiness (TestPyPI/PyPI trusted-publishing workflow, twine checks, sdist
+- [x] M25 PyPI publishing (PyPI + TestPyPI trusted publishing live, twine checks, sdist
   install smoke, release runbook)
 - [x] M26 Web UI daily controls (draft edit, publish now, global kill switch)
 

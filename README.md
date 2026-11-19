@@ -41,12 +41,26 @@ an installed plugin. The fake adapter is the offline publishing path. See
 - [`uv`](https://docs.astral.sh/uv/) for the recommended source install
 - A Linux, macOS or Windows machine; the CLI is tested on all three
 
-## Install from source
+## Install from PyPI
 
-The 1.16.3 release is available as a GitHub release wheel and as a repository checkout.
-A tag-triggered workflow builds PyPI and GHCR artifacts; PyPI publishing is enabled after
-the maintainer configures trusted publishing. The exact TestPyPI/PyPI runbook is in
-[docs/releasing.md](docs/releasing.md).
+Heraldesk requires **Python 3.12**. If your default `python3` is 3.13 or 3.14, pass the
+interpreter explicitly; otherwise pipx reports `from versions: none`.
+
+```bash
+pipx install --python 3.12 heraldesk
+heraldesk --version
+
+# uv users
+uv tool install --python 3.12 heraldesk
+uvx --python 3.12 heraldesk --version
+```
+
+`pipx ensurepath` if the `heraldesk` command is not found after install.
+
+## Install from source or a release wheel
+
+The GitHub release also carries the wheel and sdist. Trusted publishing is enabled for
+PyPI and TestPyPI; the runbook is in [docs/releasing.md](docs/releasing.md).
 
 ```bash
 # Repository checkout, with the pinned development environment
@@ -57,12 +71,10 @@ uv run heraldesk init
 
 # Or install the checkout directly into your user environment
 pipx install --python 3.12 .
-# uvx --from . heraldesk init
-```
 
-The release wheel is attached to each
-[GitHub release](https://github.com/abengkris/heraldesk/releases); install it with
-`pipx install --python 3.12 ./heraldesk-1.16.3-py3-none-any.whl`.
+# Or install the release wheel
+pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.16.3/heraldesk-1.16.3-py3-none-any.whl
+```
 
 ### Docker
 

@@ -29,7 +29,8 @@ TestPyPI through **trusted publishing (OIDC)**. No PyPI token is stored in the r
 
 ## 2. Configure TestPyPI first
 
-Use TestPyPI to validate the trusted-publisher wiring without touching the real project.
+PyPI and TestPyPI trusted publishing are enabled for this repository. TestPyPI remains
+useful for validating the wiring without consuming a real version.
 
 1. Create/verify an account at <https://test.pypi.org>.
 2. Add a **pending trusted publisher** at
