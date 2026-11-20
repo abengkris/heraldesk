@@ -6,6 +6,18 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.3] - 2026-11-20
+
+### Added
+
+- `docs/providers.md`: provider table, custom OpenAI-compatible endpoints, OpenCode
+  Console setup and LLM troubleshooting, linked from the README.
+- Documentation tests for the provider guide and the release wheel URL.
+
+### Fixed
+
+- The README release-wheel link pointed at the v1.18.0 tag with a 1.18.2 filename.
+
 ## [1.18.2] - 2026-11-19
 
 ### Fixed

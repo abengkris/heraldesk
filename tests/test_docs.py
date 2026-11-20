@@ -37,8 +37,35 @@ def test_key_documents_are_present_and_non_empty() -> None:
         "docs/platforms/README.md",
         "docs/platforms/nostr.md",
         "docs/platforms/threads.md",
+        "docs/providers.md",
         "docs/releasing.md",
     ):
         path = ROOT / name
         assert path.is_file(), name
         assert path.stat().st_size > 100, name
+
+
+def test_readme_links_the_provider_guide() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "docs/providers.md" in text
+
+
+def test_provider_guide_covers_custom_endpoints() -> None:
+    text = (ROOT / "docs/providers.md").read_text(encoding="utf-8")
+    for phrase in (
+        "OPENAI_API_BASE",
+        "OPENAI_API_KEY",
+        "OpenCode Console",
+        "max_daily_cost_usd",
+    ):
+        assert phrase in text
+
+
+def test_readme_release_links_match_the_package_version() -> None:
+    from heraldesk import __version__
+
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert f"version-{__version__}-blue.svg" in text
+    assert f"releases/tag/v{__version__}" in text
+    wheel = f"releases/download/v{__version__}/heraldesk-{__version__}-py3-none-any.whl"
+    assert wheel in text

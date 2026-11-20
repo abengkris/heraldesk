@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.18.2-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.18.2)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.18.3-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.18.3)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.18.2.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.18.3.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.18.2
+## What works in 1.18.3
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -74,7 +74,7 @@ uv run heraldesk init
 pipx install --python 3.12 .
 
 # Or install the release wheel
-pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.18.0/heraldesk-1.18.2-py3-none-any.whl
+pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.18.3/heraldesk-1.18.3-py3-none-any.whl
 ```
 
 ### Docker
@@ -109,10 +109,16 @@ Put LLM API keys in `$HERALDESK_HOME/.env`, never in `heraldesk.yaml`:
 
 ```dotenv
 DEEPSEEK_API_KEY=your-key-here
+
+# Any OpenAI-compatible gateway also needs its endpoint:
+# OPENAI_API_KEY=your-gateway-key
+# OPENAI_API_BASE=https://gateway.example/v1
 ```
 
 Then set `llm.default_model` in `heraldesk.yaml`, for example `deepseek/deepseek-chat`,
-or leave it empty to use the offline fake provider for a first run.
+or leave it empty to use the offline fake provider for a first run. The provider table,
+custom endpoints, OpenCode Console setup and troubleshooting are in
+[docs/providers.md](docs/providers.md).
 
 Create and activate a profile:
 
@@ -466,6 +472,7 @@ Online probes never print an API key, bot token or nsec.
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [LLM providers](docs/providers.md)
 - [Decisions and milestone notes](docs/decisions.md)
 - [Roadmap](ROADMAP.md)
 - [Releasing](docs/releasing.md)

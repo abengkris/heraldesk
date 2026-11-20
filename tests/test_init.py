@@ -43,6 +43,8 @@ def test_init_writes_a_documented_default_config(home: Path) -> None:
     assert "host: 127.0.0.1" in body
     assert "max_daily_cost_usd" in body
     assert "api_key" not in body.lower()
+    assert "throwaway key only" not in body.lower()
+    assert "dedicated or throwaway" in body.lower()
 
 
 def test_init_creates_a_wal_database_with_the_baseline(home: Path) -> None:

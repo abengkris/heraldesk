@@ -40,7 +40,8 @@ research:
   max_results: 5
 nostr:
   # Relay defaults for Nostr accounts. An account credential "relays" overrides this.
-  # Use a throwaway key only: Nostr events are immutable and cannot be deleted.
+  # A dedicated or throwaway key is recommended; the original identity also works.
+  # Nostr events are immutable and cannot be deleted.
   relays:
     - wss://relay.damus.io
     - wss://nos.lol
