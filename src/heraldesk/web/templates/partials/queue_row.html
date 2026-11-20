@@ -1,34 +1,51 @@
-<tr id="queue-{{ entry.approval_id }}">
-  <td>
-    <strong>#{{ entry.approval_id }}</strong>
-    <div class="muted small">item {{ entry.content_item_id }}</div>
-  </td>
-  <td>{{ entry.profile_slug }}</td>
-  <td>{{ entry.platform }}</td>
-  <td>{{ entry.risk_level or "unknown" }}</td>
-  <td class="preview">
-    <a href="/queue/{{ entry.approval_id }}">{{ entry.preview }}</a>
+{% from "_components.html" import status_badge, risk_badge %}
+<tr id="queue-{{ entry.approval_id }}" class="queue-row" data-approval-id="{{ entry.approval_id }}">
+  <td class="queue-row-main">
+    <div class="queue-row-line">
+      <span class="platform">{{ entry.platform }}</span>
+      {% if entry.account_handle %}<span class="muted small">{{ entry.account_handle }}</span>{% endif %}
+      <span class="muted small">{{ entry.profile_slug }}</span>
+    </div>
+    <a class="queue-row-link" href="/queue/{{ entry.approval_id }}"
+       hx-get="/queue/{{ entry.approval_id }}/panel"
+       hx-target="#queue-detail" hx-swap="innerHTML"
+       hx-push-url="/queue/{{ entry.approval_id }}">
+      {{ entry.preview }}
+    </a>
     {% if entry.reason %}<div class="muted small">Reason: {{ entry.reason }}</div>{% endif %}
     {% if error %}<div class="alert error small" role="alert">{{ error }}</div>{% endif %}
   </td>
-  <td class="nowrap">{{ entry.expires_at.strftime("%Y-%m-%d %H:%M UTC") if entry.expires_at else "—" }}</td>
+  <td class="badges">
+    {% if entry.risk_level %}{{ risk_badge(entry.risk_level) }}{% endif %}
+    {{ status_badge("state", entry.state) }}
+  </td>
+  <td class="nowrap tnum muted small">
+    {% if entry.scheduled_at %}{{ entry.scheduled_at.strftime("%m-%d %H:%M") }}
+    {% elif entry.expires_at %}{{ entry.expires_at.strftime("%m-%d %H:%M") }}
+    {% else %}—{% endif %}
+  </td>
   <td>
+    {% if entry.state == "blocked" %}
+      <button type="button" class="button primary" disabled title="Edit and re-run compliance first">Approve</button>
+    {% else %}
     <div class="actions">
       <form method="post" action="/queue/{{ entry.approval_id }}/approve"
             hx-post="/queue/{{ entry.approval_id }}/approve"
-            hx-target="closest tr" hx-swap="outerHTML">
+            hx-target="closest tr" hx-swap="outerHTML"
+            hx-disabled-elt="find button">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <button type="submit" class="button primary">Approve</button>
       </form>
       <form method="post" action="/queue/{{ entry.approval_id }}/reject"
             hx-post="/queue/{{ entry.approval_id }}/reject"
-            hx-target="closest tr" hx-swap="outerHTML" class="reject-form">
+            hx-target="closest tr" hx-swap="outerHTML"
+            hx-disabled-elt="find button" class="reject-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label class="sr-only" for="reason-{{ entry.approval_id }}">Reject reason</label>
-        <input id="reason-{{ entry.approval_id }}" name="reason" type="text" maxlength="500"
-               placeholder="Reason" required>
+        <input id="reason-{{ entry.approval_id }}" name="reason" type="text" maxlength="500" placeholder="Reason" required>
         <button type="submit" class="button danger">Reject</button>
       </form>
     </div>
+    {% endif %}
   </td>
 </tr>

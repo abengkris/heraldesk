@@ -76,12 +76,15 @@ def test_kill_switch_is_a_two_step_control_on_authenticated_pages(
         assert "killswitch-banner" in after.text
 
 
-def test_no_mode_indicator_or_switcher_placeholder(initialized: InitResult) -> None:
+def test_profile_switcher_rendered_with_real_data(initialized: InitResult) -> None:
     with make_client(initialized) as client:
         login(client)
         dashboard = client.get("/")
+        # The switcher is real markup, not a placeholder; it shows "All profiles".
+        assert 'class="profile-switcher"' in dashboard.text
+        assert ">All profiles<" in dashboard.text
+        # No mode indicator when no single profile is selected.
         assert "mode-indicator" not in dashboard.text
-        assert "profile-switcher" not in dashboard.text
 
 
 def test_skip_link_and_mobile_nav_are_present(initialized: InitResult) -> None:

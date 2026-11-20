@@ -29,6 +29,7 @@ from heraldesk.core.locks import (
 )
 from heraldesk.db.repositories import (
     ApprovalLocator,
+    ProfileCatalog,
     StudioMessageRepository,
     StudioThreadRepository,
 )
@@ -79,6 +80,7 @@ from heraldesk.web.service import (
     list_inbox_views,
     list_queue_views,
     list_report_files,
+    profile_mode,
     profiles_payload,
     publish_content,
     read_report,
@@ -138,6 +140,19 @@ def _page(
     status_code: int = 200,
     **extra: Any,
 ) -> HTMLResponse:
+    ctx = _context(request)
+    current_profile = request.query_params.get("profile") or None
+    profiles: list[dict[str, str]] = []
+    queue_pending = 0
+    inbox_pending = 0
+    try:
+        with ctx.database.session() as db:
+            profiles = [{"slug": s.slug, "name": s.name} for s in ProfileCatalog(db).list()]
+            counts = dashboard_counts(db)
+            queue_pending = counts["queue"]["pending_approval"]
+            inbox_pending = counts["inbox"]["pending"]
+    except Exception:
+        profiles = []
     return _render(
         request,
         name,
@@ -146,8 +161,13 @@ def _page(
             "csrf": session.csrf,
             "active": active,
             "version": __version__,
-            "studio_enabled": _context(request).config.studio.enabled,
-            "killswitch": is_global_kill_switch_enabled(_context(request).layout),
+            "studio_enabled": ctx.config.studio.enabled,
+            "killswitch": is_global_kill_switch_enabled(ctx.layout),
+            "profiles": profiles,
+            "current_profile": current_profile,
+            "profile_mode": profile_mode(ctx.layout, current_profile),
+            "queue_pending": queue_pending,
+            "inbox_pending": inbox_pending,
             **extra,
         },
         status_code=status_code,
@@ -214,6 +234,19 @@ def _is_htmx(request: Request) -> bool:
     return request.headers.get("hx-request", "").lower() == "true"
 
 
+_RISK_PRIORITY = {"blocked": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def _sorted_queue(views: list[Any]) -> list[Any]:
+    """Order queue entries by risk (blocked/high first), then oldest first."""
+
+    def key(view: Any) -> tuple[int, datetime]:
+        created = view.created_at or datetime.max.replace(tzinfo=UTC)
+        return (_RISK_PRIORITY.get(view.risk_level or "", 4), created)
+
+    return sorted(views, key=key)
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request) -> Response:
     """Show the token login form."""
@@ -260,7 +293,8 @@ async def login_submit(request: Request) -> Response:
     context = _context(request)
     with context.database.session() as session:
         audit_login(session, "auth.login")
-    response: Response = RedirectResponse("/", status_code=303)
+        landing = "/queue" if dashboard_counts(session)["queue"]["pending_approval"] > 0 else "/"
+    response: Response = RedirectResponse(landing, status_code=303)
     _set_session_cookie(response, auth, cookie)
     response.delete_cookie(LOGIN_CSRF_COOKIE, path="/")
     return response
@@ -366,18 +400,28 @@ async def killswitch_toggle(request: Request) -> Response:
 
 
 @router.get("/queue", response_class=HTMLResponse)
-def queue_page(request: Request, ok: str | None = None) -> HTMLResponse:
-    """List approval-backed queue entries with redacted previews."""
+def queue_page(
+    request: Request,
+    ok: str | None = None,
+    profile: str | None = None,
+    status: str | None = None,
+) -> HTMLResponse:
+    """List approval-backed queue entries with a review panel."""
     session = _session(request)
     context = _context(request)
+    selected_status = status or "pending"
     with context.database.session() as db:
-        entries = list_queue_views(db, context.redactor, status="pending")
+        entries = _sorted_queue(
+            list_queue_views(db, context.redactor, status=selected_status, profile=profile)
+        )
     return _page(
         request,
         session,
         "queue.html",
         "queue",
         entries=entries,
+        detail=None,
+        filter_status=selected_status,
         notice=_notice(ok),
         error=None,
     )
@@ -389,6 +433,7 @@ def queue_detail_page(
     approval_id: int,
     ok: str | None = None,
     error: str | None = None,
+    profile: str | None = None,
 ) -> HTMLResponse:
     """Show the full redacted draft before a human approves or rejects it."""
     session = _session(request)
@@ -396,6 +441,9 @@ def queue_detail_page(
     with context.database.session() as db:
         try:
             detail = get_queue_detail(db, context.redactor, approval_id)
+            entries = _sorted_queue(
+                list_queue_views(db, context.redactor, status="pending", profile=profile)
+            )
         except WebError as exc:
             return _page(
                 request,
@@ -416,12 +464,40 @@ def queue_detail_page(
     return _page(
         request,
         session,
-        "queue_detail.html",
+        "queue.html",
         "queue",
+        entries=entries,
         detail=detail,
+        filter_status="pending",
         notice=notice,
         error=error,
     )
+
+
+@router.get("/queue/{approval_id}/panel", response_class=HTMLResponse)
+def queue_detail_panel(request: Request, approval_id: int) -> Response:
+    """Return the detail panel as an htmx fragment, or redirect to the full page."""
+    session = _session(request)
+    context = _context(request)
+    with context.database.session() as db:
+        try:
+            detail = get_queue_detail(db, context.redactor, approval_id)
+        except WebError as exc:
+            if _is_htmx(request):
+                return _render(
+                    request,
+                    "partials/error_row.html",
+                    {"error": exc.message, "colspan": 1},
+                    status_code=200,
+                )
+            return RedirectResponse("/queue", status_code=303)
+    if _is_htmx(request):
+        return _render(
+            request,
+            "partials/queue_detail.html",
+            {"detail": detail, "csrf": session.csrf},
+        )
+    return RedirectResponse(f"/queue/{approval_id}", status_code=303)
 
 
 @router.post("/queue/{approval_id}/edit", response_class=HTMLResponse)
@@ -475,6 +551,7 @@ def _queue_detail_with_error(
     with context.database.session() as db:
         try:
             detail = get_queue_detail(db, context.redactor, approval_id)
+            entries = _sorted_queue(list_queue_views(db, context.redactor, status="pending"))
         except WebError as inner:
             return _page(
                 request,
@@ -488,9 +565,11 @@ def _queue_detail_with_error(
     return _page(
         request,
         ui_session,
-        "queue_detail.html",
+        "queue.html",
         "queue",
+        entries=entries,
         detail=detail,
+        filter_status="pending",
         notice=None,
         error=context.redactor.redact(str(exc)) or "action failed",
         status_code=400,
@@ -515,7 +594,7 @@ async def queue_approve(request: Request, approval_id: int) -> Response:
     except (ApprovalError, ContentError, WebError) as exc:
         return _queue_action_error(request, session, approval_id, exc)
     if _is_htmx(request):
-        return Response("")
+        return _queue_action_success(request, session, "Item approved.")
     return RedirectResponse("/queue?ok=approved", status_code=303)
 
 
@@ -545,8 +624,38 @@ async def queue_reject(request: Request, approval_id: int) -> Response:
     except (ApprovalError, ContentError, WebError) as exc:
         return _queue_action_error(request, session, approval_id, exc)
     if _is_htmx(request):
-        return Response("")
+        return _queue_action_success(request, session, "Item rejected.")
     return RedirectResponse("/queue?ok=rejected", status_code=303)
+
+
+def _queue_action_success(request: Request, session: UISession, label: str) -> Response:
+    """Build an htmx response that removes the row and updates badges, toast and detail."""
+    context = _context(request)
+    with context.database.session() as db:
+        remaining = _sorted_queue(list_queue_views(db, context.redactor, status="pending"))
+        queue_pending = len(remaining)
+        next_id = remaining[0].approval_id if remaining else None
+        panel = ""
+        if next_id is not None:
+            try:
+                detail = get_queue_detail(db, context.redactor, next_id)
+                panel = templates.env.get_template("partials/queue_detail.html").render(
+                    detail=detail, csrf=session.csrf
+                )
+            except WebError:
+                panel = ""
+    badge = f'<span id="queue-badge" hx-swap-oob="true">{queue_pending}</span>'
+    toast = (
+        '<div class="toast-region" id="toast-region" hx-swap-oob="true">'
+        f'<div class="toast status-ok"><span>{label}</span>'
+        '<button type="button" class="toast-close" aria-label="Dismiss">&#215;</button></div></div>'
+    )
+    detail_oob = (
+        f'<section class="queue-detail" id="queue-detail" hx-swap-oob="innerHTML">{panel}</section>'
+    )
+    response = Response(badge + toast + detail_oob)
+    response.headers["HX-Push-Url"] = f"/queue/{next_id}" if next_id else "/queue"
+    return response
 
 
 def _queue_action_error(
@@ -577,7 +686,7 @@ def _queue_action_error(
         return _render(
             request,
             "partials/error_row.html",
-            {"error": message, "colspan": 7},
+            {"error": message, "colspan": 4},
             status_code=200,
         )
     with context.database.session() as db:

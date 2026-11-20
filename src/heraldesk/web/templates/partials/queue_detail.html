@@ -1,0 +1,109 @@
+{% from "_components.html" import status_badge, risk_badge %}
+<div class="queue-detail-inner" id="queue-detail-inner">
+  <a class="button ghost back-link" href="/queue">Back to queue</a>
+
+  <header class="detail-head">
+    <div>
+      <h2>Content #{{ detail.content_item_id }}</h2>
+      <p class="muted">
+        {{ detail.platform }}{% if detail.account_handle %} · {{ detail.account_handle }}{% endif %}
+        · {{ detail.profile_slug }}
+      </p>
+    </div>
+    <div class="badges">
+      {{ status_badge("state", detail.state) }}
+      {% if detail.risk_level %}{{ risk_badge(detail.risk_level) }}{% endif %}
+    </div>
+  </header>
+
+  <section class="card detail-body">
+    <div class="detail-meta">
+      <span>Approval #{{ detail.approval_id }}</span>
+      <span class="tnum" id="char-count" data-target="#detail-body">{{ detail.body|length }} chars</span>
+    </div>
+    <pre class="body-full" id="detail-body">{{ detail.body }}</pre>
+    {% if detail.max_characters %}
+    <p class="muted small">Platform limit: {{ detail.max_characters }} characters.</p>
+    {% endif %}
+  </section>
+
+  {% if detail.state == "blocked" %}
+  <div class="alert error" role="alert">
+    <strong>Blocked.</strong> Approve and Publish are unavailable. Edit the draft and re-run compliance first.
+  </div>
+  {% endif %}
+
+  <section class="card" aria-labelledby="why-review">
+    <h3 id="why-review">Why this needs your review</h3>
+    {% if detail.risk_level %}
+    <p>{{ risk_badge(detail.risk_level) }} risk{% if detail.compliance_notes %}: {{ detail.compliance_notes }}{% endif %}</p>
+    {% else %}
+    <p class="muted">No risk level recorded.</p>
+    {% endif %}
+    {% if detail.lint_findings %}
+    <h4>Lint findings</h4>
+    <ul>
+      {% for finding in detail.lint_findings %}<li>{{ finding }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  {% if detail.reason %}<p class="alert error"><strong>Reason:</strong> {{ detail.reason }}</p>{% endif %}
+
+  <section class="actions card" aria-label="Actions">
+    {% if detail.state == "blocked" %}
+      <button type="button" class="button primary" disabled title="Edit and re-run compliance first">Approve</button>
+      <button type="button" class="button danger" disabled title="Edit and re-run compliance first">Publish</button>
+    {% else %}
+      {% if detail.approval_state == "pending" %}
+      <form method="post" action="/queue/{{ detail.approval_id }}/approve">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="button primary">Approve</button>
+      </form>
+      <form method="post" action="/queue/{{ detail.approval_id }}/reject" class="reject-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="sr-only" for="reason-{{ detail.approval_id }}">Reject reason</label>
+        <input id="reason-{{ detail.approval_id }}" name="reason" type="text" maxlength="500" placeholder="Reason" required>
+        <button type="submit" class="button danger">Reject</button>
+      </form>
+      {% else %}
+      <p class="muted">This approval is already {{ detail.approval_state }}.</p>
+      {% endif %}
+
+      {% if detail.state in ["approved", "scheduled", "failed"] %}
+      <form method="post" action="/queue/{{ detail.approval_id }}/publish">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="button primary">Publish now</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  {% if detail.state in ["pending_approval", "blocked", "rejected", "needs_review", "approved"] %}
+  <form method="post" action="/queue/{{ detail.approval_id }}/edit" class="card stack tight">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="edit-body"><strong>Edit draft</strong></label>
+    <textarea id="edit-body" name="body" rows="8" required data-counter="#edit-count">{{ detail.body }}</textarea>
+    <p class="muted small"><span id="edit-count" class="tnum">{{ detail.body|length }} chars</span> · saving re-runs the edit audit and clears risk notes.</p>
+    <button type="submit" class="button">Save draft</button>
+  </form>
+  {% endif %}
+
+  {% if detail.history %}
+  <details class="card">
+    <summary>State history</summary>
+    <ul class="history">
+      {% for row in detail.history %}
+      <li>
+        <span class="tnum mono">{{ row.at }}</span>
+        {% if row.from_state or row.to_state %}
+          {{ row.from_state }} → {{ row.to_state }}
+        {% else %}
+          {{ row.action }}
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>

@@ -47,7 +47,7 @@ Use `{% from "_components.html" import status_badge, risk_badge %}` and `{{ stat
 ## Layout and navigation
 
 - Desktop: left sidebar (primary group: Queue, Inbox, Calendar, Draft Room when enabled; "More" group: Reports, Cost, Audit, Profiles). The brand links to the Dashboard (`/`).
-- Mobile (≤ 767px): the sidebar is hidden and a fixed **bottom bar** shows the primary items plus a "More" `<details>` menu for the secondary items and log out. No horizontal scroll; the bar fits 360px.
+- Mobile (≤ 767px): the sidebar is hidden and a fixed **bottom bar** shows the primary items plus a "More" `<details>` menu for the secondary items and log out. No horizontal scroll; the bar fits 360px. The "More" menu is a plain `<details>` with normal links, so it closes naturally on full-page navigation (no JS needed).
 - Top bar (every authenticated page): app title, the global kill switch (two-step confirm via a native `<details>` when off, one-step disengage when on), theme toggle, and log out.
 - The persistent kill-switch banner is shown while the kill switch is engaged.
 
@@ -64,9 +64,15 @@ Light and dark via `prefers-color-scheme`, plus a manual toggle in `static/app.j
 
 ## Legacy class names to remove (final cleanup)
 
-These classes were kept for backward compatibility during the redesign. Remove each once no template references it:
+These classes were kept during the redesign and should be deleted once no template references them. Verify with `grep -R "class-name" src/heraldesk/web/templates` before removing.
 
-- `--` (none yet; this list is populated as groups land)
+- `.stat`, `.stat-label`, `.stat-value` — replaced by the new metric components once Dashboard and Cost are reworked.
+- `.danger-text` — replaced by `status_badge` / `.status-danger`.
+- `.reject-form` — replaced by `.form-row` (still used by Queue; remove after Queue actions settle).
+- `.grid`, `.grid.two` — replaced by the new layout utilities.
+- `.facts` — the old detail definition list; unused after the Queue rework.
+- `.alert.ok`, `.alert.error` — replaced by `.notice`, toast, and `status_badge`.
+- `.card.stat` — replaced by the metric component.
 
 ## Manual test checklist
 

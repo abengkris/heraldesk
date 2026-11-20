@@ -317,7 +317,10 @@ def create_app(options: AppOptions) -> FastAPI:
     @app.exception_handler(AuthError)
     async def auth_error_handler(request: Request, exc: AuthError) -> Response:
         if exc.status_code == 401 and not _wants_json(request):
-            return RedirectResponse("/login", status_code=303)
+            response = RedirectResponse("/login", status_code=303)
+            if request.headers.get("hx-request", "").lower() == "true":
+                response.headers["HX-Redirect"] = "/login"
+            return response
         if _wants_json(request):
             return json_error(exc.status_code, exc.code, exc.message)
         return _error_page(request, WebError(exc.status_code, exc.code, exc.message))
@@ -325,7 +328,10 @@ def create_app(options: AppOptions) -> FastAPI:
     @app.exception_handler(WebError)
     async def web_error_handler(request: Request, exc: WebError) -> Response:
         if exc.status_code == 401 and not _wants_json(request):
-            return RedirectResponse("/login", status_code=303)
+            response = RedirectResponse("/login", status_code=303)
+            if request.headers.get("hx-request", "").lower() == "true":
+                response.headers["HX-Redirect"] = "/login"
+            return response
         if _wants_json(request):
             return json_error(exc.status_code, exc.code, exc.message)
         return _error_page(request, exc)

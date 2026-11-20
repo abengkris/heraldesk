@@ -1275,3 +1275,12 @@ style change, not a correctness fix. Future copy editing is therefore opt-in
 voice files. Deterministic typo checks come first; an optional LLM pass handles ambiguous
 cases and must preserve slang, register, code-switching and casing. Nothing auto-applies,
 and the step never blocks approval. See `docs/copyedit.md`.
+
+## Web UI keyboard shortcuts never write directly (2026-11-20)
+
+Queue list/detail keyboard shortcuts are an accessibility and speed aid, not a new write
+path. `j`/`k` move selection, and `a`/`e`/`r` only move focus onto the Approve/Edit/Reject
+controls — a visible confirmation (Enter or a click) is always required. Shortcuts are
+disabled while focus is inside an input, textarea or select, and the list is toggled with
+`?`. This keeps every write an explicit form/action with CSRF, unchanged from the
+JavaScript-less behavior. Recorded in `docs/web-ui.md`.

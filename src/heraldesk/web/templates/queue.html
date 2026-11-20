@@ -1,38 +1,63 @@
 {% extends "base.html" %}
+{% from "_components.html" import empty_state %}
 {% block title %}Queue · Heraldesk{% endblock %}
+{% block bodyattrs %}data-shortcuts="queue"{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div>
-    <h1>Queue</h1>
-    <p class="muted">Approve or reject pending items. Previews are redacted.</p>
-  </div>
-</div>
-
-{% if notice %}<p class="alert ok" role="status">{{ notice }}</p>{% endif %}
+{% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
 {% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
 
-{% if entries %}
-<div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th scope="col">ID</th>
-        <th scope="col">Profile</th>
-        <th scope="col">Platform</th>
-        <th scope="col">Risk</th>
-        <th scope="col">Preview</th>
-        <th scope="col">Expires</th>
-        <th scope="col">Decision</th>
-      </tr>
-    </thead>
-    <tbody id="queue-body">
-      {% for entry in entries %}
-        {% include "partials/queue_row.html" %}
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="queue-layout {% if detail %}has-detail{% endif %}">
+  <aside class="queue-list" aria-label="Queue items">
+    <div class="page-head">
+      <div>
+        <h1>Queue</h1>
+        <p class="muted">Approve or reject pending items. Previews are redacted.</p>
+      </div>
+    </div>
+
+    <form method="get" action="/queue" class="filter-bar">
+      {% if current_profile %}<input type="hidden" name="profile" value="{{ current_profile }}">{% endif %}
+      <label class="sr-only" for="filter-state">State</label>
+      <select id="filter-state" name="status">
+        {% for value in ["pending", "approved", "rejected", "expired", "all"] %}
+        <option value="{{ value }}" {% if filter_status == value %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="button ghost">Filter</button>
+    </form>
+
+    {% if entries %}
+    <div class="table-wrap">
+      <table>
+        <tbody id="queue-body">
+          {% for entry in entries %}
+            {% include "partials/queue_row.html" %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    {{ empty_state("Queue is clear.", "Run the daily pipeline to generate drafts to review.") }}
+    {% endif %}
+  </aside>
+
+  <section class="queue-detail" id="queue-detail" aria-live="polite">
+    {% if detail %}
+      {% include "partials/queue_detail.html" %}
+    {% else %}
+      {{ empty_state("Select an item", "Choose a queue item to review its full draft and decide.") }}
+    {% endif %}
+  </section>
 </div>
-{% else %}
-<p class="empty">No pending items. <a href="/">Back to the dashboard</a>.</p>
-{% endif %}
+
+<div class="shortcuts" id="shortcuts" hidden>
+  <h2>Keyboard shortcuts</h2>
+  <dl>
+    <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>Next / previous item</dd>
+    <dt><kbd>a</kbd></dt><dd>Focus Approve (then press Enter to confirm)</dd>
+    <dt><kbd>e</kbd></dt><dd>Focus Edit</dd>
+    <dt><kbd>r</kbd></dt><dd>Focus Reject reason</dd>
+    <dt><kbd>?</kbd></dt><dd>Show this list</dd>
+  </dl>
+</div>
 {% endblock %}

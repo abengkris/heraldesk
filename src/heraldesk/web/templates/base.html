@@ -9,7 +9,7 @@
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
-<body {% if not login %}hx-headers='{"X-CSRFToken": "{{ csrf }}"}'{% endif %}>
+<body {% if not login %}hx-headers='{"X-CSRFToken": "{{ csrf }}"}'{% endif %} {% block bodyattrs %}{% endblock %}>
   <a class="skip-link" href="#main">Skip to content</a>
 
   <div class="app-shell">
@@ -18,8 +18,12 @@
       <a class="brand" href="/">Heraldesk</a>
 
       <nav class="side-group" aria-label="Primary">
-        <a class="nav-item" href="/queue" {% if active == "queue" %}aria-current="page"{% endif %}>Queue</a>
-        <a class="nav-item" href="/inbox" {% if active == "inbox" %}aria-current="page"{% endif %}>Inbox</a>
+        <a class="nav-item" href="/queue" {% if active == "queue" %}aria-current="page"{% endif %}>Queue
+          <span class="nav-badge" id="queue-badge">{{ queue_pending }}</span>
+        </a>
+        <a class="nav-item" href="/inbox" {% if active == "inbox" %}aria-current="page"{% endif %}>Inbox
+          <span class="nav-badge" id="inbox-badge">{{ inbox_pending }}</span>
+        </a>
         <a class="nav-item" href="/calendar" {% if active == "calendar" %}aria-current="page"{% endif %}>Calendar</a>
         {% if studio_enabled %}
         <a class="nav-item" href="/studio" {% if active == "studio" %}aria-current="page"{% endif %}>Draft Room</a>
@@ -43,6 +47,21 @@
         {% else %}
         <span class="topbar-title">Heraldesk</span>
         {% endif %}
+
+        {% if not login %}
+        <form method="get" action="{{ request.url.path }}" class="profile-switcher">
+          <label class="sr-only" for="profile-switcher">Profile</label>
+          <select id="profile-switcher" name="profile">
+            <option value="">All profiles</option>
+            {% for p in profiles %}
+            <option value="{{ p.slug }}" {% if current_profile == p.slug %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="button ghost">Switch</button>
+        </form>
+        {% if profile_mode %}<span class="mode-indicator">{{ profile_mode }}</span>{% endif %}
+        {% endif %}
+
         <span class="spacer"></span>
 
         {% if not login %}

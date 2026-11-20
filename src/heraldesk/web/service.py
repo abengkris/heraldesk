@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from heraldesk import __version__, paths
@@ -35,6 +36,7 @@ from heraldesk.community import (
 from heraldesk.core.audit import AuditService
 from heraldesk.core.crypto import CredentialCipher
 from heraldesk.core.redact import SecretRegistry
+from heraldesk.db.models import AuditLog
 from heraldesk.db.repositories import (
     AgentRunRepository,
     ApprovalLocator,
@@ -57,8 +59,9 @@ from heraldesk.domain.approvals import (
     reject,
     scope_for_content_item,
 )
+from heraldesk.domain.profiles import load_profile
 from heraldesk.platforms import publish_adapter_for
-from heraldesk.platforms.base import PlatformAdapter, PublishError
+from heraldesk.platforms.base import PlatformAdapter, PublishError, constraints_for
 from heraldesk.publisher import PublishOutcome, publish_item
 from heraldesk.telegram.formatting import mask_chat_id, mask_sender_id, preview
 from heraldesk.telegram.runtime import notifier_for
@@ -96,6 +99,10 @@ class QueueView:
     preview: str
     reason: str | None
     expires_at: datetime | None
+    # UI-only fields (not serialized by as_dict, so the JSON API is unchanged).
+    scheduled_at: datetime | None = None
+    created_at: datetime | None = None
+    account_handle: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -176,6 +183,12 @@ class QueueDetailView:
     expires_at: datetime | None
     created_at: datetime | None
     scheduled_at: datetime | None
+    # UI-only fields (not serialized by as_dict, so the JSON API is unchanged).
+    account_handle: str | None = None
+    max_characters: int | None = None
+    compliance_notes: str | None = None
+    lint_findings: list[str] = field(default_factory=list)
+    history: list[dict[str, str]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -309,13 +322,17 @@ def list_queue_views(
             raise NotFound(f"profile '{profile}' is not registered")
 
     views: list[QueueView] = []
+    items_repo = ContentItemRepository(session)
     for summary in summaries:
-        entries = list_queue(session, ProfileScope(summary.id), limit=200)
+        scope = ProfileScope(summary.id)
+        accounts = {a.id: a.handle for a in SocialAccountRepository(session).list(scope)}
+        entries = list_queue(session, scope, limit=200)
         for entry in entries:
             if entry.approval_id is None or entry.approval_state is None:
                 continue
             if selected != "all" and entry.approval_state != selected:
                 continue
+            item = items_repo.get(scope, entry.item_id)
             views.append(
                 QueueView(
                     approval_id=entry.approval_id,
@@ -328,6 +345,17 @@ def list_queue_views(
                     preview=preview(redactor.redact(entry.body), limit=PREVIEW_LIMIT),
                     reason=None if entry.reason is None else redactor.redact(entry.reason),
                     expires_at=entry.expires_at,
+                    scheduled_at=(
+                        None
+                        if item is None or item.scheduled_at is None
+                        else as_utc(item.scheduled_at)
+                    ),
+                    created_at=None if item is None else as_utc(item.created_at),
+                    account_handle=(
+                        None
+                        if item is None or item.account_id is None
+                        else accounts.get(item.account_id)
+                    ),
                 )
             )
     views.sort(key=lambda view: view.approval_id, reverse=True)
@@ -691,6 +719,7 @@ def get_queue_detail(
         raise NotFound("content item not found")
     approval = ApprovalRepository(session).get(scope, approval_id)
     profile = ProfileRepository(session).require(scope)
+    accounts = {a.id: a.handle for a in SocialAccountRepository(session).list(scope)}
     reason = None
     if approval is not None and approval.reason:
         reason = approval.reason
@@ -698,6 +727,7 @@ def get_queue_detail(
         reason = item.last_error
     elif item.risk_notes:
         reason = item.risk_notes
+    constraints = constraints_for(item.platform)
     return QueueDetailView(
         approval_id=approval_id,
         content_item_id=content_item_id,
@@ -711,7 +741,85 @@ def get_queue_detail(
         expires_at=as_utc(approval.expires_at) if approval is not None else None,
         created_at=as_utc(item.created_at),
         scheduled_at=None if item.scheduled_at is None else as_utc(item.scheduled_at),
+        account_handle=accounts.get(item.account_id) if item.account_id else None,
+        max_characters=constraints.max_characters if constraints is not None else None,
+        compliance_notes=None if item.risk_notes is None else redactor.redact(item.risk_notes),
+        lint_findings=content_lint_findings(session, content_item_id),
+        history=content_state_history(session, content_item_id),
     )
+
+
+def content_state_history(session: Session, item_id: int) -> list[dict[str, str]]:
+    """Return the state-transition history for one content item, oldest first.
+
+    Read-only: it only reads the append-only audit log. Lint findings are excluded here.
+    """
+    rows = (
+        session.execute(
+            select(AuditLog)
+            .where(AuditLog.entity == "content_item", AuditLog.entity_id == str(item_id))
+            .order_by(AuditLog.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    history: list[dict[str, str]] = []
+    for row in rows:
+        payload = row.payload or {}
+        if row.action == "content.state_changed":
+            history.append(
+                {
+                    "action": row.action,
+                    "from_state": str(payload.get("from_state", "")),
+                    "to_state": str(payload.get("to_state", "")),
+                    "at": as_utc(row.created_at).isoformat(timespec="seconds"),
+                }
+            )
+        else:
+            history.append(
+                {
+                    "action": row.action,
+                    "from_state": "",
+                    "to_state": "",
+                    "at": as_utc(row.created_at).isoformat(timespec="seconds"),
+                }
+            )
+    return history
+
+
+def content_lint_findings(session: Session, item_id: int) -> list[str]:
+    """Return lint failure summaries recorded for one content item, if any."""
+    rows = (
+        session.execute(
+            select(AuditLog).where(
+                AuditLog.entity == "content_item",
+                AuditLog.entity_id == str(item_id),
+                AuditLog.action == "content.lint_failed",
+            )
+        )
+        .scalars()
+        .all()
+    )
+    findings: list[str] = []
+    for row in rows:
+        payload = row.payload or {}
+        rules = payload.get("rules")
+        if isinstance(rules, list):
+            findings.extend(str(rule) for rule in rules)
+        elif isinstance(rules, str):
+            findings.append(rules)
+    return findings
+
+
+def profile_mode(layout: paths.Layout, slug: str | None) -> str | None:
+    """Return the autonomy default mode label for one profile, or None."""
+    if not slug:
+        return None
+    try:
+        definition = load_profile(layout.profiles / slug)
+    except (OSError, ValueError):
+        return None
+    return definition.policy.default_mode.value
 
 
 def list_audit_views(
