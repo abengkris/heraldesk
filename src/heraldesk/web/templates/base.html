@@ -9,41 +9,63 @@
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
-<body>
+<body {% if not login %}hx-headers='{"X-CSRFToken": "{{ csrf }}"}'{% endif %}>
   <a class="skip-link" href="#main">Skip to content</a>
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="Heraldesk dashboard">Heraldesk</a>
+
+  <div class="app-shell">
     {% if not login %}
-    <nav aria-label="Main navigation">
-      <a href="/" {% if active == "dashboard" %}aria-current="page"{% endif %}>Dashboard</a>
-      <a href="/queue" {% if active == "queue" %}aria-current="page"{% endif %}>Queue</a>
-      {% if studio_enabled %}
-      <a href="/studio" {% if active == "studio" %}aria-current="page"{% endif %}>Draft Room</a>
-      {% endif %}
-      <a href="/calendar" {% if active == "calendar" %}aria-current="page"{% endif %}>Calendar</a>
-      <a href="/inbox" {% if active == "inbox" %}aria-current="page"{% endif %}>Inbox</a>
-      <a href="/reports" {% if active == "reports" %}aria-current="page"{% endif %}>Reports</a>
-      <a href="/cost" {% if active == "cost" %}aria-current="page"{% endif %}>Cost</a>
-      <a href="/audit" {% if active == "audit" %}aria-current="page"{% endif %}>Audit</a>
-      <a href="/profiles" {% if active == "profiles" %}aria-current="page"{% endif %}>Profiles</a>
-    </nav>
-    <div class="topbar-actions">
-      <button type="button" id="theme-toggle" class="button ghost" aria-label="Toggle dark mode">Theme</button>
-      <form method="post" action="/logout" class="inline-form">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <button type="submit" class="button ghost">Log out</button>
-      </form>
-    </div>
+    <aside class="sidebar">
+      <a class="brand" href="/">Heraldesk</a>
+
+      <nav class="side-group" aria-label="Primary">
+        <a class="nav-item" href="/queue" {% if active == "queue" %}aria-current="page"{% endif %}>Queue</a>
+        <a class="nav-item" href="/inbox" {% if active == "inbox" %}aria-current="page"{% endif %}>Inbox</a>
+        <a class="nav-item" href="/calendar" {% if active == "calendar" %}aria-current="page"{% endif %}>Calendar</a>
+        {% if studio_enabled %}
+        <a class="nav-item" href="/studio" {% if active == "studio" %}aria-current="page"{% endif %}>Draft Room</a>
+        {% endif %}
+      </nav>
+
+      <nav class="side-group" aria-label="More">
+        <span class="side-label">More</span>
+        <a class="nav-item" href="/reports" {% if active == "reports" %}aria-current="page"{% endif %}>Reports</a>
+        <a class="nav-item" href="/cost" {% if active == "cost" %}aria-current="page"{% endif %}>Cost</a>
+        <a class="nav-item" href="/audit" {% if active == "audit" %}aria-current="page"{% endif %}>Audit</a>
+        <a class="nav-item" href="/profiles" {% if active == "profiles" %}aria-current="page"{% endif %}>Profiles</a>
+      </nav>
+    </aside>
     {% endif %}
-  </header>
 
-  <main id="main" class="container">
-    {% block content %}{% endblock %}
-  </main>
+    <div class="main-shell">
+      <header class="topbar">
+        {% if login %}
+        <a class="brand" href="/" aria-label="Heraldesk">Heraldesk</a>
+        {% else %}
+        <span class="mode-indicator" id="mode-indicator"></span>
+        {% endif %}
+        <span class="spacer"></span>
+        <button type="button" id="theme-toggle" class="button ghost" aria-label="Toggle dark mode">Theme</button>
+        {% if not login %}
+        <form method="post" action="/logout" class="inline-form">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button type="submit" class="button ghost">Log out</button>
+        </form>
+        {% endif %}
+      </header>
 
-  <footer class="footer">
-    <span>Heraldesk {{ version }}</span>
-    <span>Local-first. No telemetry.</span>
-  </footer>
+      {% if not login and killswitch is defined and killswitch %}
+      <div class="killswitch-banner" role="alert">
+        Global kill switch is engaged. Publishing, approvals and replies are halted.
+        <a href="/" style="color:#fff;text-decoration:underline;">Review</a>
+      </div>
+      {% endif %}
+
+      <main id="main" class="main">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  <div class="toast-region" id="toast-region" aria-live="polite"></div>
 </body>
 </html>
