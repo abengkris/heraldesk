@@ -1,0 +1,62 @@
+{# Reusable UI components. Import with: {% from "_components.html" import status_badge, ... %} #}
+
+{% macro status_badge(kind, value) -%}
+  {%- set risk_map = {"low": "ok", "medium": "warn", "high": "danger", "blocked": "danger"} -%}
+  {%- set state_map = {
+      "idea": "info", "drafted": "muted", "reviewed": "info",
+      "pending_approval": "warn", "approved": "ok", "scheduled": "info",
+      "published": "ok", "rejected": "danger", "failed": "danger",
+      "blocked": "danger", "cancelled": "muted", "needs_review": "warn"
+  } -%}
+  {%- set sem = risk_map.get(value, "muted") if kind == "risk" else state_map.get(value, "muted") -%}
+  <span class="badge status-{{ sem }}">{{ value|replace("_", " ") }}</span>
+{%- endmacro %}
+
+{% macro risk_badge(level) -%}
+  {{ status_badge("risk", level) }}
+{%- endmacro %}
+
+{% macro empty_state(title='', hint='', action='') -%}
+<div class="empty">
+  {% if title %}<p class="empty-title">{{ title }}</p>{% endif %}
+  {% if hint %}<p class="muted">{{ hint }}</p>{% endif %}
+  {% if action %}{{ action|safe }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro page_header(title, subtitle='', actions='') -%}
+<div class="page-head">
+  <div>
+    <h1>{{ title }}</h1>
+    {% if subtitle %}<p class="muted">{{ subtitle }}</p>{% endif %}
+  </div>
+  {% if actions %}{{ actions|safe }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro field(label, name, value='', type='text', help='', error='', required=false, autofocus=false) -%}
+<div class="field">
+  <label for="{{ name }}">{{ label }}</label>
+  <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ value }}"
+    {% if required %}required{% endif %}
+    {% if autofocus %}autofocus{% endif %}>
+  {% if help %}<span class="help">{{ help }}</span>{% endif %}
+  {% if error %}<span class="error-text">{{ error }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro confirm_form(action, csrf, label, message='', method='post', hidden={}) -%}
+<form method="{{ method }}" action="{{ action }}">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% for key, val in hidden.items() %}<input type="hidden" name="{{ key }}" value="{{ val }}">{% endfor %}
+  {% if message %}<p class="small muted">{{ message }}</p>{% endif %}
+  <button type="submit" class="button danger">{{ label }}</button>
+</form>
+{%- endmacro %}
+
+{% macro toast(message, kind='ok') -%}
+<div class="toast status-{{ kind }}">
+  <span>{{ message }}</span>
+  <button type="button" class="toast-close" aria-label="Dismiss">×</button>
+</div>
+{%- endmacro %}

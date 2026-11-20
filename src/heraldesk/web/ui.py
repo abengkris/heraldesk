@@ -147,6 +147,7 @@ def _page(
             "active": active,
             "version": __version__,
             "studio_enabled": _context(request).config.studio.enabled,
+            "killswitch": is_global_kill_switch_enabled(_context(request).layout),
             **extra,
         },
         status_code=status_code,

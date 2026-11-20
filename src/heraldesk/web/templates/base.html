@@ -41,9 +41,32 @@
         {% if login %}
         <a class="brand" href="/" aria-label="Heraldesk">Heraldesk</a>
         {% else %}
-        <span class="mode-indicator" id="mode-indicator"></span>
+        <span class="topbar-title">Heraldesk</span>
         {% endif %}
         <span class="spacer"></span>
+
+        {% if not login %}
+          {% if killswitch %}
+          <form method="post" action="/killswitch" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="hidden" name="action" value="clear">
+            <button type="submit" class="button danger">Disengage kill switch</button>
+          </form>
+          {% else %}
+          <details class="killswitch">
+            <summary class="button ghost">Kill switch: off</summary>
+            <div class="killswitch-panel card">
+              <p class="small muted">Engaging halts publishing, approvals and replies for every profile.</p>
+              <form method="post" action="/killswitch">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="action" value="engage">
+                <button type="submit" class="button danger">Confirm engage</button>
+              </form>
+            </div>
+          </details>
+          {% endif %}
+        {% endif %}
+
         <button type="button" id="theme-toggle" class="button ghost" aria-label="Toggle dark mode">Theme</button>
         {% if not login %}
         <form method="post" action="/logout" class="inline-form">
@@ -56,7 +79,6 @@
       {% if not login and killswitch is defined and killswitch %}
       <div class="killswitch-banner" role="alert">
         Global kill switch is engaged. Publishing, approvals and replies are halted.
-        <a href="/" style="color:#fff;text-decoration:underline;">Review</a>
       </div>
       {% endif %}
 
@@ -65,6 +87,30 @@
       </main>
     </div>
   </div>
+
+  {% if not login %}
+  <nav class="mobile-nav" aria-label="Primary">
+    <a class="nav-item" href="/queue" {% if active == "queue" %}aria-current="page"{% endif %}>Queue</a>
+    <a class="nav-item" href="/inbox" {% if active == "inbox" %}aria-current="page"{% endif %}>Inbox</a>
+    <a class="nav-item" href="/calendar" {% if active == "calendar" %}aria-current="page"{% endif %}>Calendar</a>
+    {% if studio_enabled %}
+    <a class="nav-item" href="/studio" {% if active == "studio" %}aria-current="page"{% endif %}>Draft Room</a>
+    {% endif %}
+    <details class="mobile-more">
+      <summary class="nav-item">More</summary>
+      <div class="mobile-more-panel">
+        <a class="nav-item" href="/reports">Reports</a>
+        <a class="nav-item" href="/cost">Cost</a>
+        <a class="nav-item" href="/audit">Audit</a>
+        <a class="nav-item" href="/profiles">Profiles</a>
+        <form method="post" action="/logout" class="inline-form">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button type="submit" class="button ghost">Log out</button>
+        </form>
+      </div>
+    </details>
+  </nav>
+  {% endif %}
 
   <div class="toast-region" id="toast-region" aria-live="polite"></div>
 </body>
