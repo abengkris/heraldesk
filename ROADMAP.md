@@ -43,10 +43,12 @@ current summary.
   3.14 CI job)
 - [x] M29 Draft Room backend (DR1: threads and messages, scoped service, Editor agent,
   bounded context, cost and message limits, read-only route; disabled by default)
+- [x] M30 Draft Room conversation UI (DR2: thread list, thread page, Editor messages,
+  archive, CSRF and inline errors; still no draft or profile write actions)
 
 ## Infrastructure status
 
-M0–M29 are complete. The core is feature-complete for a single-user, self-hosted
+M0–M30 are complete. The core is feature-complete for a single-user, self-hosted
 deployment: CLI, Web UI, REST API, scheduler, Telegram, Nostr and Threads publishing,
 backups and restore, key rotation, PyPI and container releases, and Python 3.12–3.14.
 
@@ -58,7 +60,7 @@ and acceptance criteria are written.
 - [ ] **All-in-one Heraldesk.** A native Draft Room / editor-in-chief. Conversation
   produces proposals (an idea, a draft, a profile patch) and never approves or publishes.
   The deterministic pipeline and the human approval boundary stay unchanged. The DR1
-  backend landed in 1.18.6; the conversation UI is pending. See
+  backend and DR2 conversation UI landed in 1.18.6/1.18.8; draft creation is pending. See
   [`docs/draft-room.md`](docs/draft-room.md) for the specification.
 - [ ] **Real X/Facebook/Instagram/LinkedIn adapters**, or first-party plugins, when
   official API access and testable behavior are available.

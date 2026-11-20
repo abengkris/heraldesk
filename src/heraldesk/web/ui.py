@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.datastructures import FormData
 
 from heraldesk import __version__
+from heraldesk.agents.errors import AgentRunError
 from heraldesk.analyst import ReportError, monthly_period, weekly_period
 from heraldesk.community import InboxError
 from heraldesk.core.audit import AuditService
@@ -26,7 +27,7 @@ from heraldesk.core.locks import (
     is_global_kill_switch_enabled,
     release_global_kill_switch,
 )
-from heraldesk.db.repositories import ApprovalLocator
+from heraldesk.db.repositories import ApprovalLocator, StudioThreadRepository
 from heraldesk.domain.approvals import edit_item
 from heraldesk.domain.errors import (
     ApprovalError,
@@ -34,8 +35,10 @@ from heraldesk.domain.errors import (
     ProfileNotFoundError,
     ProfileValidationError,
 )
-from heraldesk.domain.profiles import list_profiles, resolve_scope
-from heraldesk.studio import StudioService
+from heraldesk.domain.profiles import list_profiles, profile_summary, resolve_scope
+from heraldesk.llm.errors import LLMError
+from heraldesk.llm.factory import build_llm, resolve_model
+from heraldesk.studio import StudioError, StudioService
 from heraldesk.web.auth import (
     LOGIN_CSRF_COOKIE,
     SESSION_COOKIE,
@@ -806,12 +809,65 @@ def report_download(request: Request, filename: str) -> FileResponse:
     )
 
 
-@router.get("/studio", response_class=HTMLResponse)
-def studio_page(request: Request, profile: str | None = None) -> HTMLResponse:
-    """List Draft Room threads for one profile. The conversation UI arrives in DR2."""
+def _require_studio(request: Request) -> WebContext:
     ctx = _context(request)
     if not ctx.config.studio.enabled:
         raise NotFound("the Draft Room is disabled")
+    return ctx
+
+
+def _studio_service(ctx: WebContext, db: Any, *, with_provider: bool = False) -> StudioService:
+    provider = None
+    model = ""
+    if with_provider:
+        provider = build_llm(ctx.config, ctx.layout)
+        model = resolve_model(ctx.config, provider)
+    return StudioService(
+        db,
+        ctx.layout,
+        provider=provider,
+        model=model,
+        daily_cap_usd=ctx.config.llm.max_daily_cost_usd,
+        thread_cap_usd=ctx.config.studio.max_cost_usd,
+        max_messages=ctx.config.studio.max_messages,
+        enabled=ctx.config.studio.enabled,
+        redactor=ctx.redactor,
+    )
+
+
+def _studio_thread_payload(
+    ctx: WebContext,
+    db: Any,
+    thread_id: int,
+    *,
+    error: str | None = None,
+    draft_text: str = "",
+) -> dict[str, Any]:
+    locator = StudioThreadRepository(db)
+    scope = locator.scope_for(thread_id)
+    if scope is None:
+        raise NotFound(f"studio thread {thread_id} does not exist")
+    service = _studio_service(ctx, db)
+    thread = service.get_thread(scope, thread_id)
+    messages = service.list_messages(scope, thread_id)
+    summary = profile_summary(db, scope)
+    spent = sum(message.cost_usd for message in messages)
+    return {
+        "thread": thread,
+        "messages": messages,
+        "profile": summary,
+        "spent": spent,
+        "max_cost_usd": ctx.config.studio.max_cost_usd,
+        "remaining_messages": max(0, ctx.config.studio.max_messages - len(messages)),
+        "error": error,
+        "draft_text": draft_text,
+    }
+
+
+@router.get("/studio", response_class=HTMLResponse)
+def studio_page(request: Request, profile: str | None = None) -> HTMLResponse:
+    """List Draft Room threads and let the user start a conversation."""
+    ctx = _require_studio(request)
     session = _session(request)
     with ctx.database.session() as db:
         summaries = list_profiles(db)
@@ -827,13 +883,7 @@ def studio_page(request: Request, profile: str | None = None) -> HTMLResponse:
             selected = summaries[0]
         else:
             scope = None
-        service = StudioService(
-            db,
-            ctx.layout,
-            thread_cap_usd=ctx.config.studio.max_cost_usd,
-            max_messages=ctx.config.studio.max_messages,
-        )
-        threads = service.list_threads(scope) if scope is not None else []
+        threads = _studio_service(ctx, db).list_threads(scope) if scope is not None else []
     return _page(
         request,
         session,
@@ -843,6 +893,81 @@ def studio_page(request: Request, profile: str | None = None) -> HTMLResponse:
         selected=selected,
         threads=threads,
     )
+
+
+@router.post("/studio/threads", response_class=HTMLResponse)
+async def studio_thread_create(request: Request) -> Response:
+    """Create a Draft Room thread for one profile."""
+    ctx = _require_studio(request)
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    slug = _form_value(form, "profile").strip()
+    title = _form_value(form, "title").strip() or "New thread"
+    with ctx.database.session() as db:
+        try:
+            scope = resolve_scope(db, slug)
+            thread = _studio_service(ctx, db).create_thread(scope, title=title)
+        except (ProfileNotFoundError, ProfileValidationError, StudioError) as exc:
+            raise BadRequest(str(exc)) from exc
+    return RedirectResponse(f"/studio/{thread.id}", status_code=303)
+
+
+@router.get("/studio/{thread_id}", response_class=HTMLResponse)
+def studio_thread_page(request: Request, thread_id: int) -> HTMLResponse:
+    """Show one thread and its messages."""
+    ctx = _require_studio(request)
+    session = _session(request)
+    with ctx.database.session() as db:
+        payload = _studio_thread_payload(ctx, db, thread_id)
+    return _page(request, session, "studio_thread.html", "studio", **payload)
+
+
+@router.post("/studio/{thread_id}/messages", response_class=HTMLResponse)
+async def studio_message_create(request: Request, thread_id: int) -> Response:
+    """Run one Editor turn and redirect back to the thread."""
+    ctx = _require_studio(request)
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    text = _form_value(form, "text")
+    role = _form_value(form, "role").strip() or "editor"
+    with ctx.database.session() as db:
+        scope = StudioThreadRepository(db).scope_for(thread_id)
+        if scope is None:
+            raise NotFound(f"studio thread {thread_id} does not exist")
+        try:
+            _studio_service(ctx, db, with_provider=True).send_message(
+                scope, thread_id, text, role=role
+            )
+        except (AgentRunError, LLMError, StudioError, ValueError) as exc:
+            error = ctx.redactor.redact(str(exc))[:500]
+            payload = _studio_thread_payload(ctx, db, thread_id, error=error, draft_text=text)
+            return _page(
+                request,
+                session,
+                "studio_thread.html",
+                "studio",
+                status_code=400,
+                **payload,
+            )
+    return RedirectResponse(f"/studio/{thread_id}", status_code=303)
+
+
+@router.post("/studio/{thread_id}/archive", response_class=HTMLResponse)
+async def studio_thread_archive(request: Request, thread_id: int) -> Response:
+    """Archive a thread without deleting its messages."""
+    ctx = _require_studio(request)
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    with ctx.database.session() as db:
+        scope = StudioThreadRepository(db).scope_for(thread_id)
+        if scope is None:
+            raise NotFound(f"studio thread {thread_id} does not exist")
+        summary = profile_summary(db, scope)
+        _studio_service(ctx, db).archive_thread(scope, thread_id)
+    return RedirectResponse(f"/studio?profile={summary.slug}", status_code=303)
 
 
 @router.get("/cost", response_class=HTMLResponse)

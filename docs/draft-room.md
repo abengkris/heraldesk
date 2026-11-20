@@ -1,8 +1,8 @@
 # Draft Room (proposed)
 
-Status: **DR1 implemented; DR2–DR5 pending.** The backend tables, service, Editor agent,
-configuration, read-only route and tests landed in 1.18.6. The conversation UI and the
-write actions are not implemented yet.
+Status: **DR1 and DR2 implemented; DR3–DR5 pending.** The backend landed in 1.18.6. The
+conversation UI (thread list, thread page, Editor messages, archive) landed in 1.18.8.
+Draft creation and profile patches are not implemented yet.
 
 ## Problem
 
@@ -283,8 +283,8 @@ Each criterion needs an offline test with the fake LLM provider.
 | Phase | Scope | Status |
 |---|---|---|
 | DR1 | config, tables, service, Editor schema, fake-provider tests | **done in 1.18.6** |
-| DR2 | thread list, message pane, role selector, artifact cards | next |
-| DR3 | “Create draft” with lint and compliance | planned |
+| DR2 | thread list, message pane, Editor role selector, archive | **done in 1.18.8** |
+| DR3 | artifact cards and “Create draft” with lint and compliance | next |
 | DR4 | profile patches with diff and confirmation | planned |
 | DR5 | hardening, docs, accessibility, release | planned |
 

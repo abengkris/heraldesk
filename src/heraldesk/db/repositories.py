@@ -1392,6 +1392,17 @@ class StudioThreadRepository:
             )
         )
 
+    def scope_for(self, thread_id: int) -> ProfileScope | None:
+        """Return the scope that owns *thread_id*, for routing only.
+
+        This is a global lookup of one profile id, like ``ApprovalLocator``. The caller
+        still reads the thread and its messages through a scoped repository.
+        """
+        profile_id = self._session.scalar(
+            select(StudioThread.profile_id).where(StudioThread.id == thread_id)
+        )
+        return None if profile_id is None else ProfileScope(profile_id)
+
     def list_threads(
         self,
         scope: ProfileScope,

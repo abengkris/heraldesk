@@ -39,15 +39,17 @@ _CSRF = re.compile(r'name="csrf" value="([^"]+)"')
 SECRET = "sk-ABCDEFGHIJKLMNOP1234"
 
 
-def write_studio_config(initialized: InitResult, *, enabled: bool) -> None:
-    initialized.layout.config_path.write_text(
-        "version: 1\n"
-        "studio:\n"
-        f"  enabled: {str(enabled).lower()}\n"
-        "  max_messages: 40\n"
-        "  max_cost_usd: 0.25\n",
-        encoding="utf-8",
-    )
+def write_studio_config(initialized: InitResult, *, enabled: bool, fake_llm: bool = False) -> None:
+    lines = [
+        "version: 1",
+        "studio:",
+        f"  enabled: {str(enabled).lower()}",
+        "  max_messages: 40",
+        "  max_cost_usd: 0.25",
+    ]
+    if fake_llm:
+        lines.extend(["llm:", "  provider: fake", "  default_model: fake/editor"])
+    initialized.layout.config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def service_for(
@@ -291,3 +293,111 @@ def test_studio_has_no_publish_or_approve_route(
         assert client.post("/studio/1/publish").status_code == 404
         assert client.post("/studio/1/approve").status_code == 404
         assert client.post("/studio/1/reject").status_code == 404
+
+
+def create_thread_via_ui(client: TestClient, profile: str = "acme") -> int:
+    page = client.get(f"/studio?profile={profile}")
+    match = _CSRF.search(page.text)
+    assert match is not None
+    response = client.post(
+        "/studio/threads",
+        data={"csrf": match.group(1), "profile": profile, "title": "Weekly plan"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    location = response.headers["location"]
+    return int(location.rsplit("/", 1)[-1])
+
+
+def test_create_thread_from_the_ui(initialized: InitResult, profile_setup: ProfileSetup) -> None:
+    write_studio_config(initialized, enabled=True)
+    with client_for(initialized) as client:
+        login(client)
+        thread_id = create_thread_via_ui(client)
+        page = client.get(f"/studio/{thread_id}")
+        assert page.status_code == 200
+        assert "Weekly plan" in page.text
+        assert "No messages yet" in page.text
+
+
+def test_send_message_from_the_ui(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True, fake_llm=True)
+    with client_for(initialized) as client:
+        login(client)
+        thread_id = create_thread_via_ui(client)
+        page = client.get(f"/studio/{thread_id}")
+        match = _CSRF.search(page.text)
+        assert match is not None
+        response = client.post(
+            f"/studio/{thread_id}/messages",
+            data={"csrf": match.group(1), "text": "Plan the week.", "role": "editor"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303, response.text
+        after = client.get(f"/studio/{thread_id}")
+        assert "Plan the week." in after.text
+        assert "Here is a concrete plan" in after.text
+        assert "Draft Room" in after.text
+
+    stored = StudioMessageRepository(db_session).list_messages(profile_setup.scope, thread_id)
+    assert [message.role for message in stored] == ["user", "editor"]
+
+
+def test_message_error_keeps_the_draft_text(
+    initialized: InitResult,
+    profile_setup: ProfileSetup,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from heraldesk.llm.errors import LLMError
+
+    write_studio_config(initialized, enabled=True, fake_llm=True)
+    with client_for(initialized) as client:
+        login(client)
+        thread_id = create_thread_via_ui(client)
+        page = client.get(f"/studio/{thread_id}")
+        match = _CSRF.search(page.text)
+        assert match is not None
+        monkeypatch.setattr(
+            "heraldesk.web.ui.build_llm",
+            lambda config, layout: FakeLLM(fail_with=LLMError("provider down")),
+        )
+        response = client.post(
+            f"/studio/{thread_id}/messages",
+            data={"csrf": match.group(1), "text": "keep this text", "role": "editor"},
+        )
+        assert response.status_code == 400
+        assert "provider down" in response.text
+        assert "keep this text" in response.text
+
+
+def test_message_requires_csrf(initialized: InitResult, profile_setup: ProfileSetup) -> None:
+    write_studio_config(initialized, enabled=True, fake_llm=True)
+    with client_for(initialized) as client:
+        login(client)
+        thread_id = create_thread_via_ui(client)
+        response = client.post(
+            f"/studio/{thread_id}/messages",
+            data={"text": "no token"},
+        )
+        assert response.status_code == 403
+
+
+def test_archive_thread_from_the_ui(initialized: InitResult, profile_setup: ProfileSetup) -> None:
+    write_studio_config(initialized, enabled=True, fake_llm=True)
+    with client_for(initialized) as client:
+        login(client)
+        thread_id = create_thread_via_ui(client)
+        page = client.get(f"/studio/{thread_id}")
+        match = _CSRF.search(page.text)
+        assert match is not None
+        response = client.post(
+            f"/studio/{thread_id}/archive",
+            data={"csrf": match.group(1)},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        archived = client.get(f"/studio/{thread_id}")
+        assert "archived" in archived.text.lower()
+        assert "This thread is archived" in archived.text

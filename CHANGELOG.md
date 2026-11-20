@@ -6,6 +6,15 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.8] - 2026-11-20
+
+### Added
+
+- Draft Room conversation UI (DR2), disabled behind `studio.enabled`: create a thread,
+  send Editor turns, read the conversation, see cost and remaining messages, and archive
+  a thread. CSRF is required and failed turns keep the typed text.
+- The UI still has no draft creation, approval, publish or profile-patch action.
+
 ## [1.18.7] - 2026-11-20
 
 ### Added

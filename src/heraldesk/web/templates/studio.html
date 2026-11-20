@@ -16,25 +16,41 @@
        {% if selected and selected.slug == item.slug %}aria-current="page"{% endif %}>{{ item.slug }}</a>
     {% endfor %}
   </nav>
-  {% endif %}
+
+  <form method="post" action="/studio/threads" class="card stack tight">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="profile" value="{{ selected.slug if selected else '' }}">
+    <label for="studio-title">New thread</label>
+    <div class="form-row">
+      <input id="studio-title" type="text" name="title" maxlength="200"
+             placeholder="What do you want to plan?">
+      <button type="submit" class="button primary">Start thread</button>
+    </div>
+    <p class="muted">A thread is a conversation. It cannot approve or publish anything.</p>
+  </form>
 
   {% if threads %}
-  <table class="table">
-    <thead>
-      <tr><th>Thread</th><th>Status</th><th>Updated</th></tr>
-    </thead>
-    <tbody>
-      {% for thread in threads %}
-      <tr>
-        <td>{{ thread.title }}</td>
-        <td>{{ thread.status }}</td>
-        <td>{{ thread.updated_at }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Thread</th><th>Status</th><th>Updated</th></tr>
+      </thead>
+      <tbody>
+        {% for thread in threads %}
+        <tr>
+          <td><a href="/studio/{{ thread.id }}">{{ thread.title }}</a></td>
+          <td>{{ thread.status }}</td>
+          <td>{{ thread.updated_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-  <p class="empty">No threads yet. The conversation UI arrives in the next phase.</p>
+  <p class="empty">No threads yet. Start one above.</p>
+  {% endif %}
+  {% else %}
+  <p class="empty">No profiles are loaded. Create one with <code>heraldesk profile new</code> first.</p>
   {% endif %}
 </section>
 {% endblock %}
