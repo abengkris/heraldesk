@@ -1,78 +1,81 @@
 {% extends "base.html" %}
-{% block title %}Dashboard · Heraldesk{% endblock %}
+{% from "_components.html" import empty_state, status_badge, risk_badge %}
+{% block title %}Needs attention · Heraldesk{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Dashboard</h1>
-    <p class="muted">Approvals, inbox and reports at a glance.</p>
+    <h1>Needs attention</h1>
+    <p class="muted">Items that need your review, across the selected profile.</p>
   </div>
 </div>
 
-{% if notice %}<p class="alert ok" role="status">{{ notice }}</p>{% endif %}
+{% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
 {% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
 
-<section class="grid" aria-label="Counts">
-  <a class="card stat" href="/queue">
-    <span class="stat-label">Pending approval</span>
-    <strong class="stat-value">{{ counts.queue.pending_approval }}</strong>
-  </a>
-  <a class="card stat" href="/queue">
-    <span class="stat-label">Scheduled</span>
-    <strong class="stat-value">{{ counts.queue.scheduled }}</strong>
-  </a>
-  <a class="card stat" href="/inbox">
-    <span class="stat-label">Inbox pending</span>
-    <strong class="stat-value">{{ counts.inbox.pending }}</strong>
-  </a>
-  <a class="card stat" href="/queue">
-    <span class="stat-label">Failed publishes</span>
-    <strong class="stat-value">{{ counts.queue.failed }}</strong>
-  </a>
-  <a class="card stat" href="/profiles">
-    <span class="stat-label">Profiles</span>
-    <strong class="stat-value">{{ counts.profiles }}</strong>
-  </a>
-</section>
+{% set has_items = needs.blocked or needs.failed or needs.pending_approval > 0 or needs.inbox_pending > 0 or needs.next_scheduled %}
 
-<section class="card" aria-labelledby="latest-report">
-  <h2 id="latest-report">Latest report</h2>
-  {% if last_report %}
-  <p>
-    <a href="/reports/view/{{ last_report.filename }}">{{ last_report.kind }} {{ last_report.label }}</a>
-    <span class="muted small">· {{ last_report.size }} bytes</span>
-  </p>
-  {% else %}
-  <p class="muted">No report has been generated yet. <a href="/reports">Generate one</a>.</p>
+{% if not has_items %}
+  {{ empty_state("Nothing needs your review.", "Run the daily pipeline to generate drafts, or wait for the next scheduled post.") }}
+{% else %}
+<section class="stack">
+  {% if needs.pending_approval > 0 %}
+  <a class="card stat" href="/queue{{ profile_qs }}">
+    <span class="stat-label">Pending approval</span>
+    <strong class="stat-value tnum">{{ needs.pending_approval }}</strong>
+    {% if needs.oldest_pending_age %}<span class="muted small">oldest {{ needs.oldest_pending_age }} old</span>{% endif %}
+  </a>
+  {% endif %}
+
+  {% if needs.inbox_pending > 0 %}
+  <a class="card stat" href="/inbox{{ profile_qs }}">
+    <span class="stat-label">Inbox pending</span>
+    <strong class="stat-value tnum">{{ needs.inbox_pending }}</strong>
+  </a>
+  {% endif %}
+
+  {% if needs.next_scheduled %}
+  <a class="card" href="/queue{{ profile_qs }}">
+    <span class="stat-label">Next scheduled</span>
+    <strong>{{ needs.next_scheduled.when.strftime("%Y-%m-%d %H:%M") }}</strong>
+    <span class="muted small">{{ needs.next_scheduled.platform }} · {{ needs.next_scheduled.profile_slug }}</span>
+  </a>
+  {% endif %}
+
+  {% if needs.blocked %}
+  <section class="card" aria-labelledby="blocked-title">
+    <h2 id="blocked-title">Blocked</h2>
+    <ul class="attention-list">
+      {% for item in needs.blocked %}
+      <li>
+        {{ status_badge("state", "blocked") }}
+        <a href="/queue{{ profile_qs }}">{{ item.platform }} · {{ item.profile_slug }}</a>
+        <span class="muted">{{ item.preview }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if needs.failed %}
+  <section class="card" aria-labelledby="failed-title">
+    <h2 id="failed-title">Failed publishes</h2>
+    <ul class="attention-list">
+      {% for item in needs.failed %}
+      <li>
+        {{ status_badge("state", "failed") }}
+        <a href="/queue{{ profile_qs }}">{{ item.platform }} · {{ item.profile_slug }}</a>
+        <span class="muted">{{ item.preview }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
   {% endif %}
 </section>
-
-<section class="card" aria-labelledby="killswitch">
-  <h2 id="killswitch">Global kill switch</h2>
-  <p class="muted">
-    {% if killswitch %}
-    <strong class="danger-text">Engaged.</strong> Publishing, approvals and replies are halted for every profile.
-    {% else %}
-    Clear. Publishing obeys each profile's policy.
-    {% endif %}
-  </p>
-  <form method="post" action="/killswitch">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    {% if killswitch %}
-    <input type="hidden" name="action" value="clear">
-    <button type="submit" class="button">Clear kill switch</button>
-    {% else %}
-    <input type="hidden" name="action" value="engage">
-    <button type="submit" class="button danger">Engage kill switch</button>
-    {% endif %}
-  </form>
-</section>
+{% endif %}
 
 <section class="card" aria-labelledby="sessions">
   <h2 id="sessions">Sessions</h2>
-  <p class="muted">
-    Rotate the session epoch to invalidate every signed-in browser immediately. You will
-    be asked to sign in again.
-  </p>
+  <p class="muted">Rotate the session epoch to invalidate every signed-in browser immediately.</p>
   <form method="post" action="/logout-all">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <button type="submit" class="button danger">Log out everywhere</button>

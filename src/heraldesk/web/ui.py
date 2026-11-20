@@ -71,10 +71,11 @@ from heraldesk.web.service import (
     audit_login,
     cost_summary,
     dashboard_counts,
+    dashboard_needs_attention,
     generate_report,
+    get_inbox_detail,
     get_queue_detail,
     ignore_inbox,
-    latest_report_file,
     list_audit_views,
     list_calendar_views,
     list_inbox_views,
@@ -166,6 +167,7 @@ def _page(
             "profiles": profiles,
             "current_profile": current_profile,
             "profile_mode": profile_mode(ctx.layout, current_profile),
+            "profile_qs": f"?profile={current_profile}" if current_profile else "",
             "queue_pending": queue_pending,
             "inbox_pending": inbox_pending,
             **extra,
@@ -341,20 +343,18 @@ async def logout_all(request: Request) -> Response:
 
 
 @router.get("/", response_class=HTMLResponse)
-def dashboard(request: Request, ok: str | None = None) -> HTMLResponse:
-    """Show queue counts, inbox counts, profiles and the newest report."""
+def dashboard(request: Request, ok: str | None = None, profile: str | None = None) -> HTMLResponse:
+    """Show the items that need a human's review."""
     session = _session(request)
     context = _context(request)
     with context.database.session() as db:
-        counts = dashboard_counts(db)
+        needs = dashboard_needs_attention(db, context.redactor, profile=profile)
     return _page(
         request,
         session,
         "dashboard.html",
         "dashboard",
-        counts=counts,
-        last_report=latest_report_file(context.layout),
-        killswitch=is_global_kill_switch_enabled(context.layout),
+        needs=needs,
         notice="Kill switch updated." if ok == "killswitch" else None,
         error=None,
     )
@@ -704,21 +704,102 @@ def _queue_action_error(
 
 
 @router.get("/inbox", response_class=HTMLResponse)
-def inbox_page(request: Request, ok: str | None = None) -> HTMLResponse:
-    """List pending inbox items with masked ids."""
+def inbox_page(
+    request: Request,
+    ok: str | None = None,
+    status: str | None = None,
+    profile: str | None = None,
+) -> HTMLResponse:
+    """List inbox items for manual triage, with a review panel."""
     session = _session(request)
     context = _context(request)
+    selected = status or "pending"
     with context.database.session() as db:
-        items = list_inbox_views(db, context.redactor, status="pending", limit=50)
+        items = _inbox_list(db, context, status=selected, profile=profile)
     return _page(
         request,
         session,
         "inbox.html",
         "inbox",
         items=items,
+        detail=None,
+        filter_status=selected,
+        retention_days=context.config.telegram.retention_days,
         notice=_notice(ok),
         error=None,
     )
+
+
+@router.get("/inbox/{item_id}", response_class=HTMLResponse)
+def inbox_detail_page(request: Request, item_id: int, profile: str | None = None) -> HTMLResponse:
+    """Show the full inbox item and triage actions."""
+    session = _session(request)
+    context = _context(request)
+    with context.database.session() as db:
+        try:
+            detail = get_inbox_detail(db, context.redactor, item_id)
+            items = _inbox_list(db, context, status="pending", profile=profile)
+        except WebError as exc:
+            return _page(
+                request,
+                session,
+                "error.html",
+                "inbox",
+                status_code=exc.status_code,
+                code=exc.code,
+                message=exc.message,
+            )
+    return _page(
+        request,
+        session,
+        "inbox.html",
+        "inbox",
+        items=items,
+        detail=detail,
+        filter_status="pending",
+        retention_days=context.config.telegram.retention_days,
+        notice=None,
+        error=None,
+    )
+
+
+@router.get("/inbox/{item_id}/panel", response_class=HTMLResponse)
+def inbox_detail_panel(request: Request, item_id: int) -> Response:
+    """Return the inbox detail fragment for htmx, or redirect to the full page."""
+    session = _session(request)
+    context = _context(request)
+    with context.database.session() as db:
+        try:
+            detail = get_inbox_detail(db, context.redactor, item_id)
+        except WebError as exc:
+            if _is_htmx(request):
+                return _render(
+                    request,
+                    "partials/error_row.html",
+                    {"error": exc.message, "colspan": 1},
+                    status_code=200,
+                )
+            return RedirectResponse("/inbox", status_code=303)
+    if _is_htmx(request):
+        return _render(
+            request,
+            "partials/inbox_detail.html",
+            {"detail": detail, "csrf": session.csrf},
+        )
+    return RedirectResponse(f"/inbox/{item_id}", status_code=303)
+
+
+def _inbox_list(
+    db: Any,
+    context: WebContext,
+    *,
+    status: str,
+    profile: str | None,
+) -> list[Any]:
+    items = list_inbox_views(db, context.redactor, status=status, limit=200)
+    if profile is not None:
+        items = [item for item in items if item.profile_slug == profile]
+    return sorted(items, key=lambda item: item.created_at)
 
 
 @router.post("/inbox/{item_id}/reply", response_class=HTMLResponse)
@@ -747,7 +828,7 @@ async def inbox_reply(request: Request, item_id: int) -> Response:
     except (InboxError, WebError) as exc:
         return _inbox_action_error(request, session, item_id, exc)
     if _is_htmx(request):
-        return Response("")
+        return _inbox_action_success(request, session, "Reply sent.")
     return RedirectResponse("/inbox?ok=replied", status_code=303)
 
 
@@ -770,8 +851,38 @@ async def inbox_ignore(request: Request, item_id: int) -> Response:
     except (InboxError, WebError) as exc:
         return _inbox_action_error(request, session, item_id, exc)
     if _is_htmx(request):
-        return Response("")
+        return _inbox_action_success(request, session, "Item ignored.")
     return RedirectResponse("/inbox?ok=ignored", status_code=303)
+
+
+def _inbox_action_success(request: Request, session: UISession, label: str) -> Response:
+    """Build an htmx response that removes the row and updates badge, toast and detail."""
+    context = _context(request)
+    with context.database.session() as db:
+        remaining = _inbox_list(db, context, status="pending", profile=None)
+        inbox_pending = len(remaining)
+        next_id = remaining[0].id if remaining else None
+        panel = ""
+        if next_id is not None:
+            try:
+                detail = get_inbox_detail(db, context.redactor, next_id)
+                panel = templates.env.get_template("partials/inbox_detail.html").render(
+                    detail=detail, csrf=session.csrf
+                )
+            except WebError:
+                panel = ""
+    badge = f'<span id="inbox-badge" hx-swap-oob="true">{inbox_pending}</span>'
+    toast = (
+        '<div class="toast-region" id="toast-region" hx-swap-oob="true">'
+        f'<div class="toast status-ok"><span>{label}</span>'
+        '<button type="button" class="toast-close" aria-label="Dismiss">&#215;</button></div></div>'
+    )
+    detail_oob = (
+        f'<section class="inbox-detail" id="inbox-detail" hx-swap-oob="innerHTML">{panel}</section>'
+    )
+    response = Response(badge + toast + detail_oob)
+    response.headers["HX-Push-Url"] = f"/inbox/{next_id}" if next_id else "/inbox"
+    return response
 
 
 def _inbox_action_error(
@@ -802,17 +913,20 @@ def _inbox_action_error(
         return _render(
             request,
             "partials/error_row.html",
-            {"error": message, "colspan": 5},
+            {"error": message, "colspan": 4},
             status_code=200,
         )
     with context.database.session() as db:
-        items = list_inbox_views(db, context.redactor, status="pending", limit=50)
+        items = _inbox_list(db, context, status="pending", profile=None)
     return _page(
         request,
         session,
         "inbox.html",
         "inbox",
         items=items,
+        detail=None,
+        filter_status="pending",
+        retention_days=context.config.telegram.retention_days,
         notice=None,
         error=message,
         status_code=400,

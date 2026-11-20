@@ -1,0 +1,41 @@
+{% from "_components.html" import status_badge %}
+<div class="inbox-detail-inner">
+  <a class="button ghost back-link" href="/inbox">Back to inbox</a>
+
+  <header class="detail-head">
+    <div>
+      <h2>Message #{{ detail.id }}</h2>
+      <p class="muted">
+        {% if detail.profile_slug %}{{ detail.profile_slug }} · {% endif %}
+        {{ detail.chat }} · {{ detail.sender }}
+      </p>
+    </div>
+    <div class="badges">{{ status_badge("state", detail.status) }}</div>
+  </header>
+
+  <section class="card">
+    <pre class="body-full">{{ detail.text }}</pre>
+    {% if detail.command %}<p class="muted small">Command: {{ detail.command }}</p>{% endif %}
+    {% if detail.ignore_reason %}<p class="muted small">Ignored: {{ detail.ignore_reason }}</p>{% endif %}
+  </section>
+
+  {% if detail.status == "pending" %}
+  <form method="post" action="/inbox/{{ detail.id }}/reply" class="card stack tight">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="reply-text"><strong>Reply</strong></label>
+    <textarea id="reply-text" name="text" rows="4" maxlength="4000" required></textarea>
+    <button type="submit" class="button primary">Reply</button>
+  </form>
+
+  <form method="post" action="/inbox/{{ detail.id }}/ignore" class="card stack tight">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="ignore-reason"><strong>Ignore</strong></label>
+    <select id="ignore-reason" name="reason">
+      <option value="spam">Spam</option>
+      <option value="off-topic">Off-topic</option>
+      <option value="other" selected>Other</option>
+    </select>
+    <button type="submit" class="button">Ignore</button>
+  </form>
+  {% endif %}
+</div>

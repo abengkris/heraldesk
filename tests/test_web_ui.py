@@ -144,7 +144,7 @@ def test_login_sets_http_only_lax_cookie_and_logout(initialized: InitResult) -> 
         dashboard = client.get("/")
         assert dashboard.status_code == 200
         assert ADMIN_TOKEN not in dashboard.text
-        assert "Dashboard" in dashboard.text
+        assert "Needs attention" in dashboard.text
 
         csrf = csrf_from(dashboard.text)
         logout = client.post("/logout", data={"csrf": csrf}, follow_redirects=False)
@@ -669,6 +669,6 @@ def test_dashboard_toggles_the_global_kill_switch(initialized: InitResult) -> No
         )
 
     assert engaged.status_code == 303
-    assert "Engaged." in dashboard.text
+    assert "Disengage kill switch" in dashboard.text
     assert cleared.status_code == 303
     assert not initialized.layout.killswitch_path.exists()

@@ -402,6 +402,25 @@ def _inbox_view(item: InboxItemView, redactor: SecretRegistry) -> InboxView:
     )
 
 
+def get_inbox_detail(session: Session, redactor: SecretRegistry, item_id: int) -> dict[str, Any]:
+    """Return one inbox item with its full redacted text, for the review panel."""
+    message = InboxRepository(session).get(item_id)
+    if message is None:
+        raise NotFound("inbox item not found")
+    slugs = {profile.id: profile.slug for profile in ProfileCatalog(session).list()}
+    return {
+        "id": message.id,
+        "profile_slug": slugs.get(message.profile_id) if message.profile_id is not None else None,
+        "chat": mask_chat_id(message.chat_id),
+        "sender": mask_sender_id(message.sender_id),
+        "text": redactor.redact(message.text),
+        "command": message.command,
+        "status": message.status,
+        "ignore_reason": message.ignore_reason,
+        "created_at": as_utc(message.created_at),
+    }
+
+
 def _approval_target(session: Session, approval_id: int) -> tuple[ProfileScope, int]:
     resolved = ApprovalLocator(session).resolve(approval_id)
     if resolved is None:
@@ -820,6 +839,76 @@ def profile_mode(layout: paths.Layout, slug: str | None) -> str | None:
     except (OSError, ValueError):
         return None
     return definition.policy.default_mode.value
+
+
+def dashboard_needs_attention(
+    session: Session,
+    redactor: SecretRegistry,
+    *,
+    profile: str | None = None,
+) -> dict[str, Any]:
+    """Read-only summary of what needs a human's review.
+
+    Returns only existing domain data, no new metrics. Every entry links back to its
+    item or list; nothing here is a chart or a vanity number.
+    """
+    summaries = ProfileCatalog(session).list()
+    if profile is not None:
+        summaries = [summary for summary in summaries if summary.slug == profile]
+    items = ContentItemRepository(session)
+    now = datetime.now(UTC)
+    blocked: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    pending = 0
+    oldest_pending: datetime | None = None
+    next_scheduled: dict[str, Any] | None = None
+
+    for summary in summaries:
+        scope = ProfileScope(summary.id)
+        for item in items.list(scope, states=("blocked", "failed"), limit=200):
+            row = {
+                "content_item_id": item.id,
+                "platform": item.platform,
+                "profile_slug": summary.slug,
+                "preview": preview(redactor.redact(item.body), limit=120),
+            }
+            if item.state == "blocked":
+                blocked.append(row)
+            elif item.state == "failed":
+                failed.append(row)
+        for item in items.list(scope, states=("pending_approval",), limit=200):
+            pending += 1
+            created = as_utc(item.created_at)
+            if oldest_pending is None or created < oldest_pending:
+                oldest_pending = created
+        for item in items.list(scope, states=("scheduled",), limit=200):
+            if item.scheduled_at is None:
+                continue
+            when = as_utc(item.scheduled_at)
+            if when < now:
+                continue
+            if next_scheduled is None or when < as_utc(next_scheduled["when"]):
+                next_scheduled = {
+                    "content_item_id": item.id,
+                    "platform": item.platform,
+                    "profile_slug": summary.slug,
+                    "when": when,
+                }
+
+    oldest_age: str | None = None
+    if oldest_pending is not None:
+        delta = now - oldest_pending
+        minutes = int(delta.total_seconds() // 60)
+        oldest_age = f"{minutes}m" if minutes < 120 else f"{minutes // 60}h"
+
+    return {
+        "blocked": blocked,
+        "failed": failed,
+        "pending_approval": pending,
+        "oldest_pending_age": oldest_age,
+        "inbox_pending": inbox_counts(session).get("pending", 0),
+        "next_scheduled": next_scheduled,
+    }
 
 
 def list_audit_views(

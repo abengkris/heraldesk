@@ -579,6 +579,12 @@ del { color: var(--status-danger); background: var(--status-danger-bg); }
   top: calc(var(--topbar-h) + var(--s4));
 }
 .queue-detail-inner { display: flex; flex-direction: column; gap: var(--s3); }
+.inbox-detail {
+  min-width: 0;
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--s4));
+}
+.inbox-detail-inner { display: flex; flex-direction: column; gap: var(--s3); }
 
 .back-link { display: none; }
 
@@ -597,6 +603,10 @@ del { color: var(--status-danger); background: var(--status-danger-bg); }
 .body-full { margin: 0; }
 .history { list-style: none; margin: var(--s2) 0 0; padding: 0; }
 .history li { padding: var(--s1) 0; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+
+.attention-list { list-style: none; margin: 0; padding: 0; }
+.attention-list li { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: baseline; padding: var(--s2) 0; border-bottom: 1px solid var(--border); }
+.attention-list li:last-child { border-bottom: 0; }
 
 .shortcuts {
   position: fixed;
@@ -628,6 +638,7 @@ kbd {
   .queue-layout { grid-template-columns: 1fr; }
   .queue-detail { position: static; }
   .queue-layout:not(.has-detail) .queue-detail { display: none; }
+  .queue-layout:not(.has-detail) .inbox-detail { display: none; }
   .queue-layout.has-detail .queue-list { display: none; }
   .back-link { display: inline-block; }
 }

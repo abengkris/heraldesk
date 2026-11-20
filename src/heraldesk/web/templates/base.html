@@ -15,27 +15,27 @@
   <div class="app-shell">
     {% if not login %}
     <aside class="sidebar">
-      <a class="brand" href="/">Heraldesk</a>
+      <a class="brand" href="/{{ profile_qs }}">Heraldesk</a>
 
       <nav class="side-group" aria-label="Primary">
-        <a class="nav-item" href="/queue" {% if active == "queue" %}aria-current="page"{% endif %}>Queue
+        <a class="nav-item" href="/queue{{ profile_qs }}" {% if active == "queue" %}aria-current="page"{% endif %}>Queue
           <span class="nav-badge" id="queue-badge">{{ queue_pending }}</span>
         </a>
-        <a class="nav-item" href="/inbox" {% if active == "inbox" %}aria-current="page"{% endif %}>Inbox
+        <a class="nav-item" href="/inbox{{ profile_qs }}" {% if active == "inbox" %}aria-current="page"{% endif %}>Inbox
           <span class="nav-badge" id="inbox-badge">{{ inbox_pending }}</span>
         </a>
-        <a class="nav-item" href="/calendar" {% if active == "calendar" %}aria-current="page"{% endif %}>Calendar</a>
+        <a class="nav-item" href="/calendar{{ profile_qs }}" {% if active == "calendar" %}aria-current="page"{% endif %}>Calendar</a>
         {% if studio_enabled %}
-        <a class="nav-item" href="/studio" {% if active == "studio" %}aria-current="page"{% endif %}>Draft Room</a>
+        <a class="nav-item" href="/studio{{ profile_qs }}" {% if active == "studio" %}aria-current="page"{% endif %}>Draft Room</a>
         {% endif %}
       </nav>
 
       <nav class="side-group" aria-label="More">
         <span class="side-label">More</span>
-        <a class="nav-item" href="/reports" {% if active == "reports" %}aria-current="page"{% endif %}>Reports</a>
-        <a class="nav-item" href="/cost" {% if active == "cost" %}aria-current="page"{% endif %}>Cost</a>
-        <a class="nav-item" href="/audit" {% if active == "audit" %}aria-current="page"{% endif %}>Audit</a>
-        <a class="nav-item" href="/profiles" {% if active == "profiles" %}aria-current="page"{% endif %}>Profiles</a>
+        <a class="nav-item" href="/reports{{ profile_qs }}" {% if active == "reports" %}aria-current="page"{% endif %}>Reports</a>
+        <a class="nav-item" href="/cost{{ profile_qs }}" {% if active == "cost" %}aria-current="page"{% endif %}>Cost</a>
+        <a class="nav-item" href="/audit{{ profile_qs }}" {% if active == "audit" %}aria-current="page"{% endif %}>Audit</a>
+        <a class="nav-item" href="/profiles{{ profile_qs }}" {% if active == "profiles" %}aria-current="page"{% endif %}>Profiles</a>
       </nav>
     </aside>
     {% endif %}
@@ -109,19 +109,19 @@
 
   {% if not login %}
   <nav class="mobile-nav" aria-label="Primary">
-    <a class="nav-item" href="/queue" {% if active == "queue" %}aria-current="page"{% endif %}>Queue</a>
-    <a class="nav-item" href="/inbox" {% if active == "inbox" %}aria-current="page"{% endif %}>Inbox</a>
-    <a class="nav-item" href="/calendar" {% if active == "calendar" %}aria-current="page"{% endif %}>Calendar</a>
+    <a class="nav-item" href="/queue{{ profile_qs }}" {% if active == "queue" %}aria-current="page"{% endif %}>Queue</a>
+    <a class="nav-item" href="/inbox{{ profile_qs }}" {% if active == "inbox" %}aria-current="page"{% endif %}>Inbox</a>
+    <a class="nav-item" href="/calendar{{ profile_qs }}" {% if active == "calendar" %}aria-current="page"{% endif %}>Calendar</a>
     {% if studio_enabled %}
-    <a class="nav-item" href="/studio" {% if active == "studio" %}aria-current="page"{% endif %}>Draft Room</a>
+    <a class="nav-item" href="/studio{{ profile_qs }}" {% if active == "studio" %}aria-current="page"{% endif %}>Draft Room</a>
     {% endif %}
     <details class="mobile-more">
       <summary class="nav-item">More</summary>
       <div class="mobile-more-panel">
-        <a class="nav-item" href="/reports">Reports</a>
-        <a class="nav-item" href="/cost">Cost</a>
-        <a class="nav-item" href="/audit">Audit</a>
-        <a class="nav-item" href="/profiles">Profiles</a>
+        <a class="nav-item" href="/reports{{ profile_qs }}">Reports</a>
+        <a class="nav-item" href="/cost{{ profile_qs }}">Cost</a>
+        <a class="nav-item" href="/audit{{ profile_qs }}">Audit</a>
+        <a class="nav-item" href="/profiles{{ profile_qs }}">Profiles</a>
         <form method="post" action="/logout" class="inline-form">
           <input type="hidden" name="csrf" value="{{ csrf }}">
           <button type="submit" class="button ghost">Log out</button>

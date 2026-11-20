@@ -6,7 +6,8 @@
       "idea": "info", "drafted": "muted", "reviewed": "info",
       "pending_approval": "warn", "approved": "ok", "scheduled": "info",
       "published": "ok", "rejected": "danger", "failed": "danger",
-      "blocked": "danger", "cancelled": "muted", "needs_review": "warn"
+      "blocked": "danger", "cancelled": "muted", "needs_review": "warn",
+      "pending": "warn", "handled": "ok", "ignored": "muted"
   } -%}
   {%- set sem = risk_map.get(value, "muted") if kind == "risk" else state_map.get(value, "muted") -%}
   <span class="badge status-{{ sem }}">{{ value|replace("_", " ") }}</span>
