@@ -182,3 +182,35 @@ def test_expired_session_htmx_redirects_to_login(initialized: InitResult) -> Non
         response = client.get("/queue/1/panel", headers=HX, follow_redirects=False)
         assert response.status_code == 303
         assert response.headers.get("hx-redirect") == "/login"
+
+
+def test_edit_preview_is_read_only_and_shows_a_diff(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item = ContentItemRepository(db_session).add(
+        profile_setup.scope,
+        platform="fake",
+        body="first draft",
+        state=ContentState.PENDING_APPROVAL.value,
+    )
+    approval = request_approval(db_session, profile_setup.scope, item.id, actor="user")
+    db_session.commit()
+
+    with make_client(initialized) as client:
+        login(client)
+        csrf = _CSRF.search(client.get(f"/queue/{approval.id}").text)
+        assert csrf is not None
+        response = client.post(
+            f"/queue/{approval.id}/edit/preview",
+            data={"csrf": csrf.group(1), "body": "second draft"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 200
+        assert "<ins>second</ins>" in response.text
+        assert "<del>first</del>" in response.text
+        assert f'action="/queue/{approval.id}/edit"' in response.text
+
+    db_session.expire_all()
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item.id)
+    assert stored is not None
+    assert stored.body == "first draft"

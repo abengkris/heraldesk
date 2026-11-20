@@ -85,7 +85,13 @@
     <label for="edit-body"><strong>Edit draft</strong></label>
     <textarea id="edit-body" name="body" rows="8" required data-counter="#edit-count">{{ detail.body }}</textarea>
     <p class="muted small"><span id="edit-count" class="tnum">{{ detail.body|length }} chars</span> · saving re-runs the edit audit and clears risk notes.</p>
-    <button type="submit" class="button">Save draft</button>
+    <div class="actions">
+      <button type="submit" class="button">Save draft</button>
+      <button type="submit" formaction="/queue/{{ detail.approval_id }}/edit/preview"
+              hx-post="/queue/{{ detail.approval_id }}/edit/preview"
+              hx-target="closest form" hx-swap="outerHTML"
+              class="button ghost">Preview changes</button>
+    </div>
   </form>
   {% endif %}
 

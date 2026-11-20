@@ -6,7 +6,9 @@ by replacing the affected row; without JavaScript the same forms still work.
 
 from __future__ import annotations
 
+import difflib
 import hmac
+import html
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -247,6 +249,23 @@ def _sorted_queue(views: list[Any]) -> list[Any]:
         return (_RISK_PRIORITY.get(view.risk_level or "", 4), created)
 
     return sorted(views, key=key)
+
+
+def _word_diff(old: str, new: str) -> str:
+    """Return a word-level HTML diff of two texts with ``ins``/``del``."""
+    matcher = difflib.SequenceMatcher(a=old.split(), b=new.split())
+    parts: list[str] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            parts.append(html.escape(" ".join(old.split()[i1:i2])))
+        elif tag == "delete":
+            parts.append("<del>" + html.escape(" ".join(old.split()[i1:i2])) + "</del>")
+        elif tag == "insert":
+            parts.append("<ins>" + html.escape(" ".join(new.split()[j1:j2])) + "</ins>")
+        else:
+            parts.append("<del>" + html.escape(" ".join(old.split()[i1:i2])) + "</del>")
+            parts.append("<ins>" + html.escape(" ".join(new.split()[j1:j2])) + "</ins>")
+    return " ".join(part for part in parts if part)
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -498,6 +517,44 @@ def queue_detail_panel(request: Request, approval_id: int) -> Response:
             {"detail": detail, "csrf": session.csrf},
         )
     return RedirectResponse(f"/queue/{approval_id}", status_code=303)
+
+
+@router.post("/queue/{approval_id}/edit/preview", response_class=HTMLResponse)
+async def queue_edit_preview(request: Request, approval_id: int) -> Response:
+    """Show a read-only word diff before saving an edit. Performs no writes."""
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    body = _form_value(form, "body").strip()
+    context = _context(request)
+    with context.database.session() as db:
+        try:
+            detail = get_queue_detail(db, context.redactor, approval_id)
+        except WebError as exc:
+            return _page(
+                request,
+                session,
+                "error.html",
+                "queue",
+                status_code=exc.status_code,
+                code=exc.code,
+                message=exc.message,
+            )
+    new_redacted = context.redactor.redact(body)
+    if not new_redacted.strip():
+        error = "edited body must not be empty"
+        return _queue_detail_with_error(request, session, approval_id, BadRequest(error))
+    diff_html = _word_diff(detail.body, new_redacted)
+    payload: dict[str, Any] = {
+        "detail": detail,
+        "new_body": body,
+        "diff_html": diff_html,
+    }
+    if _is_htmx(request):
+        return _render(
+            request, "partials/queue_edit_preview.html", {**payload, "csrf": session.csrf}
+        )
+    return _page(request, session, "queue_edit_preview.html", "queue", **payload)
 
 
 @router.post("/queue/{approval_id}/edit", response_class=HTMLResponse)

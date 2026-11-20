@@ -1,0 +1,10 @@
+<div class="edit-preview card stack tight">
+  <h3>Review changes</h3>
+  <p class="diff">{{ diff_html|safe }}</p>
+  <form method="post" action="/queue/{{ detail.approval_id }}/edit" class="actions">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <textarea name="body" hidden>{{ new_body }}</textarea>
+    <button type="submit" class="button primary">Save draft</button>
+    <a class="button ghost" href="/queue/{{ detail.approval_id }}">Cancel</a>
+  </form>
+</div>

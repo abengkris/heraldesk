@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Preview edit · Heraldesk{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Preview changes</h1>
+    <p class="muted">Review the diff before saving. Nothing is written until you save.</p>
+  </div>
+</div>
+
+<div class="edit-preview card stack tight">
+  <p class="diff">{{ diff_html|safe }}</p>
+  <form method="post" action="/queue/{{ detail.approval_id }}/edit" class="actions">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <textarea name="body" hidden>{{ new_body }}</textarea>
+    <button type="submit" class="button primary">Save draft</button>
+    <a class="button ghost" href="/queue/{{ detail.approval_id }}">Cancel</a>
+  </form>
+</div>
+{% endblock %}
