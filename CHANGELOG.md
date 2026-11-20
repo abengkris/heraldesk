@@ -6,6 +6,14 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.2] - 2026-11-19
+
+### Fixed
+
+- `--credential-from-env THREADS_TOKEN` and `THREADS_USER_ID` now map to the
+  `access_token` and `user_id` credentials expected by the Threads account. Previously the
+  generic lowercasing produced `threads_token`, and `account add` rejected the account.
+
 ## [1.18.1] - 2026-11-19
 
 ### Fixed

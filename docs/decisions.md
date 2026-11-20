@@ -1226,3 +1226,10 @@ recommends a dedicated identity (or a throwaway key for the first test) because 
 immutable and the nsec is a full identity key, but Heraldesk does not reject an original
 key. The UI/CLI never print the nsec; it is read from the environment, encrypted with
 `secret.key`, and protected backups are the operator's responsibility.
+
+
+## Threads credential environment names (2026-11-19)
+
+`--credential-from-env` maps `THREADS_TOKEN`/`THREADS_ACCESS_TOKEN` to `access_token` and
+`THREADS_USER_ID`/`USER_ID` to `user_id`. Other names still lowercase verbatim; use
+`--credential KEY=VALUE` only when a value is not secret, or prefer the environment form.

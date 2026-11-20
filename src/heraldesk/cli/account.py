@@ -35,7 +35,14 @@ account_app = typer.Typer(
     help="Add, list and test social accounts.",
 )
 
-_CREDENTIAL_ENV_KEYS = {"NSEC": "nsec"}
+_CREDENTIAL_ENV_KEYS = {
+    "NSEC": "nsec",
+    "THREADS_ACCESS_TOKEN": "access_token",
+    "THREADS_TOKEN": "access_token",
+    "THREADS_USER_ID": "user_id",
+    "ACCESS_TOKEN": "access_token",
+    "USER_ID": "user_id",
+}
 
 
 def _parse_credentials(items: list[str] | None) -> dict[str, str]:
@@ -52,8 +59,9 @@ def _env_credential_key(name: str) -> str:
     """Map an environment variable name to a credential key without guessing values.
 
     ``NOSTR_NSEC_THROWAY`` becomes ``nsec`` because the name carries the ``NSEC`` marker.
-    Any other name is lowercased, so ``MY_PLATFORM_TOKEN`` becomes ``my_platform_token``;
-    callers that need a different key should use ``--credential``.
+    Threads names map to ``access_token``/``user_id``. Any other name is lowercased, so
+    ``MY_PLATFORM_TOKEN`` becomes ``my_platform_token``; callers that need a different key
+    should use ``--credential``.
     """
     for marker, key in _CREDENTIAL_ENV_KEYS.items():
         if marker in name.upper():
@@ -116,7 +124,8 @@ def add_command(
             "--credential-from-env",
             help=(
                 "Repeatable environment variable name to read a credential from. "
-                "A name containing NSEC is stored as the nostr nsec."
+                "A name containing NSEC becomes the nostr nsec; THREADS_TOKEN and "
+                "THREADS_USER_ID become access_token and user_id."
             ),
         ),
     ] = None,
