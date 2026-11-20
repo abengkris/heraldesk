@@ -14,7 +14,7 @@ current summary.
 - [x] M7 Server and background jobs (FastAPI, scheduler sweep, Telegram polling)
 - [x] M8 Community and analyst CLI (manual inbox triage, deterministic reports)
 - [x] M9 v1.0.0 hardening and release docs (backup/restore, doctor, changelog, README)
-- [x] M10 Real Nostr publishing (NIP-01 kind 1, throwaway key)
+- [x] M10 Real Nostr publishing (NIP-01 kind 1, dedicated/throwaway key recommended)
 - [x] M11 Local Web UI and REST API (Jinja2 + HTMX, single-admin token, loopback-first)
 - [x] M12 Third-party adapter plugins (`heraldesk.platforms` entry points)
 - [x] M13 Production distribution and hardening (Threads text adapter, `upgrade` with a

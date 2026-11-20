@@ -53,21 +53,32 @@ There is no protocol-wide content limit. The provisional Writer limit for Nostr 
 characters; individual relays apply their own policies. Instagram-style media is not
 supported: the adapter publishes text only.
 
-## Throwaway-key warning
+## Key choice: dedicated, throwaway, or original
 
-**Nostr events are immutable. Once a relay accepts an event it cannot be deleted.** For a
-first test, use a throwaway key, publish a harmless note, verify the event id on a public
-explorer, and then abandon the key. Do not put a long-lived identity key on a machine you
-are still configuring.
+**Nostr events are immutable. Once a relay accepts an event it cannot be deleted.**
+Deletion requests (NIP-09) are advisory, not guaranteed.
+
+- **Dedicated identity (recommended):** a long-lived key used only by Heraldesk. Keeps
+  automation mistakes away from your personal identity.
+- **Throwaway key (recommended for the first test):** publish a harmless note, verify the
+  event id on a public explorer, then abandon the key.
+- **Original identity (supported):** Heraldesk does not block it. Treat the nsec as the
+  account itself: anyone who obtains it can post and read DMs as you, and a bad post is
+  permanent. Import it only on a machine you trust, and protect `secret.key` and credential
+  backups accordingly.
+
+The nsec is always read from an environment variable, encrypted with `secret.key`, and
+never printed.
 
 ## Manual acceptance (not run in CI)
 
 In a separate terminal, so the nsec never appears in chat, screenshots or CI logs:
 
 ```bash
-export NOSTR_NSEC_THROWAY='<throwaway nsec>'
+export NOSTR_NSEC='<nsec>'
 uv run heraldesk account add acme --platform nostr \
-    --credential-from-env NOSTR_NSEC_THROWAY --label throwaway
+    --credential-from-env NOSTR_NSEC --label automation
+unset NOSTR_NSEC
 uv run heraldesk account list acme
 uv run heraldesk run daily acme
 uv run heraldesk queue list acme
@@ -76,7 +87,7 @@ uv run heraldesk queue approve <id>
 uv run heraldesk publish <id>
 ```
 
-Then open `https://njump.me/<event id>`, confirm the note, and abandon the throwaway key.
+Then open `https://njump.me/<event id>` and confirm the note. If this was a throwaway key, abandon it afterwards.
 
 Example npub for documentation only, derived from the public BIP-340 test vector, not an
 account you should use:

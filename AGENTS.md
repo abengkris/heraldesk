@@ -47,8 +47,9 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
 - Validate profile files: `uv run heraldesk profile reload [slug]`
 - Control a profile: `uv run heraldesk profile pause|resume|killswitch <slug>`
 - Add an account: `uv run heraldesk account add <slug> --platform fake --handle @name --credential token=...`
-- Add a Nostr account (throwaway key only; the nsec is read from the environment, never typed):
-  `uv run heraldesk account add <slug> --platform nostr --credential-from-env NOSTR_NSEC_THROWAY [--label "throwaway"] [--relay wss://relay.example]`
+- Add a Nostr account (dedicated or throwaway key recommended; the original identity is supported with the
+  documented immutability/compromise risks; the nsec is read from the environment, never typed):
+  `uv run heraldesk account add <slug> --platform nostr --credential-from-env NOSTR_NSEC [--label "automation"] [--relay wss://relay.example]`
 - List accounts with the Nostr npub masked: `uv run heraldesk account list <slug>`
 - Refresh a long-lived Threads token: `uv run heraldesk account refresh <slug> --platform threads`
 - List built-in and installed adapter plugins: `uv run heraldesk plugins list [--check]`

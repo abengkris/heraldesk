@@ -6,6 +6,15 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.1] - 2026-11-19
+
+### Fixed
+
+- Restored `SECURITY.md`, which had been overwritten with an old README copy.
+- Documented that a user's original Nostr identity is supported; a dedicated or throwaway
+  key is recommended because events are immutable and the nsec is a full identity key.
+- Added documentation integrity tests so README/SECURITY copies cannot silently swap.
+
 ## [1.18.0] - 2026-11-19
 
 ### Added

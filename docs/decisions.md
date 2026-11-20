@@ -1217,3 +1217,12 @@ never prints an API key, bot token or nsec.
   where available.
 - `doctor` accepts 3.12–3.14; the Docker image and default development interpreter remain
   3.12.
+
+
+## Nostr key choice is guidance, not enforcement (2026-11-19)
+
+The adapter accepts any valid nsec, including a user's original identity. Documentation
+recommends a dedicated identity (or a throwaway key for the first test) because events are
+immutable and the nsec is a full identity key, but Heraldesk does not reject an original
+key. The UI/CLI never print the nsec; it is read from the environment, encrypted with
+`secret.key`, and protected backups are the operator's responsibility.

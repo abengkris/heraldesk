@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.18.0-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.18.0)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.18.1-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.18.1)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.18.0.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.18.1.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.18.0
+## What works in 1.18.1
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -31,7 +31,7 @@ an installed plugin. The fake adapter is the offline publishing path. See
 - Manual inbox triage: list, show, reply and ignore. No auto-reply and no AI-generated replies.
 - Deterministic weekly and monthly reports, with no LLM calls.
 - Backup and restore, doctor hardening, global and per-profile kill switches.
-- Real Nostr publishing (NIP-01 kind 1 notes) with a throwaway key.
+- Real Nostr publishing (NIP-01 kind 1 notes) with a dedicated, throwaway, or original key.
 - Local Web UI and authenticated `/api/v1` for queue (including full-draft detail), calendar, inbox, reports, cost, audit, profiles, run traces, readiness and manual publishing.
 - SQLite only. No Redis, Postgres, Node, telemetry or phone-home.
 
@@ -74,7 +74,7 @@ uv run heraldesk init
 pipx install --python 3.12 .
 
 # Or install the release wheel
-pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.18.0/heraldesk-1.18.0-py3-none-any.whl
+pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.18.0/heraldesk-1.18.1-py3-none-any.whl
 ```
 
 ### Docker
@@ -180,19 +180,20 @@ Nostr is the first real platform adapter: one NIP-01 **kind 1** text note per ap
 content item, signed locally with BIP-340 Schnorr and broadcast to relays. It needs no
 app review and no username or password.
 
-> **Use a throwaway key.** Nostr events are immutable. Once a relay accepts an event it
-> cannot be deleted. Test with a throwaway key, check the event id on a public explorer,
-> then abandon the key.
+> **Choose the right key.** A dedicated Nostr identity for Heraldesk is recommended; a
+> throwaway key is best for the first test. **Your original identity is supported**, but
+> Nostr events are immutable (deletion requests are advisory) and the nsec is a full
+> identity key. A mistake or compromise is permanent and affects that identity.
 >
-> **Never paste an nsec into chat, a GitHub issue, or a screenshot. Type it only in your own terminal via an environment variable.**
-> Keep it in an environment variable or a secure prompt. Heraldesk encrypts it with
-> `secret.key` and never prints it.
+> **Never paste an nsec into chat, a GitHub issue, or a screenshot.** Use an environment
+> variable in your own terminal; Heraldesk encrypts it with `secret.key` and never prints it.
 
 ```bash
-# In your own terminal. The nsec is read from the environment, not the command line.
-export NOSTR_NSEC_THROWAY='<throwaway nsec>'
+# Use a dedicated or throwaway key; the original identity also works.
+export NOSTR_NSEC='<nsec>'
 uv run heraldesk account add acme --platform nostr \
-    --credential-from-env NOSTR_NSEC_THROWAY --label throwaway
+    --credential-from-env NOSTR_NSEC --label automation
+unset NOSTR_NSEC
 
 # The npub is shown masked; the nsec is never shown.
 uv run heraldesk account list acme
