@@ -19,9 +19,8 @@
     {% endif %}
   </div>
 
-  {% if error %}
-  <div class="alert" role="alert">{{ error }}</div>
-  {% endif %}
+  {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
+  {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
 
   <div class="chat" role="log" aria-live="polite" aria-label="Conversation">
     {% for message in messages %}
@@ -30,10 +29,39 @@
         <strong>{{ message.role }}</strong>
         <span class="muted">{{ message.created_at }}</span>
       </header>
-      <div class="message-body">{{ message.content }}</div>
+
+      {% if message.artifact_type == "draft" %}
+        <div class="artifact">
+          <p class="muted">Draft · {{ message.artifact_json.get("platform", "") }}</p>
+          <div class="message-body">{{ message.content }}</div>
+          {% if message.artifact_json.get("hashtags") %}
+          <p class="muted">#{{ message.artifact_json["hashtags"]|join(" #") }}</p>
+          {% endif %}
+          {% if message.content_item_id %}
+          <p class="muted">Content #{{ message.content_item_id }} · <a href="/queue">view queue</a></p>
+          {% else %}
+          <form method="post" action="/studio/{{ message.id }}/draft" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" class="button primary">Create draft</button>
+          </form>
+          {% endif %}
+        </div>
+      {% elif message.artifact_type == "compliance" %}
+        <div class="artifact compliance">
+          <p class="muted">Compliance · risk {{ message.artifact_json.get("risk_level", "unknown") }}</p>
+          {% if message.artifact_json.get("reasons") %}
+          <ul>
+            {% for reason in message.artifact_json["reasons"] %}<li>{{ reason }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+          <div class="message-body">{{ message.content }}</div>
+        </div>
+      {% else %}
+        <div class="message-body">{{ message.content }}</div>
+      {% endif %}
     </article>
     {% else %}
-    <p class="empty">No messages yet. Start with an idea, a question, or a draft request.</p>
+    <p class="empty">No messages yet. Ask the Editor to plan, or the Writer for a draft.</p>
     {% endfor %}
   </div>
 
@@ -47,12 +75,21 @@
       <label for="studio-role">Role</label>
       <select id="studio-role" name="role">
         <option value="editor" selected>Editor</option>
-        <option value="writer" disabled>Writer (not available yet)</option>
-        <option value="compliance" disabled>Compliance (not available yet)</option>
+        <option value="writer">Writer</option>
+        <option value="compliance">Compliance</option>
+      </select>
+      <label for="studio-platform">Platform</label>
+      <select id="studio-platform" name="platform">
+        {% for platform in platforms %}
+        <option value="{{ platform }}" {% if platform == "threads" %}selected{% endif %}>{{ platform }}</option>
+        {% endfor %}
       </select>
       <button type="submit" class="button primary">Send</button>
     </div>
-    <p class="muted">The Editor can propose. It cannot approve, schedule or publish.</p>
+    <p class="muted">
+      Editor plans, Writer drafts for the selected platform, Compliance reviews the latest
+      draft. Nothing is approved or published here.
+    </p>
   </form>
   {% elif thread.status != "open" %}
   <p class="empty">This thread is archived. Create a new one to continue.</p>

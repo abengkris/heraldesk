@@ -6,6 +6,22 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.9] - 2026-11-20
+
+### Added
+
+- Draft Room draft creation (DR3). Writer and Compliance are now callable roles; the
+  Writer stores a draft artifact, Compliance reviews the latest draft, and "Create draft"
+  runs deterministic lint plus Compliance to create a `pending_approval` item through the
+  normal approval service.
+- Platform limits are enforced before a content item is created; lint or Compliance blocks
+  create a `blocked` item with no approval.
+
+### Security
+
+- The Draft Room still cannot approve, schedule or publish. A studio draft always requires
+  human approval, regardless of the profile autonomy policy.
+
 ## [1.18.8] - 2026-11-20
 
 ### Added

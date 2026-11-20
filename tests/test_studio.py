@@ -23,9 +23,11 @@ from heraldesk.db.repositories import (
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.profiles import register_definition
 from heraldesk.llm.fake import FakeLLM
+from heraldesk.platforms.base import constraints_for
 from heraldesk.studio import (
     StudioCostError,
     StudioDisabledError,
+    StudioError,
     StudioLimitError,
     StudioNotFoundError,
     StudioService,
@@ -401,3 +403,192 @@ def test_archive_thread_from_the_ui(initialized: InitResult, profile_setup: Prof
         archived = client.get(f"/studio/{thread_id}")
         assert "archived" in archived.text.lower()
         assert "This thread is archived" in archived.text
+
+
+def test_writer_turn_stores_a_draft_artifact(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    service = service_for(profile_setup, db_session, provider=FakeLLM())
+    thread = service.create_thread(profile_setup.scope)
+
+    service.send_message(
+        profile_setup.scope, thread.id, "ship the dashboard", role="writer", platform="fake"
+    )
+    db_session.commit()
+
+    messages = StudioMessageRepository(db_session).list_messages(profile_setup.scope, thread.id)
+    draft_message = messages[-1]
+    assert draft_message.role == "writer"
+    assert draft_message.artifact_type == "draft"
+    assert draft_message.artifact_json is not None
+    assert draft_message.artifact_json["platform"] == "fake"
+    assert draft_message.artifact_json["body"]
+
+
+def test_compliance_turn_reviews_the_latest_draft(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    service = service_for(profile_setup, db_session, provider=FakeLLM())
+    thread = service.create_thread(profile_setup.scope)
+    service.send_message(
+        profile_setup.scope, thread.id, "ship the dashboard", role="writer", platform="fake"
+    )
+
+    service.send_message(profile_setup.scope, thread.id, "review it", role="compliance")
+    db_session.commit()
+
+    messages = StudioMessageRepository(db_session).list_messages(profile_setup.scope, thread.id)
+    assert messages[-1].role == "compliance"
+    assert messages[-1].artifact_type == "compliance"
+    assert messages[-1].artifact_json is not None
+    assert messages[-1].artifact_json["risk_level"] == "low"
+
+
+def test_create_draft_creates_a_pending_approval_item(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    service = service_for(profile_setup, db_session, provider=FakeLLM())
+    thread = service.create_thread(profile_setup.scope)
+    service.send_message(
+        profile_setup.scope, thread.id, "ship the dashboard", role="writer", platform="fake"
+    )
+    draft_message = StudioMessageRepository(db_session).list_messages(
+        profile_setup.scope, thread.id
+    )[-1]
+
+    result = service.create_draft(
+        profile_setup.scope,
+        draft_message.id,
+        constraints=constraints_for("fake"),
+    )
+    db_session.commit()
+
+    assert result.state == "pending_approval"
+    assert result.blocked is False
+    assert result.approval_id is not None
+    items = ContentItemRepository(db_session).list(profile_setup.scope)
+    assert len(items) == 1
+    assert items[0].state == "pending_approval"
+    assert items[0].created_by_run_id == draft_message.agent_run_id
+
+
+def test_create_draft_blocks_on_a_compliance_block(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    fake = FakeLLM(
+        role_responses={
+            "compliance": ['{"risk_level": "blocked", "reasons": ["misleading claim"]}'],
+        }
+    )
+    service = service_for(profile_setup, db_session, provider=fake)
+    thread = service.create_thread(profile_setup.scope)
+    service.send_message(
+        profile_setup.scope, thread.id, "ship the dashboard", role="writer", platform="fake"
+    )
+    draft_message = StudioMessageRepository(db_session).list_messages(
+        profile_setup.scope, thread.id
+    )[-1]
+
+    result = service.create_draft(
+        profile_setup.scope, draft_message.id, constraints=constraints_for("fake")
+    )
+    db_session.commit()
+
+    assert result.blocked is True
+    assert result.approval_id is None
+    assert result.state == "blocked"
+    assert ContentItemRepository(db_session).list(profile_setup.scope)[0].state == "blocked"
+
+
+def test_create_draft_rejects_an_over_limit_draft_before_creating_an_item(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    service = service_for(profile_setup, db_session, provider=FakeLLM())
+    thread = service.create_thread(profile_setup.scope)
+    message = StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="writer",
+        content="x" * 300,
+        artifact_type="draft",
+        artifact_json={"body": "x" * 300, "variants": [], "hashtags": [], "platform": "x"},
+    )
+    db_session.flush()
+
+    with pytest.raises(StudioError):
+        service.create_draft(profile_setup.scope, message.id, constraints=constraints_for("x"))
+    assert ContentItemRepository(db_session).list(profile_setup.scope) == []
+
+
+def test_create_draft_blocks_on_lint_failure(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    service = service_for(profile_setup, db_session, provider=FakeLLM())
+    thread = service.create_thread(profile_setup.scope)
+    message = StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="writer",
+        content="bad—dash",
+        artifact_type="draft",
+        artifact_json={"body": "bad—dash", "variants": [], "hashtags": [], "platform": "fake"},
+    )
+    db_session.flush()
+
+    result = service.create_draft(
+        profile_setup.scope, message.id, constraints=constraints_for("fake")
+    )
+    db_session.commit()
+
+    assert result.blocked is True
+    assert result.approval_id is None
+    item = ContentItemRepository(db_session).list(profile_setup.scope)[0]
+    assert item.state == "blocked"
+    assert "lint" in (item.risk_notes or "")
+
+
+def test_create_draft_from_the_ui(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True, fake_llm=True)
+    with client_for(initialized) as client:
+        login(client)
+        thread_id = create_thread_via_ui(client)
+        page = client.get(f"/studio/{thread_id}")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        response = client.post(
+            f"/studio/{thread_id}/messages",
+            data={
+                "csrf": csrf.group(1),
+                "text": "ship the dashboard",
+                "role": "writer",
+                "platform": "fake",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303, response.text
+        thread_page = client.get(f"/studio/{thread_id}")
+        assert "Draft" in thread_page.text
+        assert "Create draft" in thread_page.text
+
+    draft_message = StudioMessageRepository(db_session).list_messages(
+        profile_setup.scope, thread_id
+    )[-1]
+
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{thread_id}")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        response = client.post(
+            f"/studio/{draft_message.id}/draft",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303, response.text
+        assert response.headers["location"] == "/queue?ok=drafted"
+
+    assert (
+        ContentItemRepository(db_session).list(profile_setup.scope)[0].state == "pending_approval"
+    )

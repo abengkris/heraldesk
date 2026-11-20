@@ -1487,6 +1487,26 @@ class StudioMessageRepository:
         self._session.flush()
         return message
 
+    def get(self, scope: ProfileScope, message_id: int) -> StudioMessage | None:
+        """Return one message only when it belongs to the scoped profile."""
+        return self._session.scalar(
+            select(StudioMessage).where(
+                StudioMessage.id == message_id,
+                StudioMessage.profile_id == scope.profile_id,
+            )
+        )
+
+    def locate(self, message_id: int) -> tuple[ProfileScope, int] | None:
+        """Return the owning scope and thread id for *message_id*, for routing only."""
+        row = self._session.execute(
+            select(StudioMessage.profile_id, StudioMessage.thread_id).where(
+                StudioMessage.id == message_id
+            )
+        ).first()
+        if row is None:
+            return None
+        return ProfileScope(row.profile_id), row.thread_id
+
     def list_messages(
         self,
         scope: ProfileScope,

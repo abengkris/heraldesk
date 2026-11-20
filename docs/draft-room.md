@@ -1,8 +1,8 @@
 # Draft Room (proposed)
 
-Status: **DR1 and DR2 implemented; DR3–DR5 pending.** The backend landed in 1.18.6. The
-conversation UI (thread list, thread page, Editor messages, archive) landed in 1.18.8.
-Draft creation and profile patches are not implemented yet.
+Status: **DR1–DR3 implemented; DR4–DR5 pending.** Backend (1.18.6), conversation UI
+(1.18.8), and draft creation with lint + Compliance (1.18.9) are in. Profile patches and
+hardening remain.
 
 ## Problem
 
@@ -35,9 +35,9 @@ The first version exposes three roles:
 
 | Role | What it does | Output |
 |---|---|---|
-| Editor | Default conversational partner; plans, asks clarifying questions, proposes next steps | text, optionally an idea or draft proposal |
-| Writer | Turns a concrete idea into a platform-aware draft | `DraftProposal` |
-| Compliance | Reviews a draft for policy, banned terms and platform limits | `ComplianceNote` |
+| Editor | Default conversational partner; plans, asks clarifying questions, proposes next steps | text |
+| Writer | Turns a concrete idea into a platform-aware draft | `draft` artifact |
+| Compliance | Reviews the latest draft in the thread | `compliance` artifact |
 
 Strategist and Researcher join later. Researcher needs a citation/source UI before it can
 be called safely from a conversation.
@@ -261,10 +261,10 @@ Each criterion needs an offline test with the fake LLM provider.
   adapters; a static test enforces this.
 - [x] **AC-6** No studio route or service method can approve, reject, schedule or publish.
   A request to an invented `/studio/{id}/publish` returns 404.
-- [ ] **AC-7** “Create draft” produces a `pending_approval` item, a pending approval row
+- [x] **AC-7** “Create draft” produces a `pending_approval` item, a pending approval row
   and `studio.draft_created` audit entry; it appears in `/queue`.
-- [ ] **AC-8** A compliance `block` produces a `blocked` item and no approval.
-- [ ] **AC-9** A draft over the platform limit is rejected before any content item is
+- [x] **AC-8** A compliance `block` produces a `blocked` item and no approval.
+- [x] **AC-9** A draft over the platform limit is rejected before any content item is
   created.
 - [ ] **AC-10** A profile patch with a stale `base_hash` is refused; a valid patch writes
   atomically, reloads the profile and audits old and new hashes.
@@ -284,8 +284,8 @@ Each criterion needs an offline test with the fake LLM provider.
 |---|---|---|
 | DR1 | config, tables, service, Editor schema, fake-provider tests | **done in 1.18.6** |
 | DR2 | thread list, message pane, Editor role selector, archive | **done in 1.18.8** |
-| DR3 | artifact cards and “Create draft” with lint and compliance | next |
-| DR4 | profile patches with diff and confirmation | planned |
+| DR3 | artifact cards and “Create draft” with lint and compliance | **done in 1.18.9** |
+| DR4 | profile patches with diff and confirmation | next |
 | DR5 | hardening, docs, accessibility, release | planned |
 
 ## Out of scope

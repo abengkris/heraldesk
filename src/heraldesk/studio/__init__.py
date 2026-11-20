@@ -11,14 +11,26 @@ import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from heraldesk import paths
 from heraldesk.agents.base import AgentContext
+from heraldesk.agents.compliance import Compliance
 from heraldesk.agents.editor import Editor
+from heraldesk.agents.errors import AgentRunError
 from heraldesk.agents.runner import AgentRunner, AgentRunResult
-from heraldesk.agents.schemas import EditorInput, EditorReply, StudioTurn
+from heraldesk.agents.schemas import (
+    ComplianceInput,
+    Draft,
+    EditorInput,
+    EditorReply,
+    RiskAssessment,
+    StudioTurn,
+    WriterInput,
+)
+from heraldesk.agents.writer import Writer
 from heraldesk.core.audit import AuditService
 from heraldesk.core.redact import SecretRegistry
 from heraldesk.db.models import StudioMessage, StudioThread
@@ -28,12 +40,15 @@ from heraldesk.db.repositories import (
     StudioThreadRepository,
 )
 from heraldesk.db.scope import ProfileScope
-from heraldesk.domain.approvals import as_utc, list_queue
+from heraldesk.domain.approvals import as_utc, list_queue, request_approval
+from heraldesk.domain.content import ContentState, transition
 from heraldesk.domain.profiles import load_profile, profile_summary
 from heraldesk.llm.types import LLMProvider
+from heraldesk.quality.lint import lint
 
 MAX_MESSAGE_CHARS = 4000
 MAX_TITLE_CHARS = 200
+MAX_AUDIT_TEXT = 500
 MAX_PREVIEW_CHARS = 120
 HISTORY_MESSAGES = 12
 QUEUE_ITEMS = 10
@@ -66,12 +81,25 @@ class StudioRoleError(StudioError):
 
 @dataclass(frozen=True, slots=True)
 class StudioTurnResult:
-    """One successful user turn and its Editor reply."""
+    """One successful user turn and its reply."""
 
     thread: StudioThread
     user_message: StudioMessage
     assistant_message: StudioMessage
     run: AgentRunResult
+
+
+@dataclass(frozen=True, slots=True)
+class StudioDraftResult:
+    """The outcome of turning a draft artifact into a content item."""
+
+    item_id: int
+    state: str
+    risk_level: str | None
+    risk_notes: str | None
+    approval_id: int | None
+    blocked: bool
+    reason: str | None
 
 
 def _collapse(text: str, limit: int) -> str:
@@ -188,17 +216,21 @@ class StudioService:
         text: str,
         *,
         role: str = "editor",
+        platform: str | None = None,
+        constraints: Any = None,
     ) -> StudioTurnResult:
-        """Run one Editor turn and store the user and assistant messages.
+        """Run one role turn and store the user and assistant messages.
 
-        The message limit and thread cost cap are checked before any provider call. The
-        global daily cap is still enforced by :class:`AgentRunner`.
+        ``editor`` plans, ``writer`` produces a draft artifact, ``compliance`` reviews the
+        latest draft in the thread. The message limit and thread cost cap are checked
+        before any provider call. The global daily cap is enforced by
+        :class:`AgentRunner`.
         """
         self._require_enabled()
-        if role != "editor":
-            raise StudioRoleError(
-                f"role '{role}' is not available in this phase; only 'editor' is callable"
-            )
+        if role not in ("editor", "writer", "compliance"):
+            raise StudioRoleError(f"unknown role '{role}'; expected editor, writer or compliance")
+        if role == "writer" and not platform:
+            raise StudioError("the writer role requires a target platform")
         if self._provider is None or not self._model:
             raise StudioError("no LLM provider is configured for the Draft Room")
         message = text.strip()
@@ -223,6 +255,323 @@ class StudioService:
         safe_message = self._redactor.redact(message)
         summary = profile_summary(self._session, scope)
         definition = load_profile(self._layout.profiles / summary.slug)
+        context = AgentContext(
+            scope=scope,
+            profile=definition,
+            platform=platform,
+            constraints=constraints,
+        )
+        runner = AgentRunner(
+            self._session,
+            self._provider,
+            layout=self._layout,
+            model=self._model,
+            cap_usd=self._daily_cap_usd,
+            redactor=self._redactor,
+        )
+
+        artifact_type: str | None = None
+        artifact_json: dict[str, Any] | None = None
+        if role == "editor":
+            history = self._history(scope, thread_id)
+            payload = EditorInput(
+                message=safe_message,
+                history=history,
+                queue=self._queue_lines(scope),
+                calendar=self._calendar_lines(scope),
+            )
+            run = runner.run(Editor(), context, payload)
+            if not isinstance(run.output, EditorReply):
+                raise StudioError("editor returned an unexpected output type")
+            assistant_role = "editor"
+            reply = self._redactor.redact(run.output.reply.strip())
+        elif role == "writer":
+            run = runner.run(
+                Writer(),
+                context,
+                WriterInput(idea=safe_message, platform=platform or ""),
+            )
+            if not isinstance(run.output, Draft):
+                raise StudioError("writer returned an unexpected output type")
+            assistant_role = "writer"
+            reply = self._redactor.redact(run.output.body)
+            artifact_type = "draft"
+            artifact_json = {**run.output.model_dump(mode="json"), "platform": platform}
+        else:
+            draft = self._latest_draft(scope, thread_id)
+            if draft is None:
+                raise StudioError("no draft in this thread to review; ask the Writer first")
+            run = runner.run(
+                Compliance(),
+                AgentContext(
+                    scope=scope,
+                    profile=definition,
+                    platform=draft["platform"],
+                    constraints=None,
+                ),
+                ComplianceInput(body=draft["body"], platform=draft["platform"]),
+            )
+            if not isinstance(run.output, RiskAssessment):
+                raise StudioError("compliance returned an unexpected output type")
+            assistant_role = "compliance"
+            reasons = "; ".join(run.output.reasons)
+            reply = f"Risk: {run.output.risk_level}."
+            if reasons:
+                reply += f" {reasons}"
+            reply = self._redactor.redact(reply)
+            artifact_type = "compliance"
+            artifact_json = {
+                **run.output.model_dump(mode="json"),
+                "platform": draft["platform"],
+            }
+
+        now = self._clock()
+        user_message = self._messages.add(
+            scope,
+            thread_id,
+            role="user",
+            content=safe_message,
+            created_at=now,
+        )
+        assistant = self._messages.add(
+            scope,
+            thread_id,
+            role=assistant_role,
+            content=reply,
+            artifact_type=artifact_type,
+            artifact_json=artifact_json,
+            agent_run_id=run.run_id,
+            cost_usd=run.cost_usd,
+            created_at=now,
+        )
+        if thread.title == "New thread":
+            self._threads.rename(scope, thread_id, _collapse(safe_message, MAX_TITLE_CHARS))
+        self._threads.touch(scope, thread_id, now)
+        self._audit.record(
+            scope,
+            actor="user",
+            action="studio.message_sent",
+            entity="studio_message",
+            entity_id=assistant.id,
+            payload={
+                "thread_id": thread_id,
+                "role": assistant_role,
+                "message_sha256": _hash(safe_message),
+                "message_length": len(safe_message),
+                "cost_usd": round(run.cost_usd, 6),
+                "agent_run_id": run.run_id,
+            },
+        )
+        return StudioTurnResult(
+            thread=thread,
+            user_message=user_message,
+            assistant_message=assistant,
+            run=run,
+        )
+
+    def create_draft(
+        self,
+        scope: ProfileScope,
+        message_id: int,
+        *,
+        constraints: Any = None,
+        max_text_bytes: int | None = None,
+    ) -> StudioDraftResult:
+        """Turn a draft artifact into a content item, running lint and Compliance.
+
+        Platform limits are checked before any item is created. A lint or Compliance block
+        creates a ``blocked`` item and never an approval; otherwise the item enters
+        ``pending_approval`` through the normal approval service. This method never
+        approves or schedules.
+        """
+        self._require_enabled()
+        if self._provider is None or not self._model:
+            raise StudioError("no LLM provider is configured for the Draft Room")
+        message = self._messages.get(scope, message_id)
+        if message is None:
+            raise StudioNotFoundError(f"studio message {message_id} does not exist")
+        if message.artifact_type != "draft":
+            raise StudioError("only a draft artifact can be turned into a content item")
+        if message.content_item_id is not None:
+            raise StudioError("this draft already created a content item")
+
+        data = message.artifact_json or {}
+        body = data.get("body")
+        variants = data.get("variants") or []
+        hashtags = data.get("hashtags") or []
+        platform = str(data.get("platform") or "")
+        if not isinstance(body, str) or not body.strip():
+            raise StudioError("the draft artifact has no body")
+        if not platform:
+            raise StudioError("the draft artifact has no platform")
+
+        if constraints is not None:
+            if len(body) > constraints.max_characters:
+                raise StudioError(
+                    f"draft is {len(body)} characters but {constraints.platform} allows "
+                    f"{constraints.max_characters}"
+                )
+            if len(hashtags) > constraints.max_hashtags:
+                raise StudioError(
+                    f"draft has {len(hashtags)} hashtags but {constraints.platform} allows "
+                    f"{constraints.max_hashtags}"
+                )
+        if max_text_bytes is not None and len(body.encode("utf-8")) > max_text_bytes:
+            raise StudioError(f"draft is over {max_text_bytes} bytes of UTF-8 text")
+
+        summary = profile_summary(self._session, scope)
+        definition = load_profile(self._layout.profiles / summary.slug)
+        items = ContentItemRepository(self._session)
+        item = items.add(
+            scope,
+            platform=platform,
+            body=body,
+            media={"variants": list(variants), "hashtags": list(hashtags)},
+            created_by_run_id=message.agent_run_id,
+        )
+
+        lint_result = lint(body, definition)
+        if not lint_result.ok:
+            reason = f"lint: {lint_result.summary}"
+            transition(
+                self._session, scope, item.id, ContentState.BLOCKED, actor="user", reason=reason
+            )
+            items.set_risk(scope, item.id, risk_level=None, risk_notes=reason)
+            message.content_item_id = item.id
+            self._session.flush()
+            self._audit.record(
+                scope,
+                actor="user",
+                action="studio.draft_created",
+                entity="content_item",
+                entity_id=item.id,
+                payload={"item_id": item.id, "state": "blocked", "reason": "lint"},
+            )
+            return StudioDraftResult(item.id, "blocked", None, reason, None, True, reason)
+
+        runner = AgentRunner(
+            self._session,
+            self._provider,
+            layout=self._layout,
+            model=self._model,
+            cap_usd=self._daily_cap_usd,
+            redactor=self._redactor,
+        )
+        try:
+            run = runner.run(
+                Compliance(),
+                AgentContext(
+                    scope=scope,
+                    profile=definition,
+                    platform=platform,
+                    constraints=constraints,
+                ),
+                ComplianceInput(body=body, platform=platform),
+            )
+        except AgentRunError as exc:
+            detail = self._redactor.redact(str(exc))[:MAX_AUDIT_TEXT] or "no reason recorded"
+            reason = f"compliance unavailable: {detail}"
+            transition(
+                self._session, scope, item.id, ContentState.BLOCKED, actor="user", reason=reason
+            )
+            items.set_risk(scope, item.id, risk_level=None, risk_notes=reason)
+            message.content_item_id = item.id
+            self._session.flush()
+            self._audit.record(
+                scope,
+                actor="user",
+                action="studio.draft_created",
+                entity="content_item",
+                entity_id=item.id,
+                payload={"item_id": item.id, "state": "blocked", "reason": "compliance"},
+            )
+            return StudioDraftResult(item.id, "blocked", None, reason, None, True, reason)
+
+        assessment = run.output
+        if not isinstance(assessment, RiskAssessment):
+            reason = "compliance unavailable: invalid assessment"
+            transition(
+                self._session, scope, item.id, ContentState.BLOCKED, actor="user", reason=reason
+            )
+            items.set_risk(scope, item.id, risk_level=None, risk_notes=reason)
+            message.content_item_id = item.id
+            self._session.flush()
+            self._audit.record(
+                scope,
+                actor="user",
+                action="studio.draft_created",
+                entity="content_item",
+                entity_id=item.id,
+                payload={"item_id": item.id, "state": "blocked", "reason": "compliance"},
+            )
+            return StudioDraftResult(item.id, "blocked", None, reason, None, True, reason)
+
+        notes = self._redactor.redact("; ".join((*assessment.reasons, *assessment.fixes)))[
+            :MAX_AUDIT_TEXT
+        ]
+        items.set_risk(scope, item.id, risk_level=assessment.risk_level, risk_notes=notes or None)
+        if assessment.risk_level == "blocked":
+            reason = f"compliance blocked: {notes or 'no reason supplied'}"
+            transition(
+                self._session, scope, item.id, ContentState.BLOCKED, actor="user", reason=reason
+            )
+            message.content_item_id = item.id
+            self._session.flush()
+            self._audit.record(
+                scope,
+                actor="user",
+                action="studio.draft_created",
+                entity="content_item",
+                entity_id=item.id,
+                payload={"item_id": item.id, "state": "blocked", "risk_level": "blocked"},
+            )
+            return StudioDraftResult(item.id, "blocked", "blocked", notes, None, True, reason)
+
+        transition(
+            self._session, scope, item.id, ContentState.REVIEWED, actor="user", reason="studio"
+        )
+        transition(
+            self._session,
+            scope,
+            item.id,
+            ContentState.PENDING_APPROVAL,
+            actor="user",
+            reason="require_approval: human approval required",
+        )
+        approval = request_approval(
+            self._session,
+            scope,
+            item.id,
+            actor="user",
+            channel="web",
+            policy_mode="studio",
+        )
+        message.content_item_id = item.id
+        self._session.flush()
+        self._audit.record(
+            scope,
+            actor="user",
+            action="studio.draft_created",
+            entity="content_item",
+            entity_id=item.id,
+            payload={
+                "item_id": item.id,
+                "approval_id": approval.id,
+                "state": "pending_approval",
+                "risk_level": assessment.risk_level,
+            },
+        )
+        return StudioDraftResult(
+            item.id,
+            "pending_approval",
+            assessment.risk_level,
+            notes,
+            approval.id,
+            False,
+            None,
+        )
+
+    def _history(self, scope: ProfileScope, thread_id: int) -> list[StudioTurn]:
         total_messages = self._messages.count(scope, thread_id)
         recent = list(self._messages.recent(scope, thread_id, limit=HISTORY_MESSAGES))
         history = [
@@ -240,66 +589,15 @@ class StudioService:
                     ),
                 ),
             )
-        payload = EditorInput(
-            message=safe_message,
-            history=history,
-            queue=self._queue_lines(scope),
-            calendar=self._calendar_lines(scope),
-        )
-        context = AgentContext(scope=scope, profile=definition)
-        runner = AgentRunner(
-            self._session,
-            self._provider,
-            layout=self._layout,
-            model=self._model,
-            cap_usd=self._daily_cap_usd,
-            redactor=self._redactor,
-        )
-        run = runner.run(Editor(), context, payload)
-        if not isinstance(run.output, EditorReply):
-            raise StudioError("editor returned an unexpected output type")
+        return history
 
-        now = self._clock()
-        user_message = self._messages.add(
-            scope,
-            thread_id,
-            role="user",
-            content=safe_message,
-            created_at=now,
-        )
-        assistant = self._messages.add(
-            scope,
-            thread_id,
-            role="editor",
-            content=self._redactor.redact(run.output.reply.strip()),
-            agent_run_id=run.run_id,
-            cost_usd=run.cost_usd,
-            created_at=now,
-        )
-        if thread.title == "New thread":
-            self._threads.rename(scope, thread_id, _collapse(safe_message, MAX_TITLE_CHARS))
-        self._threads.touch(scope, thread_id, now)
-        self._audit.record(
-            scope,
-            actor="user",
-            action="studio.message_sent",
-            entity="studio_message",
-            entity_id=assistant.id,
-            payload={
-                "thread_id": thread_id,
-                "role": "editor",
-                "message_sha256": _hash(safe_message),
-                "message_length": len(safe_message),
-                "cost_usd": round(run.cost_usd, 6),
-                "agent_run_id": run.run_id,
-            },
-        )
-        return StudioTurnResult(
-            thread=thread,
-            user_message=user_message,
-            assistant_message=assistant,
-            run=run,
-        )
+    def _latest_draft(self, scope: ProfileScope, thread_id: int) -> dict[str, Any] | None:
+        for message in reversed(self._messages.list_messages(scope, thread_id, limit=200)):
+            if message.artifact_type == "draft" and message.artifact_json:
+                data = message.artifact_json
+                if data.get("body") and data.get("platform"):
+                    return data
+        return None
 
     def _queue_lines(self, scope: ProfileScope) -> list[str]:
         entries = list_queue(self._session, scope, limit=QUEUE_ITEMS)
