@@ -1252,3 +1252,16 @@ lets the provider use its documented default. Provider failures now map the HTTP
 a fixed, secret-free hint (401/402/403/404/429/5xx) instead of exposing only the exception
 class. The raw provider message is not echoed, because it can contain account identifiers
 and request details.
+
+## Product direction: all-in-one first, headless later (2026-11-20)
+
+The primary product is the all-in-one, single-user Heraldesk application: one install, one
+process, a Web UI, an approval queue and a deterministic publishing pipeline. A headless
+MCP surface for external agents such as Hermes is a later power-user channel, not the
+default product. It would turn the front end, conversation and model bill into someone
+else's product, and it contradicts the one-command install and one-process principles.
+
+The next product goal is a native Draft Room: a conversational editor-in-chief inside the
+Web UI that can propose ideas, drafts and profile patches. It must not approve or publish;
+those remain explicit human actions through the existing state machine. The domain layer
+stays API-first so an MCP adapter can reuse it later without being the primary interface.

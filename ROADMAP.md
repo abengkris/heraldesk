@@ -42,8 +42,24 @@ current summary.
 - [x] M28 Python 3.14 support (coincurve conditional; pure-Python BIP-340 fallback,
   3.14 CI job)
 
+## Infrastructure status
+
+M0–M28 are complete. The core is feature-complete for a single-user, self-hosted
+deployment: CLI, Web UI, REST API, scheduler, Telegram, Nostr and Threads publishing,
+backups and restore, key rotation, PyPI and container releases, and Python 3.12–3.14.
+
+## Future goals
+
+These are product goals, not committed milestones. Each starts only after its own design
+and acceptance criteria are written.
+
+- [ ] **All-in-one Heraldesk.** A native Draft Room / editor-in-chief. Conversation
+  produces proposals (an idea, a draft, a profile patch) and never approves or publishes.
+  The deterministic pipeline and the human approval boundary stay unchanged.
+- [ ] **Real X/Facebook/Instagram/LinkedIn adapters**, or first-party plugins, when
+  official API access and testable behavior are available.
+- [ ] **Optional headless mode** (`heraldesk mcp`) for power users who bring their own
+  agent. Not the default product and not a replacement for the Web UI.
+
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.
-
-Planned next: real X/Facebook/Instagram/LinkedIn adapters (or plugins), content calendar,
-audit and cost pages, inbox retention, key rotation, API pagination and OpenAPI.
