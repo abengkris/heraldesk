@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Draft Room{% endblock %}
+{% block content %}
+<section class="stack">
+  <div class="page-head">
+    <div>
+      <h1>Draft Room</h1>
+      <p class="muted">Planning conversations. Proposals only; approval still happens in the queue.</p>
+    </div>
+  </div>
+
+  {% if profiles %}
+  <nav class="tabs" aria-label="Profiles">
+    {% for item in profiles %}
+    <a href="/studio?profile={{ item.slug }}"
+       {% if selected and selected.slug == item.slug %}aria-current="page"{% endif %}>{{ item.slug }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {% if threads %}
+  <table class="table">
+    <thead>
+      <tr><th>Thread</th><th>Status</th><th>Updated</th></tr>
+    </thead>
+    <tbody>
+      {% for thread in threads %}
+      <tr>
+        <td>{{ thread.title }}</td>
+        <td>{{ thread.status }}</td>
+        <td>{{ thread.updated_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No threads yet. The conversation UI arrives in the next phase.</p>
+  {% endif %}
+</section>
+{% endblock %}

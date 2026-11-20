@@ -28,7 +28,14 @@ from heraldesk.core.locks import (
 )
 from heraldesk.db.repositories import ApprovalLocator
 from heraldesk.domain.approvals import edit_item
-from heraldesk.domain.errors import ApprovalError, ContentError
+from heraldesk.domain.errors import (
+    ApprovalError,
+    ContentError,
+    ProfileNotFoundError,
+    ProfileValidationError,
+)
+from heraldesk.domain.profiles import list_profiles, resolve_scope
+from heraldesk.studio import StudioService
 from heraldesk.web.auth import (
     LOGIN_CSRF_COOKIE,
     SESSION_COOKIE,
@@ -131,6 +138,7 @@ def _page(
             "csrf": session.csrf,
             "active": active,
             "version": __version__,
+            "studio_enabled": _context(request).config.studio.enabled,
             **extra,
         },
         status_code=status_code,
@@ -795,6 +803,45 @@ def report_download(request: Request, filename: str) -> FileResponse:
         path,
         media_type="text/markdown; charset=utf-8",
         filename=path.name,
+    )
+
+
+@router.get("/studio", response_class=HTMLResponse)
+def studio_page(request: Request, profile: str | None = None) -> HTMLResponse:
+    """List Draft Room threads for one profile. The conversation UI arrives in DR2."""
+    ctx = _context(request)
+    if not ctx.config.studio.enabled:
+        raise NotFound("the Draft Room is disabled")
+    session = _session(request)
+    with ctx.database.session() as db:
+        summaries = list_profiles(db)
+        selected = None
+        if profile is not None:
+            try:
+                scope = resolve_scope(db, profile)
+            except (ProfileNotFoundError, ProfileValidationError) as exc:
+                raise NotFound(f"profile '{profile}' is not loaded") from exc
+            selected = next((item for item in summaries if item.slug == profile), None)
+        elif summaries:
+            scope = resolve_scope(db, summaries[0].slug)
+            selected = summaries[0]
+        else:
+            scope = None
+        service = StudioService(
+            db,
+            ctx.layout,
+            thread_cap_usd=ctx.config.studio.max_cost_usd,
+            max_messages=ctx.config.studio.max_messages,
+        )
+        threads = service.list_threads(scope) if scope is not None else []
+    return _page(
+        request,
+        session,
+        "studio.html",
+        "studio",
+        profiles=summaries,
+        selected=selected,
+        threads=threads,
     )
 
 

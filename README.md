@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.18.5-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.18.5)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.18.6-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.18.6)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.18.5.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.18.6.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.18.5
+## What works in 1.18.6
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -32,6 +32,9 @@ an installed plugin. The fake adapter is the offline publishing path. See
 - Deterministic weekly and monthly reports, with no LLM calls.
 - Backup and restore, doctor hardening, global and per-profile kill switches.
 - Real Nostr publishing (NIP-01 kind 1 notes) with a dedicated, throwaway, or original key.
+- Draft Room backend, disabled by default behind `studio.enabled`: thread storage and an
+  Editor agent. The conversation UI is not available yet; see
+  [docs/draft-room.md](docs/draft-room.md).
 - Local Web UI and authenticated `/api/v1` for queue (including full-draft detail), calendar, inbox, reports, cost, audit, profiles, run traces, readiness and manual publishing.
 - SQLite only. No Redis, Postgres, Node, telemetry or phone-home.
 
@@ -74,7 +77,7 @@ uv run heraldesk init
 pipx install --python 3.12 .
 
 # Or install the release wheel
-pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.18.5/heraldesk-1.18.5-py3-none-any.whl
+pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.18.6/heraldesk-1.18.6-py3-none-any.whl
 ```
 
 ### Docker

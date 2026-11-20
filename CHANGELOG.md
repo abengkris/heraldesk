@@ -6,6 +6,20 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.6] - 2026-11-20
+
+### Added
+
+- Draft Room backend (DR1), disabled by default with `studio.enabled: false`: thread and
+  message tables, a scoped service, an Editor agent, bounded thread context, per-thread
+  message and cost limits, secret redaction, and a read-only `/studio` page.
+- Migration `0011` adds `studio_threads` and `studio_messages`.
+
+### Security
+
+- The Draft Room has no approve, reject, schedule or publish path. It cannot create content
+  items yet; that write action arrives with DR3 and must use the normal approval service.
+
 ## [1.18.5] - 2026-11-20
 
 ### Fixed

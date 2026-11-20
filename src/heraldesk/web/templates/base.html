@@ -17,6 +17,9 @@
     <nav aria-label="Main navigation">
       <a href="/" {% if active == "dashboard" %}aria-current="page"{% endif %}>Dashboard</a>
       <a href="/queue" {% if active == "queue" %}aria-current="page"{% endif %}>Queue</a>
+      {% if studio_enabled %}
+      <a href="/studio" {% if active == "studio" %}aria-current="page"{% endif %}>Draft Room</a>
+      {% endif %}
       <a href="/calendar" {% if active == "calendar" %}aria-current="page"{% endif %}>Calendar</a>
       <a href="/inbox" {% if active == "inbox" %}aria-current="page"{% endif %}>Inbox</a>
       <a href="/reports" {% if active == "reports" %}aria-current="page"{% endif %}>Reports</a>

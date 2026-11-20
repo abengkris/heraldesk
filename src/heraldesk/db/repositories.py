@@ -26,6 +26,8 @@ from heraldesk.db.models import (
     PipelineRun,
     Profile,
     SocialAccount,
+    StudioMessage,
+    StudioThread,
     TelegramMessage,
     TelegramNotification,
     utcnow,
@@ -1357,3 +1359,165 @@ class TelegramNotificationRepository:
             query.order_by(TelegramNotification.id.desc()).limit(limit)
         ).all()
         return list(rows)
+
+
+class StudioThreadRepository:
+    """Scoped access to Draft Room threads."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(
+        self,
+        scope: ProfileScope,
+        *,
+        title: str = "New thread",
+        created_at: datetime | None = None,
+    ) -> StudioThread:
+        """Insert one thread for the scoped profile."""
+        thread = StudioThread(profile_id=scope.profile_id, title=title, status="open")
+        if created_at is not None:
+            thread.created_at = created_at
+            thread.updated_at = created_at
+        self._session.add(thread)
+        self._session.flush()
+        return thread
+
+    def get(self, scope: ProfileScope, thread_id: int) -> StudioThread | None:
+        """Return one thread only when it belongs to the scoped profile."""
+        return self._session.scalar(
+            select(StudioThread).where(
+                StudioThread.id == thread_id,
+                StudioThread.profile_id == scope.profile_id,
+            )
+        )
+
+    def list_threads(
+        self,
+        scope: ProfileScope,
+        *,
+        limit: int = 50,
+        include_archived: bool = True,
+    ) -> list[StudioThread]:
+        """Return threads of the scoped profile, newest first."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        query = select(StudioThread).where(StudioThread.profile_id == scope.profile_id)
+        if not include_archived:
+            query = query.where(StudioThread.status == "open")
+        threads = self._session.scalars(
+            query.order_by(StudioThread.updated_at.desc(), StudioThread.id.desc()).limit(limit)
+        ).all()
+        return list(threads)
+
+    def rename(self, scope: ProfileScope, thread_id: int, title: str) -> StudioThread | None:
+        """Change the title of one scoped thread."""
+        thread = self.get(scope, thread_id)
+        if thread is None:
+            return None
+        thread.title = title
+        self._session.flush()
+        return thread
+
+    def archive(self, scope: ProfileScope, thread_id: int) -> StudioThread | None:
+        """Archive one scoped thread without deleting its messages."""
+        thread = self.get(scope, thread_id)
+        if thread is None:
+            return None
+        thread.status = "archived"
+        self._session.flush()
+        return thread
+
+    def touch(self, scope: ProfileScope, thread_id: int, when: datetime) -> StudioThread | None:
+        """Move the thread's updated timestamp forward."""
+        thread = self.get(scope, thread_id)
+        if thread is None:
+            return None
+        thread.updated_at = when
+        self._session.flush()
+        return thread
+
+
+class StudioMessageRepository:
+    """Scoped access to Draft Room messages."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(
+        self,
+        scope: ProfileScope,
+        thread_id: int,
+        *,
+        role: str,
+        content: str,
+        artifact_type: str | None = None,
+        artifact_json: dict[str, Any] | None = None,
+        agent_run_id: int | None = None,
+        content_item_id: int | None = None,
+        cost_usd: float = 0.0,
+        created_at: datetime | None = None,
+    ) -> StudioMessage:
+        """Insert one message for a scoped thread."""
+        message = StudioMessage(
+            profile_id=scope.profile_id,
+            thread_id=thread_id,
+            role=role,
+            content=content,
+            artifact_type=artifact_type,
+            artifact_json=artifact_json,
+            agent_run_id=agent_run_id,
+            content_item_id=content_item_id,
+            cost_usd=cost_usd,
+        )
+        if created_at is not None:
+            message.created_at = created_at
+        self._session.add(message)
+        self._session.flush()
+        return message
+
+    def list_messages(
+        self,
+        scope: ProfileScope,
+        thread_id: int,
+        *,
+        limit: int = 200,
+        ascending: bool = True,
+    ) -> list[StudioMessage]:
+        """Return messages of a scoped thread."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        query = select(StudioMessage).where(
+            StudioMessage.profile_id == scope.profile_id,
+            StudioMessage.thread_id == thread_id,
+        )
+        order = StudioMessage.id.asc() if ascending else StudioMessage.id.desc()
+        messages = self._session.scalars(query.order_by(order).limit(limit)).all()
+        return list(messages)
+
+    def recent(
+        self, scope: ProfileScope, thread_id: int, *, limit: int = 12
+    ) -> list[StudioMessage]:
+        """Return the newest messages in chronological order."""
+        newest = self.list_messages(scope, thread_id, limit=limit, ascending=False)
+        return list(reversed(newest))
+
+    def count(self, scope: ProfileScope, thread_id: int) -> int:
+        """Return how many messages a scoped thread has."""
+        total = self._session.scalar(
+            select(func.count(StudioMessage.id)).where(
+                StudioMessage.profile_id == scope.profile_id,
+                StudioMessage.thread_id == thread_id,
+            )
+        )
+        return int(total or 0)
+
+    def cost(self, scope: ProfileScope, thread_id: int) -> float:
+        """Return the total recorded LLM cost of a scoped thread."""
+        total = self._session.scalar(
+            select(func.coalesce(func.sum(StudioMessage.cost_usd), 0.0)).where(
+                StudioMessage.profile_id == scope.profile_id,
+                StudioMessage.thread_id == thread_id,
+            )
+        )
+        return float(total or 0.0)

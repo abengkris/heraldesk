@@ -114,3 +114,32 @@ class RiskAssessment(BaseModel):
     risk_level: Literal["low", "medium", "high", "blocked"]
     reasons: list[str] = Field(default_factory=list)
     fixes: list[str] = Field(default_factory=list)
+
+
+class StudioTurn(BaseModel):
+    """One earlier turn included in the Editor context."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "editor", "writer", "compliance", "system"]
+    content: str = Field(min_length=1)
+
+
+class EditorInput(BaseModel):
+    """The current message plus the bounded thread context."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    message: str = Field(min_length=1)
+    history: list[StudioTurn] = Field(default_factory=list)
+    queue: list[str] = Field(default_factory=list)
+    calendar: list[str] = Field(default_factory=list)
+
+
+class EditorReply(BaseModel):
+    """The Editor's conversational reply and optional role suggestion."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reply: str = Field(min_length=1)
+    suggested_role: Literal["editor", "writer", "compliance"] = "editor"

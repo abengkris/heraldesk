@@ -59,6 +59,11 @@ telegram:
   allowed_user_ids: []
   # Delete handled/ignored inbox rows older than this. 0 keeps them.
   retention_days: 0
+studio:
+  # Draft Room: conversational proposals only, never approve or publish.
+  enabled: false
+  max_messages: 40
+  max_cost_usd: 0.25
 """
 
 

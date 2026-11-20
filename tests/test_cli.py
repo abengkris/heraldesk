@@ -110,7 +110,7 @@ def test_serve_fails_without_an_initialised_home(home: Path) -> None:
 def test_init_command_creates_and_reports(initialized: InitResult) -> None:
     result = runner.invoke(app, ["init"])
     assert result.exit_code == 0
-    assert "schema revision  0010" in result.output
+    assert "schema revision  0011" in result.output
 
 
 def test_init_command_never_prints_the_key(home: Path) -> None:

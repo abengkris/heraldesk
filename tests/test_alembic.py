@@ -30,6 +30,8 @@ def test_m1_schema_creates_the_core_domain_tables(initialized: InitResult) -> No
         "approvals",
         "telegram_messages",
         "telegram_notifications",
+        "studio_threads",
+        "studio_messages",
     }
 
 
@@ -185,6 +187,7 @@ def test_migration_scripts_are_present() -> None:
     assert list((directory / "versions").glob("0008*.py"))
     assert list((directory / "versions").glob("0009*.py"))
     assert list((directory / "versions").glob("0010*.py"))
+    assert list((directory / "versions").glob("0011*.py"))
 
 
 def test_downgrade_to_base_clears_the_revision(initialized: InitResult) -> None:

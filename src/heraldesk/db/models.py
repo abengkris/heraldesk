@@ -559,3 +559,86 @@ class TelegramNotification(Base):
         DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
     )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StudioThread(Base):
+    """One Draft Room conversation for a profile.
+
+    A thread is planning state only. It never owns content or approval state; drafts
+    created from a message enter the normal ``content_items`` pipeline.
+    """
+
+    __tablename__ = "studio_threads"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('open','archived')",
+            name="ck_studio_threads_status",
+        ),
+        Index("ix_studio_threads_profile_id", "profile_id"),
+        Index("ix_studio_threads_updated_at", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False, default="New thread")
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="open", server_default="open"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+        server_default=func.now(),
+    )
+
+
+class StudioMessage(Base):
+    """One turn in a Draft Room thread.
+
+    ``content`` is already redacted when it reaches this table. Artifact columns are
+    filled by later phases; ``agent_run_id`` links the turn to its trace and cost.
+    """
+
+    __tablename__ = "studio_messages"
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('user','editor','writer','compliance','system')",
+            name="ck_studio_messages_role",
+        ),
+        CheckConstraint(
+            "artifact_type IS NULL OR "
+            "artifact_type IN ('idea','draft','compliance','profile_patch')",
+            name="ck_studio_messages_artifact_type",
+        ),
+        Index("ix_studio_messages_profile_id", "profile_id"),
+        Index("ix_studio_messages_thread_id", "thread_id"),
+        Index("ix_studio_messages_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    thread_id: Mapped[int] = mapped_column(
+        ForeignKey("studio_threads.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    artifact_type: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    artifact_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    agent_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    content_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("content_items.id", ondelete="SET NULL"), nullable=True
+    )
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
+    )

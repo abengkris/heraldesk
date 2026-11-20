@@ -1,7 +1,8 @@
 # Draft Room (proposed)
 
-Status: **specification only.** Nothing in this document is implemented. It defines the
-all-in-one conversational surface recorded as a future goal in `ROADMAP.md`.
+Status: **DR1 implemented; DR2–DR5 pending.** The backend tables, service, Editor agent,
+configuration, read-only route and tests landed in 1.18.6. The conversation UI and the
+write actions are not implemented yet.
 
 ## Problem
 
@@ -249,16 +250,16 @@ link is hidden.
 
 Each criterion needs an offline test with the fake LLM provider.
 
-- [ ] **AC-1** `studio.enabled` defaults to false; `/studio` returns 404 and no nav link is
+- [x] **AC-1** `studio.enabled` defaults to false; `/studio` returns 404 and no nav link is
   rendered when disabled.
-- [ ] **AC-2** A thread and its messages are isolated by `ProfileScope`; another profile
+- [x] **AC-2** A thread and its messages are isolated by `ProfileScope`; another profile
   receives 404 for the same id.
-- [ ] **AC-3** Sending a message creates exactly one `studio_messages` row and one
+- [x] **AC-3** Sending a message creates exactly one `studio_messages` row and one
   `agent_runs` row, and records tokens and cost.
-- [ ] **AC-4** A message turn creates no content item and changes no content state.
-- [ ] **AC-5** The studio service cannot import the publisher, scheduler or platform
+- [x] **AC-4** A message turn creates no content item and changes no content state.
+- [x] **AC-5** The studio service cannot import the publisher, scheduler or platform
   adapters; a static test enforces this.
-- [ ] **AC-6** No studio route or service method can approve, reject, schedule or publish.
+- [x] **AC-6** No studio route or service method can approve, reject, schedule or publish.
   A request to an invented `/studio/{id}/publish` returns 404.
 - [ ] **AC-7** “Create draft” produces a `pending_approval` item, a pending approval row
   and `studio.draft_created` audit entry; it appears in `/queue`.
@@ -267,25 +268,25 @@ Each criterion needs an offline test with the fake LLM provider.
   created.
 - [ ] **AC-10** A profile patch with a stale `base_hash` is refused; a valid patch writes
   atomically, reloads the profile and audits old and new hashes.
-- [ ] **AC-11** A turn over `studio.max_cost_usd` is refused before the LLM call and
+- [x] **AC-11** A turn over `studio.max_cost_usd` is refused before the LLM call and
   records no message.
-- [ ] **AC-12** Context keeps the last 12 messages and emits the omission notice when
+- [x] **AC-12** Context keeps the last 12 messages and emits the omission notice when
   older messages are dropped.
-- [ ] **AC-13** A secret-like string in a user message is not present in the audit payload,
+- [x] **AC-13** A secret-like string in a user message is not present in the audit payload,
   logs or rendered error.
-- [ ] **AC-14** All tests run with the fake provider and make no network call.
-- [ ] **AC-15** `docs/draft-room.md`, the feature flag and the “proposals only” rule are
+- [x] **AC-14** All tests run with the fake provider and make no network call.
+- [x] **AC-15** `docs/draft-room.md`, the feature flag and the “proposals only” rule are
   linked from the README.
 
 ## Phased delivery
 
-| Phase | Scope | Exit |
+| Phase | Scope | Status |
 |---|---|---|
-| DR1 | config, tables, service, Editor schema, fake-provider tests | AC-1–AC-6, AC-11–AC-14 |
-| DR2 | thread list, message pane, role selector, artifact cards | messages render, no writes |
-| DR3 | “Create draft” with lint and compliance | AC-7–AC-9 |
-| DR4 | profile patches with diff and confirmation | AC-10 |
-| DR5 | hardening, docs, accessibility, release | AC-15 and full suite |
+| DR1 | config, tables, service, Editor schema, fake-provider tests | **done in 1.18.6** |
+| DR2 | thread list, message pane, role selector, artifact cards | next |
+| DR3 | “Create draft” with lint and compliance | planned |
+| DR4 | profile patches with diff and confirmation | planned |
+| DR5 | hardening, docs, accessibility, release | planned |
 
 ## Out of scope
 

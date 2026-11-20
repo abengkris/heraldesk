@@ -125,6 +125,14 @@ class NostrSettings(_Section):
         return clean
 
 
+class StudioSettings(_Section):
+    """Draft Room limits. The feature stays off until the user enables it."""
+
+    enabled: bool = False
+    max_messages: int = Field(default=40, ge=2, le=500)
+    max_cost_usd: float = Field(default=0.25, ge=0.0)
+
+
 class Config(BaseSettings):
     """Validated global configuration."""
 
@@ -142,6 +150,7 @@ class Config(BaseSettings):
     nostr: NostrSettings = Field(default_factory=NostrSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    studio: StudioSettings = Field(default_factory=StudioSettings)
 
     @classmethod
     def settings_customise_sources(
