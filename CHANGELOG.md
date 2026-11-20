@@ -6,6 +6,15 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.5] - 2026-11-20
+
+### Fixed
+
+- Reasoning models that only accept their default temperature no longer fail with
+  `UnsupportedParamsError`; LiteLLM now drops unsupported request parameters.
+- LLM failures report the provider HTTP status and an actionable hint for 401, 402, 403,
+  404, 429 and 5xx responses instead of only the exception class.
+
 ## [1.18.4] - 2026-11-20
 
 ### Added

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+from types import SimpleNamespace
 
 import pytest
 
 from heraldesk.config import load_config
 from heraldesk.core.bootstrap import InitResult
-from heraldesk.llm.errors import LLMConfigError
+from heraldesk.llm.errors import LLMConfigError, LLMError
 from heraldesk.llm.factory import build_llm, export_dotenv_keys, resolve_model
 from heraldesk.llm.fake import FakeLLM
 from heraldesk.llm.litellm_provider import LiteLLMProvider
@@ -104,3 +105,49 @@ def test_environment_wins_over_dotenv(initialized: InitResult, monkeypatch) -> N
     assert exported == ("OPENROUTER_API_KEY",)
     assert os.environ["DEEPSEEK_API_KEY"] == "from-environment"
     assert os.environ["OPENROUTER_API_KEY"] == "from-dotenv-openrouter"
+
+
+def test_litellm_drops_unsupported_parameters(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = SimpleNamespace()
+
+    def import_module(name: str) -> SimpleNamespace:
+        assert name == "litellm"
+        return module
+
+    monkeypatch.setattr("heraldesk.llm.litellm_provider.importlib.import_module", import_module)
+    provider = LiteLLMProvider(model="openai/gpt-6-luna")
+
+    assert provider._litellm() is module
+    assert module.drop_params is True
+    assert module.telemetry is False
+
+
+@pytest.mark.parametrize(
+    ("status", "fragment"),
+    (
+        (401, "authentication failed"),
+        (402, "insufficient provider balance"),
+        (403, "provider denied access"),
+        (404, "model not found"),
+        (429, "rate limit"),
+        (503, "provider server error"),
+        (418, "provider rejected the request"),
+    ),
+)
+def test_litellm_reports_provider_status_codes(status: int, fragment: str) -> None:
+    class ProviderError(Exception):
+        status_code = status
+
+    def fail(**kwargs: object) -> None:
+        raise ProviderError
+
+    provider = LiteLLMProvider(model="openai/gpt-6-luna")
+    provider._module = SimpleNamespace(completion=fail, completion_cost=lambda **kw: 0.0)
+
+    with pytest.raises(LLMError, match=fragment):
+        provider.complete(
+            LLMRequest(
+                messages=(ChatMessage(role="user", content="hi"),),
+                model="openai/gpt-6-luna",
+            )
+        )

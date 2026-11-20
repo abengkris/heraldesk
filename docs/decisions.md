@@ -1242,3 +1242,13 @@ call was the wrong default, but changing it in place would also surprise existin
 `--real` is the explicit opt-in. It requires `telegram.enabled: true`, a stored token and a
 target chat id in `telegram.allowed_chat_ids`, so the CLI cannot be used to message an
 arbitrary chat outside the configured allowlist. `telegram test` remains offline.
+
+## Provider parameter compatibility and status errors (2026-11-20)
+
+LiteLLM runs with `drop_params = True`. Some reasoning models accept only their default
+temperature, and Heraldesk sends `temperature=0.0` for deterministic runs; without the flag
+LiteLLM rejects the request before it reaches the provider. Dropping unsupported parameters
+lets the provider use its documented default. Provider failures now map the HTTP status to
+a fixed, secret-free hint (401/402/403/404/429/5xx) instead of exposing only the exception
+class. The raw provider message is not echoed, because it can contain account identifiers
+and request details.

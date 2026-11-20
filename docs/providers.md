@@ -122,7 +122,8 @@ Two restrictions matter:
 Console bills the account balance. LiteLLM has no Console-specific price entry, so unless
 it happens to recognise the model ID, Heraldesk records each run at `$0.00` and
 `llm.max_daily_cost_usd` will not trip. Set a budget or keep a small balance in the
-Console account if you need a hard limit.
+Console account if you need a hard limit. An `HTTP 402` error means the balance is empty;
+top up in the Console.
 
 ## Structured output
 
@@ -131,6 +132,10 @@ against a Pydantic model, retrying when validation fails. Most hosted providers 
 this. Some local servers and gateways ignore or reject the field, and a few models return
 prose instead of JSON. If a run fails with repeated validation errors, try a different
 model before assuming a Heraldesk bug.
+
+Heraldesk enables LiteLLM's `drop_params` setting. When a model does not support a
+parameter Heraldesk sends, such as a fixed temperature on a reasoning model, LiteLLM omits
+it and the provider uses its own default instead of failing the whole run.
 
 ## Cost tracking
 
@@ -153,9 +158,11 @@ Common failures:
 
 | Symptom | Likely cause |
 |---|---|
-| `AuthenticationError` | Key missing from `.env`, revoked, or from another account. |
-| `NotFoundError` or a model error | Wrong model ID, wrong prefix, or a model the key cannot access. |
-| `RateLimitError` | Provider quota or credits exhausted. |
+| `HTTP 401 authentication failed` | Key missing from `.env`, revoked, or from another account. |
+| `HTTP 402 insufficient provider balance` | Provider credits exhausted; top up or use another provider. |
+| `HTTP 403 provider denied access` | The key cannot use that model, or the provider blocked the request. |
+| `HTTP 404 model not found` | Wrong model ID or prefix, or the key cannot access that model. |
+| `HTTP 429 rate limit` | Provider quota or credits exhausted. |
 | Repeated schema validation errors | Model does not honour JSON mode or is too small for the task. |
 | Connection error | Wrong `OPENAI_API_BASE`, or a local server that is not running. |
 

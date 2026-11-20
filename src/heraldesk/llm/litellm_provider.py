@@ -40,6 +40,9 @@ class LiteLLMProvider:
             # Heraldesk sends no telemetry. Disable LiteLLM's own reporting as well.
             module.telemetry = False
             module.suppress_debug_info = True
+            # Reasoning models often accept only their default temperature. Let LiteLLM
+            # drop parameters the selected model does not support instead of failing the run.
+            module.drop_params = True
             self._module = module
         return self._module
 
@@ -62,7 +65,7 @@ class LiteLLMProvider:
         try:
             response = module.completion(**kwargs)
         except Exception as exc:
-            raise LLMError(f"LLM call failed ({type(exc).__name__})") from exc
+            raise LLMError(self._describe_failure(exc)) from exc
 
         text = self._extract_text(response)
         tokens_in, tokens_out = self._extract_usage(response)
@@ -73,6 +76,27 @@ class LiteLLMProvider:
             tokens_out=tokens_out,
             cost_usd=self._extract_cost(module, response),
         )
+
+    @staticmethod
+    def _describe_failure(exc: Exception) -> str:
+        """Return an actionable, secret-free description of a provider failure."""
+        status = getattr(exc, "status_code", None)
+        hints = {
+            401: "authentication failed (HTTP 401); check the API key",
+            402: "insufficient provider balance or credits (HTTP 402)",
+            403: "provider denied access (HTTP 403); check model access",
+            404: "model not found (HTTP 404); check llm.default_model",
+            429: "provider rate limit or quota exhausted (HTTP 429)",
+        }
+        if status in hints:
+            detail = hints[status]
+        elif isinstance(status, int) and status >= 500:
+            detail = f"provider server error (HTTP {status})"
+        elif isinstance(status, int):
+            detail = f"provider rejected the request (HTTP {status})"
+        else:
+            detail = type(exc).__name__
+        return f"LLM call failed: {detail}"
 
     @staticmethod
     def _extract_text(response: Any) -> str:
