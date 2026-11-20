@@ -496,6 +496,7 @@ Online probes never print an API key, bot token or nsec.
 
 - [Architecture](docs/architecture.md)
 - [LLM providers](docs/providers.md)
+- [Draft Room (proposed)](docs/draft-room.md)
 - [Decisions and milestone notes](docs/decisions.md)
 - [Roadmap](ROADMAP.md)
 - [Releasing](docs/releasing.md)

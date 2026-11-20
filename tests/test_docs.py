@@ -33,6 +33,7 @@ def test_key_documents_are_present_and_non_empty() -> None:
         "CHANGELOG.md",
         "docs/architecture.md",
         "docs/decisions.md",
+        "docs/draft-room.md",
         "docs/open-questions.md",
         "docs/platforms/README.md",
         "docs/platforms/nostr.md",
@@ -48,6 +49,16 @@ def test_key_documents_are_present_and_non_empty() -> None:
 def test_readme_links_the_provider_guide() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "docs/providers.md" in text
+
+
+def test_draft_room_spec_keeps_the_approval_boundary() -> None:
+    text = (ROOT / "docs/draft-room.md").read_text(encoding="utf-8")
+    assert "cannot approve" in text
+    assert "studio.enabled" in text
+    assert "pending_approval" in text
+    assert "AC-7" in text
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "docs/draft-room.md" in readme
 
 
 def test_provider_guide_covers_custom_endpoints() -> None:

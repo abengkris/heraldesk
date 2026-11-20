@@ -55,7 +55,8 @@ and acceptance criteria are written.
 
 - [ ] **All-in-one Heraldesk.** A native Draft Room / editor-in-chief. Conversation
   produces proposals (an idea, a draft, a profile patch) and never approves or publishes.
-  The deterministic pipeline and the human approval boundary stay unchanged.
+  The deterministic pipeline and the human approval boundary stay unchanged. See
+  [`docs/draft-room.md`](docs/draft-room.md) for the specification.
 - [ ] **Real X/Facebook/Instagram/LinkedIn adapters**, or first-party plugins, when
   official API access and testable behavior are available.
 - [ ] **Optional headless mode** (`heraldesk mcp`) for power users who bring their own
