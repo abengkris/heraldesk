@@ -125,6 +125,26 @@ it happens to recognise the model ID, Heraldesk records each run at `$0.00` and
 Console account if you need a hard limit. An `HTTP 402` error means the balance is empty;
 top up in the Console.
 
+## Free tiers and rate limits
+
+Free OpenAI-compatible gateways often cap requests per minute. A daily pipeline makes
+several calls in a short burst, so it can hit the cap even when a single test succeeds.
+
+Set a minimum spacing between provider calls:
+
+```yaml
+llm:
+  min_interval_seconds: 11.0
+```
+
+A 6-requests-per-minute gateway needs at least 10 seconds between calls; 11 seconds keeps
+a margin. The default is `0` (no added delay). Pacing makes a run slower but keeps it
+inside the provider's limit. It applies within one provider instance; separate CLI runs
+or processes are not coordinated.
+
+If the provider still returns `HTTP 429`, use a higher tier or a different provider rather
+than lowering the interval below the documented limit.
+
 ## Structured output
 
 Agents request JSON with `response_format={"type": "json_object"}` and validate the result
@@ -162,7 +182,7 @@ Common failures:
 | `HTTP 402 insufficient provider balance` | Provider credits exhausted; top up or use another provider. |
 | `HTTP 403 provider denied access` | The key cannot use that model, or the provider blocked the request. |
 | `HTTP 404 model not found` | Wrong model ID or prefix, or the key cannot access that model. |
-| `HTTP 429 rate limit` | Provider quota or credits exhausted. |
+| `HTTP 429 rate limit` | Provider quota or per-minute cap. Raise `llm.min_interval_seconds` or use a higher tier. |
 | Repeated schema validation errors | Model does not honour JSON mode or is too small for the task. |
 | Connection error | Wrong `OPENAI_API_BASE`, or a local server that is not running. |
 

@@ -78,7 +78,11 @@ def build_llm(config: Config, layout: paths.Layout) -> LLMProvider:
             "llm.default_model is empty: set a LiteLLM model in heraldesk.yaml, "
             "or set llm.provider to fake for offline use"
         )
-    return LiteLLMProvider(model=model, timeout_seconds=config.llm.timeout_seconds)
+    return LiteLLMProvider(
+        model=model,
+        timeout_seconds=config.llm.timeout_seconds,
+        min_interval_seconds=config.llm.min_interval_seconds,
+    )
 
 
 def resolve_model(config: Config, provider: LLMProvider) -> str:

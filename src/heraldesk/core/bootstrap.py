@@ -31,6 +31,8 @@ llm:
   default_model: ""
   max_daily_cost_usd: 5.0
   timeout_seconds: 60
+  # Space provider calls; raise this for free tiers with a requests/minute cap.
+  min_interval_seconds: 0.0
   # Optional folder with <role>.json fake-provider fixtures.
   fake_fixtures_dir: ""
 research:

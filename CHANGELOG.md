@@ -6,6 +6,18 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.7] - 2026-11-20
+
+### Added
+
+- `llm.min_interval_seconds` spaces provider calls. Free OpenAI-compatible gateways with a
+  requests-per-minute cap no longer fail the pipeline on the first burst.
+
+### Changed
+
+- Provider pacing is documented in `docs/providers.md`, including the 429 troubleshooting
+  row.
+
 ## [1.18.6] - 2026-11-20
 
 ### Added

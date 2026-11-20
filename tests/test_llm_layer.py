@@ -151,3 +151,41 @@ def test_litellm_reports_provider_status_codes(status: int, fragment: str) -> No
                 model="openai/gpt-6-luna",
             )
         )
+
+
+def test_litellm_paces_calls_when_configured() -> None:
+    from types import SimpleNamespace
+
+    now = [0.0]
+    sleeps: list[float] = []
+
+    def clock() -> float:
+        return now[0]
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    response = SimpleNamespace(
+        model="openai/test",
+        choices=[SimpleNamespace(message=SimpleNamespace(content="OK"))],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+    )
+    module = SimpleNamespace(completion=lambda **kwargs: response, completion_cost=lambda **kw: 0.0)
+    provider = LiteLLMProvider(
+        model="openai/test",
+        min_interval_seconds=10.0,
+        clock=clock,
+        sleep=sleep,
+    )
+    provider._module = module
+    request = LLMRequest(
+        messages=(ChatMessage(role="user", content="hi"),),
+        model="openai/test",
+    )
+
+    provider.complete(request)
+    provider.complete(request)
+
+    assert sleeps == [10.0]
+    assert provider._next_call_at == 20.0

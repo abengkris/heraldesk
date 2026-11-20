@@ -11,6 +11,8 @@ environment, which the factory fills from the instance ``.env``.
 from __future__ import annotations
 
 import importlib
+import time
+from collections.abc import Callable
 from typing import Any
 
 from heraldesk.llm.errors import LLMError
@@ -22,12 +24,37 @@ class LiteLLMProvider:
 
     name = "litellm"
 
-    def __init__(self, *, model: str, timeout_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        *,
+        model: str,
+        timeout_seconds: float = 60.0,
+        min_interval_seconds: float = 0.0,
+        clock: Callable[[], float] | None = None,
+        sleep: Callable[[float], None] | None = None,
+    ) -> None:
         if not model.strip():
             raise LLMError("llm.default_model is empty; set a LiteLLM model in heraldesk.yaml")
+        if min_interval_seconds < 0:
+            raise LLMError("llm.min_interval_seconds must not be negative")
         self.default_model = model.strip()
         self._timeout_seconds = timeout_seconds
+        self._min_interval_seconds = min_interval_seconds
+        self._clock = clock if clock is not None else time.monotonic
+        self._sleep = sleep if sleep is not None else time.sleep
+        self._next_call_at = 0.0
         self._module: Any = None
+
+    def _pace(self) -> None:
+        """Wait until the configured minimum spacing has elapsed."""
+        if self._min_interval_seconds <= 0:
+            return
+        now = self._clock()
+        delay = self._next_call_at - now
+        if delay > 0:
+            self._sleep(delay)
+            now = self._clock()
+        self._next_call_at = now + self._min_interval_seconds
 
     def _litellm(self) -> Any:
         if self._module is None:
@@ -48,6 +75,7 @@ class LiteLLMProvider:
 
     def complete(self, request: LLMRequest) -> LLMResult:
         """Call LiteLLM once and return text, tokens and cost."""
+        self._pace()
         module = self._litellm()
         kwargs: dict[str, Any] = {
             "model": request.model,

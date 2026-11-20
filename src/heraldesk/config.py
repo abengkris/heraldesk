@@ -66,6 +66,8 @@ class LLMSettings(_Section):
     max_daily_cost_usd: float = Field(default=5.0, ge=0.0)
     provider: Literal["auto", "litellm", "fake"] = "auto"
     timeout_seconds: float = Field(default=60.0, gt=0.0)
+    # Minimum spacing between provider calls. Raise it for free tiers with a requests/min cap.
+    min_interval_seconds: float = Field(default=0.0, ge=0.0, le=300.0)
     fake_fixtures_dir: str = ""
 
 
