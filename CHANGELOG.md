@@ -6,6 +6,18 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.10] - 2026-11-20
+
+### Added
+
+- `heraldesk doctor` now points at the Draft Room when it is still disabled, so upgraders
+  can discover the new section instead of hunting for a missing `studio:` key.
+
+### Changed
+
+- GitHub releases now include the matching CHANGELOG section under a "What's new" heading
+  instead of only the auto-generated commit list.
+
 ## [1.18.9] - 2026-11-20
 
 ### Added

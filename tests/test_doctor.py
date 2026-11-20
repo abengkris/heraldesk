@@ -290,3 +290,16 @@ def test_threads_token_expiry_is_reported(
     )
     db_session.commit()
     assert by_name(initialized.layout.home)["threads tokens"] is CheckStatus.PASS
+
+
+def test_studio_check_warns_when_disabled_and_passes_when_enabled(
+    initialized: InitResult,
+) -> None:
+    home = initialized.layout.home
+    assert by_name(home)["studio"] is CheckStatus.WARN
+
+    (home / "heraldesk.yaml").write_text(
+        "version: 1\nstudio:\n  enabled: true\n",
+        encoding="utf-8",
+    )
+    assert by_name(home)["studio"] is CheckStatus.PASS

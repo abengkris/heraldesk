@@ -72,6 +72,7 @@ def run_checks(home: Path | None = None, *, online: bool = False) -> list[CheckR
         _check_database(layout),
         _check_migrations(layout),
         _check_config(layout),
+        _check_studio(layout),
         _check_admin_token(layout),
         _check_threads_tokens(layout),
         _check_telegram(layout),
@@ -229,6 +230,23 @@ def _check_config(layout: paths.Layout) -> CheckResult:
     except ConfigError as exc:
         return CheckResult("heraldesk.yaml", CheckStatus.FAIL, str(exc))
     return CheckResult("heraldesk.yaml", CheckStatus.PASS, str(layout.config_path))
+
+
+def _check_studio(layout: paths.Layout) -> CheckResult:
+    """Point at the optional Draft Room when it is still disabled."""
+    try:
+        config = load_config(layout.home)
+    except ConfigError:
+        return CheckResult(
+            "studio", CheckStatus.WARN, "configuration invalid; studio setting unreadable"
+        )
+    if config.studio.enabled:
+        return CheckResult("studio", CheckStatus.PASS, "Draft Room enabled at /studio")
+    return CheckResult(
+        "studio",
+        CheckStatus.WARN,
+        "Draft Room disabled; set studio.enabled: true to enable it",
+    )
 
 
 def _check_telegram(layout: paths.Layout) -> CheckResult:
