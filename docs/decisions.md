@@ -1233,3 +1233,12 @@ key. The UI/CLI never print the nsec; it is read from the environment, encrypted
 `--credential-from-env` maps `THREADS_TOKEN`/`THREADS_ACCESS_TOKEN` to `access_token` and
 `THREADS_USER_ID`/`USER_ID` to `user_id`. Other names still lowercase verbatim; use
 `--credential KEY=VALUE` only when a value is not secret, or prefer the environment form.
+
+## Telegram real test send is explicit (2026-11-20)
+
+`heraldesk telegram send` stays offline by default: it uses the fake adapter, prints a
+redacted preview and needs no token. A command named "send" that silently makes a network
+call was the wrong default, but changing it in place would also surprise existing scripts.
+`--real` is the explicit opt-in. It requires `telegram.enabled: true`, a stored token and a
+target chat id in `telegram.allowed_chat_ids`, so the CLI cannot be used to message an
+arbitrary chat outside the configured allowlist. `telegram test` remains offline.

@@ -6,6 +6,18 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.4] - 2026-11-20
+
+### Added
+
+- `heraldesk telegram send --real` sends through the Telegram Bot API. The default remains
+  an offline fake-adapter preview.
+
+### Changed
+
+- A real send requires `telegram.enabled`, a stored token and an allowlisted chat id.
+- README Telegram setup now covers BotFather, `allowed_chat_ids`, `/start` and the real test.
+
 ## [1.18.3] - 2026-11-20
 
 ### Added

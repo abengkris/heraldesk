@@ -1,10 +1,10 @@
 # Heraldesk
 
-[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.18.3-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.18.3)
+[![CI](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/abengkris/heraldesk/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-1.18.4-blue.svg)](https://github.com/abengkris/heraldesk/releases/tag/v1.18.4)
 
 > Your autonomous social media department. Self-hosted, open source, single-user.
 
-**Version 1.18.3.** Heraldesk runs four LLM roles (strategist, researcher, writer,
+**Version 1.18.4.** Heraldesk runs four LLM roles (strategist, researcher, writer,
 compliance) plus a deterministic Designer placeholder and manual Community/Analyst
 tooling. They draft, review, queue and schedule social media content for accounts you
 manage. You approve; Heraldesk does the legwork. It runs on your laptop or your own VPS.
@@ -15,7 +15,7 @@ Heraldesk is CLI-first and also ships a local Web UI + JSON API since 1.2.0. Thr
 an installed plugin. The fake adapter is the offline publishing path. See
 [Threads publishing](#threads-publishing) and [Nostr publishing](#nostr-publishing).
 
-## What works in 1.18.3
+## What works in 1.18.4
 
 - Multiple profiles with their own voice, rules and autonomy policy.
 - Draft-first content state machine with lint, Compliance and approval gates.
@@ -74,7 +74,7 @@ uv run heraldesk init
 pipx install --python 3.12 .
 
 # Or install the release wheel
-pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.18.3/heraldesk-1.18.3-py3-none-any.whl
+pipx install --python 3.12 https://github.com/abengkris/heraldesk/releases/download/v1.18.4/heraldesk-1.18.4-py3-none-any.whl
 ```
 
 ### Docker
@@ -168,13 +168,36 @@ are already scheduled; use the queue commands and review scheduled items before 
 
 ## Telegram
 
+Create a bot with [@BotFather](https://t.me/BotFather), then store the token through a
+hidden prompt so it never enters shell history:
+
 ```bash
-uv run heraldesk telegram test
 uv run heraldesk telegram token set
 uv run heraldesk telegram token status
-uv run heraldesk telegram send acme "manual test"
-uv run heraldesk telegram inbox list acme
 ```
+
+Enable Telegram in `heraldesk.yaml` and allowlist your chat id:
+
+```yaml
+telegram:
+  enabled: true
+  mode: polling
+  allowed_chat_ids: [5267528661]
+```
+
+Open a chat with the bot and send `/start` once; a bot cannot start a conversation with
+you. Then verify the token and send a real test:
+
+```bash
+uv run heraldesk doctor --online            # telegram api calls getMe
+uv run heraldesk telegram send --real acme "manual test"
+uv run heraldesk serve                      # polling, commands and notifications
+```
+
+`telegram send` is an offline preview through the fake adapter unless you pass `--real`.
+`telegram test` is always offline. A real send requires `telegram.enabled: true`, a stored
+token, and a chat id in `telegram.allowed_chat_ids`; `--chat-id` can select another id from
+that list.
 
 Bot tokens are encrypted with `secret.key`. Only chat IDs in `telegram.allowed_chat_ids`
 are served. Set `telegram.allowed_user_ids` to restrict which senders may run commands

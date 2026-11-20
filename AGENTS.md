@@ -63,7 +63,9 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
 - Publish one item now: `uv run heraldesk publish <id>`
 - Run the scheduler once: `uv run heraldesk scheduler run [--dry-run]` (alias: `uv run heraldesk run scheduler [--dry-run]`)
 - Test Telegram offline: `uv run heraldesk telegram test` (fake adapter, redacted preview)
-- Send a manual Telegram test message: `uv run heraldesk telegram send <slug> "text"` (fake adapter)
+- Send a manual Telegram test message: `uv run heraldesk telegram send <slug> "text"` (offline
+  preview; `--real` uses the Bot API and requires `telegram.enabled`, a stored token and an
+  allowlisted chat id)
 - Show the Telegram inbox: `uv run heraldesk telegram inbox list <slug> [--limit 20]` (redacted)
 - Store or inspect the encrypted bot token: `uv run heraldesk telegram token set|status`
 - Triage the manual inbox: `uv run heraldesk inbox list [--status pending|handled|ignored] [--limit N]`,

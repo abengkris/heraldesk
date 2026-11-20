@@ -133,3 +133,78 @@ def test_telegram_commands_fail_without_an_initialised_home(home: Path) -> None:
     result = invoke("telegram", "test")
     assert result.exit_code == 1
     assert "heraldesk init" in result.output
+
+
+def test_telegram_send_real_requires_enabled(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert invoke("profile", "new", "acme").exit_code == 0
+    (initialized.layout.home / "heraldesk.yaml").write_text(
+        "version: 1\ntelegram:\n  enabled: false\n  allowed_chat_ids: [123456789]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HERALDESK_TELEGRAM_BOT_TOKEN", TOKEN)
+
+    result = invoke("telegram", "send", "--real", "acme", "hello")
+
+    assert result.exit_code != 0
+    assert "telegram is disabled" in result.output
+
+
+def test_telegram_send_real_requires_a_token(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert invoke("profile", "new", "acme").exit_code == 0
+    write_config(initialized)
+    monkeypatch.delenv("HERALDESK_TELEGRAM_BOT_TOKEN", raising=False)
+
+    result = invoke("telegram", "send", "--real", "acme", "hello")
+
+    assert result.exit_code != 0
+    assert "no bot token is stored" in result.output
+
+
+def test_telegram_send_real_rejects_a_chat_outside_the_allowlist(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert invoke("profile", "new", "acme").exit_code == 0
+    write_config(initialized)
+    monkeypatch.setenv("HERALDESK_TELEGRAM_BOT_TOKEN", TOKEN)
+
+    result = invoke("telegram", "send", "--real", "--chat-id", "999", "acme", "hello")
+
+    assert result.exit_code != 0
+    assert "not in telegram.allowed_chat_ids" in result.output
+    assert str(CHAT_ID) not in result.output
+
+
+def test_telegram_send_real_calls_the_bot_api(
+    initialized: InitResult, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from heraldesk.telegram.base import TelegramSendResult
+
+    calls: list[tuple[int, str]] = []
+
+    class RecordingAdapter:
+        name = "telegram"
+
+        def __init__(self, token: str) -> None:
+            assert token == TOKEN
+
+        def send_message(self, chat_id: int, text: str) -> TelegramSendResult:
+            calls.append((chat_id, text))
+            return TelegramSendResult(chat_id=chat_id, message_id=42)
+
+    assert invoke("profile", "new", "acme").exit_code == 0
+    write_config(initialized)
+    monkeypatch.setenv("HERALDESK_TELEGRAM_BOT_TOKEN", TOKEN)
+    monkeypatch.setattr("heraldesk.cli.telegram.BotApiTelegramAdapter", RecordingAdapter)
+
+    result = invoke("telegram", "send", "--real", "acme", "hello")
+
+    assert result.exit_code == 0, result.output
+    assert calls == [(CHAT_ID, "hello")]
+    assert "message id 42" in result.output
+    assert "fake adapter" not in result.output
+    assert TOKEN not in result.output
+    assert str(CHAT_ID) not in result.output

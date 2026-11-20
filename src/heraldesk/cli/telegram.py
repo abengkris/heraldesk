@@ -18,7 +18,8 @@ from heraldesk.core.redact import SecretRegistry
 from heraldesk.db.repositories import TelegramMessageRepository
 from heraldesk.domain.errors import ProfileNotFoundError, ProfileValidationError
 from heraldesk.domain.profiles import profile_summary, resolve_scope
-from heraldesk.telegram.base import TelegramError
+from heraldesk.telegram.base import TelegramAdapter, TelegramError
+from heraldesk.telegram.bot_api import BotApiTelegramAdapter
 from heraldesk.telegram.credentials import (
     TelegramConfigError,
     mask_token,
@@ -118,8 +119,18 @@ def send_command(
         int | None,
         typer.Option("--chat-id", help="Chat id to use instead of the first allowlisted id."),
     ] = None,
+    real: Annotated[
+        bool,
+        typer.Option(
+            "--real",
+            help=(
+                "Send through the Telegram Bot API. Requires telegram.enabled, a stored "
+                "token and a chat id in telegram.allowed_chat_ids."
+            ),
+        ),
+    ] = False,
 ) -> None:
-    """Send one manual test message through the fake adapter."""
+    """Send a test message: an offline preview by default, a real send with --real."""
     if not text.strip():
         abort("message text must not be empty")
     with session_for() as (layout, session):
@@ -133,9 +144,25 @@ def send_command(
         target = _target_chat_id(config, chat_id)
         redactor = _redactor_for(token)
         body = redactor.redact(text)
-        adapter = FakeTelegramAdapter()
+        adapter: TelegramAdapter
+        if real:
+            if not config.telegram.enabled:
+                abort(
+                    "telegram is disabled; set telegram.enabled: true in heraldesk.yaml "
+                    "before using --real"
+                )
+            if token is None:
+                abort("no bot token is stored; run 'heraldesk telegram token set' first")
+            if target not in config.telegram.allowed_chat_ids:
+                abort(
+                    f"chat id {mask_chat_id(target)} is not in telegram.allowed_chat_ids; "
+                    "add it before sending for real"
+                )
+            adapter = BotApiTelegramAdapter(token)
+        else:
+            adapter = FakeTelegramAdapter()
         try:
-            adapter.send_message(target, body)
+            result = adapter.send_message(target, body)
         except TelegramError as exc:
             abort(str(exc))
         AuditService(session).record(
@@ -152,10 +179,16 @@ def send_command(
                 "adapter": adapter.name,
             },
         )
-    console.print(
-        f"[bold]Telegram send[/bold] [yellow](fake adapter, no network)[/yellow] "
-        f"for {escape(summary.slug)}"
-    )
+    if real:
+        console.print(
+            f"[bold]Telegram send[/bold] for {escape(summary.slug)} "
+            f"(message id {result.message_id})"
+        )
+    else:
+        console.print(
+            f"[bold]Telegram send[/bold] [yellow](fake adapter, no network)[/yellow] "
+            f"for {escape(summary.slug)}"
+        )
     console.print(f"Chat: {mask_chat_id(target)}")
     console.print(f"Preview: {escape(preview(redactor.redact(body), limit=DEFAULT_PREVIEW))}")
 
