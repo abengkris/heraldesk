@@ -121,7 +121,7 @@ class StudioTurn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    role: Literal["user", "editor", "writer", "compliance", "system"]
+    role: Literal["user", "editor", "writer", "compliance", "profile", "system"]
     content: str = Field(min_length=1)
 
 
@@ -143,3 +143,26 @@ class EditorReply(BaseModel):
 
     reply: str = Field(min_length=1)
     suggested_role: Literal["editor", "writer", "compliance"] = "editor"
+
+
+PROFILE_FILES_LITERAL = Literal["soul.md", "brief.md", "policy.yaml", "banned.yaml"]
+
+
+class ProfileEditInput(BaseModel):
+    """One profile file edit: the current text plus the user's instruction."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    file: PROFILE_FILES_LITERAL
+    current_text: str
+    instruction: str = Field(min_length=1)
+
+
+class ProfilePatchProposal(BaseModel):
+    """A proposed full replacement for one profile file."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    file: PROFILE_FILES_LITERAL
+    rationale: str = Field(min_length=1)
+    proposed_text: str = Field(min_length=1)

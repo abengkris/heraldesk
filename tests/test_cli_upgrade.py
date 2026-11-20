@@ -37,8 +37,8 @@ def test_upgrade_backs_up_then_migrates(initialized: InitResult) -> None:
 
     assert result.exit_code == 0, result.output
     assert "Backup written" in result.output
-    assert "0009 -> 0011" in result.output
-    assert head_revision(layout.db_path) == "0011"
+    assert "0009 -> 0012" in result.output
+    assert head_revision(layout.db_path) == "0012"
     backups = list(layout.backups.glob("*.zip"))
     assert len(backups) == 1
 

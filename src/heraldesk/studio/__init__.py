@@ -7,11 +7,12 @@ patches arrive in later phases and must call the existing approval and profile s
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.orm import Session
 
@@ -20,12 +21,15 @@ from heraldesk.agents.base import AgentContext
 from heraldesk.agents.compliance import Compliance
 from heraldesk.agents.editor import Editor
 from heraldesk.agents.errors import AgentRunError
+from heraldesk.agents.profile_editor import ProfileEditor
 from heraldesk.agents.runner import AgentRunner, AgentRunResult
 from heraldesk.agents.schemas import (
     ComplianceInput,
     Draft,
     EditorInput,
     EditorReply,
+    ProfileEditInput,
+    ProfilePatchProposal,
     RiskAssessment,
     StudioTurn,
     WriterInput,
@@ -45,6 +49,12 @@ from heraldesk.domain.content import ContentState, transition
 from heraldesk.domain.profiles import load_profile, profile_summary
 from heraldesk.llm.types import LLMProvider
 from heraldesk.quality.lint import lint
+from heraldesk.web.profile_editor import (
+    PROFILE_FILES,
+    ProfileEditError,
+    read_profile_files,
+    save_profile_files,
+)
 
 MAX_MESSAGE_CHARS = 4000
 MAX_TITLE_CHARS = 200
@@ -100,6 +110,16 @@ class StudioDraftResult:
     approval_id: int | None
     blocked: bool
     reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class StudioPatchResult:
+    """The outcome of applying a profile patch."""
+
+    slug: str
+    file: str
+    old_hash: str
+    new_hash: str
 
 
 def _collapse(text: str, limit: int) -> str:
@@ -218,6 +238,7 @@ class StudioService:
         role: str = "editor",
         platform: str | None = None,
         constraints: Any = None,
+        file: str | None = None,
     ) -> StudioTurnResult:
         """Run one role turn and store the user and assistant messages.
 
@@ -227,10 +248,14 @@ class StudioService:
         :class:`AgentRunner`.
         """
         self._require_enabled()
-        if role not in ("editor", "writer", "compliance"):
-            raise StudioRoleError(f"unknown role '{role}'; expected editor, writer or compliance")
+        if role not in ("editor", "writer", "compliance", "profile"):
+            raise StudioRoleError(
+                f"unknown role '{role}'; expected editor, writer, compliance or profile"
+            )
         if role == "writer" and not platform:
             raise StudioError("the writer role requires a target platform")
+        if role == "profile" and file not in PROFILE_FILES:
+            raise StudioError(f"the profile role requires a file in {', '.join(PROFILE_FILES)}")
         if self._provider is None or not self._model:
             raise StudioError("no LLM provider is configured for the Draft Room")
         message = text.strip()
@@ -297,6 +322,38 @@ class StudioService:
             reply = self._redactor.redact(run.output.body)
             artifact_type = "draft"
             artifact_json = {**run.output.model_dump(mode="json"), "platform": platform}
+        elif role == "profile":
+            state = read_profile_files(self._layout, summary.slug)
+            current = state.files[file or ""]
+            run = runner.run(
+                ProfileEditor(),
+                context,
+                ProfileEditInput(
+                    file=cast(Any, file), current_text=current, instruction=safe_message
+                ),
+            )
+            if not isinstance(run.output, ProfilePatchProposal):
+                raise StudioError("profile editor returned an unexpected output type")
+            assistant_role = "profile"
+            reply = self._redactor.redact(run.output.rationale.strip())
+            base_hash = hashlib.sha256(current.encode("utf-8")).hexdigest()
+            diff = "".join(
+                difflib.unified_diff(
+                    current.splitlines(keepends=True),
+                    run.output.proposed_text.splitlines(keepends=True),
+                    fromfile=f"{summary.slug}/{file}",
+                    tofile=f"{summary.slug}/{file} (proposed)",
+                )
+            )
+            artifact_type = "profile_patch"
+            artifact_json = {
+                "file": file,
+                "rationale": run.output.rationale,
+                "proposed_text": run.output.proposed_text,
+                "base_hash": base_hash,
+                "diff": diff,
+                "applied": False,
+            }
         else:
             draft = self._latest_draft(scope, thread_id)
             if draft is None:
@@ -570,6 +627,66 @@ class StudioService:
             False,
             None,
         )
+
+    def apply_profile_patch(self, scope: ProfileScope, message_id: int) -> StudioPatchResult:
+        """Apply a profile patch after re-checking the base hash.
+
+        The current file must still match ``base_hash`` recorded when the patch was
+        proposed. The four files are staged and validated before the target file is
+        swapped, then the profile is reloaded and audited. No patch is applied without an
+        explicit call from the operator.
+        """
+        self._require_enabled()
+        message = self._messages.get(scope, message_id)
+        if message is None:
+            raise StudioNotFoundError(f"studio message {message_id} does not exist")
+        if message.artifact_type != "profile_patch":
+            raise StudioError("only a profile patch can be applied")
+        data = message.artifact_json or {}
+        if data.get("applied"):
+            raise StudioError("this patch has already been applied")
+        file = data.get("file")
+        proposed_text = data.get("proposed_text")
+        base_hash = data.get("base_hash")
+        if file not in PROFILE_FILES:
+            raise StudioError("the patch has no valid target file")
+        if not isinstance(proposed_text, str) or not proposed_text.strip():
+            raise StudioError("the patch has no proposed content")
+        if not isinstance(base_hash, str):
+            raise StudioError("the patch has no base hash")
+
+        summary = profile_summary(self._session, scope)
+        state = read_profile_files(self._layout, summary.slug)
+        current = state.files[file]
+        current_hash = hashlib.sha256(current.encode("utf-8")).hexdigest()
+        if current_hash != base_hash:
+            raise StudioError(f"{file} changed since the patch was proposed; regenerate the patch")
+
+        files = dict(state.files)
+        files[file] = proposed_text
+        try:
+            save_profile_files(self._session, self._layout, summary.slug, files)
+        except ProfileEditError as exc:
+            raise StudioError(self._redactor.redact(str(exc))[:MAX_AUDIT_TEXT]) from exc
+
+        new_hash = hashlib.sha256(proposed_text.encode("utf-8")).hexdigest()
+        data["applied"] = True
+        message.artifact_json = data
+        self._session.flush()
+        self._audit.record(
+            scope,
+            actor="user",
+            action="studio.profile_patch_applied",
+            entity="profile",
+            entity_id=scope.profile_id,
+            payload={
+                "slug": summary.slug,
+                "file": file,
+                "old_hash": current_hash,
+                "new_hash": new_hash,
+            },
+        )
+        return StudioPatchResult(summary.slug, file, current_hash, new_hash)
 
     def _history(self, scope: ProfileScope, thread_id: int) -> list[StudioTurn]:
         total_messages = self._messages.count(scope, thread_id)

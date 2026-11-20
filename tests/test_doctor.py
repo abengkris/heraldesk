@@ -241,7 +241,7 @@ def test_cli_doctor_accepts_online_flag(initialized: InitResult) -> None:
 def test_initialize_helper_is_used_by_fixture(initialized: InitResult) -> None:
     home = initialized.layout.home
     assert (home / "heraldesk.db").is_file()
-    assert initialize(home).revision == "0011"
+    assert initialize(home).revision == "0012"
 
 
 def test_short_explicit_admin_token_warns(

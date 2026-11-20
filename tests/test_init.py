@@ -23,7 +23,7 @@ def test_init_creates_the_data_folder(home: Path) -> None:
     assert result.config_created is True
     assert result.key_created is True
     assert result.db_created is True
-    assert result.revision == "0011"
+    assert result.revision == "0012"
     for directory in ("profiles", "agents", "logs", "backups"):
         assert (home / directory).is_dir()
 
@@ -53,7 +53,7 @@ def test_init_creates_a_wal_database_with_the_baseline(home: Path) -> None:
     assert status.exists
     assert status.error is None
     assert status.journal_mode == "wal"
-    assert status.revision == "0011"
+    assert status.revision == "0012"
 
 
 def test_init_is_idempotent_and_keeps_user_edits(home: Path) -> None:
@@ -68,7 +68,7 @@ def test_init_is_idempotent_and_keeps_user_edits(home: Path) -> None:
     assert result.config_created is False
     assert result.key_created is False
     assert result.db_created is False
-    assert result.revision == "0011"
+    assert result.revision == "0012"
     assert "8888" in config_path.read_text(encoding="utf-8")
     assert key_path.read_bytes() == original_key
 

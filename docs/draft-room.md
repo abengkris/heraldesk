@@ -1,8 +1,8 @@
 # Draft Room (proposed)
 
-Status: **DR1–DR3 implemented; DR4–DR5 pending.** Backend (1.18.6), conversation UI
-(1.18.8), and draft creation with lint + Compliance (1.18.9) are in. Profile patches and
-hardening remain.
+Status: **DR1–DR4 implemented; DR5 pending.** Backend (1.18.6), conversation UI
+(1.18.8), draft creation (1.18.9), and profile patches (1.18.11) are in. Hardening and
+accessibility remain.
 
 ## Problem
 
@@ -38,6 +38,7 @@ The first version exposes three roles:
 | Editor | Default conversational partner; plans, asks clarifying questions, proposes next steps | text |
 | Writer | Turns a concrete idea into a platform-aware draft | `draft` artifact |
 | Compliance | Reviews the latest draft in the thread | `compliance` artifact |
+| Profile | Proposes a full replacement for one profile file | `profile_patch` artifact |
 
 Strategist and Researcher join later. Researcher needs a citation/source UI before it can
 be called safely from a conversation.
@@ -266,7 +267,7 @@ Each criterion needs an offline test with the fake LLM provider.
 - [x] **AC-8** A compliance `block` produces a `blocked` item and no approval.
 - [x] **AC-9** A draft over the platform limit is rejected before any content item is
   created.
-- [ ] **AC-10** A profile patch with a stale `base_hash` is refused; a valid patch writes
+- [x] **AC-10** A profile patch with a stale `base_hash` is refused; a valid patch writes
   atomically, reloads the profile and audits old and new hashes.
 - [x] **AC-11** A turn over `studio.max_cost_usd` is refused before the LLM call and
   records no message.
@@ -285,8 +286,8 @@ Each criterion needs an offline test with the fake LLM provider.
 | DR1 | config, tables, service, Editor schema, fake-provider tests | **done in 1.18.6** |
 | DR2 | thread list, message pane, Editor role selector, archive | **done in 1.18.8** |
 | DR3 | artifact cards and “Create draft” with lint and compliance | **done in 1.18.9** |
-| DR4 | profile patches with diff and confirmation | next |
-| DR5 | hardening, docs, accessibility, release | planned |
+| DR4 | profile patches with diff and confirmation | **done in 1.18.11** |
+| DR5 | hardening, docs, accessibility, release | next |
 
 ## Out of scope
 

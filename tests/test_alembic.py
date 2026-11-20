@@ -188,6 +188,7 @@ def test_migration_scripts_are_present() -> None:
     assert list((directory / "versions").glob("0009*.py"))
     assert list((directory / "versions").glob("0010*.py"))
     assert list((directory / "versions").glob("0011*.py"))
+    assert list((directory / "versions").glob("0012*.py"))
 
 
 def test_downgrade_to_base_clears_the_revision(initialized: InitResult) -> None:

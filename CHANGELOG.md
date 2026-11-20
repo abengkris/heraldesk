@@ -6,6 +6,21 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.11] - 2026-11-20
+
+### Added
+
+- Draft Room profile patches (DR4). A new Profile role proposes a full replacement for
+  one profile file with a diff and a base hash. The operator reviews the diff and applies
+  it; applying re-checks the hash, validates all four files, writes atomically, reloads
+  the profile and audits old and new hashes.
+- Migration `0012` adds the `profile` role to the studio message role set.
+
+### Security
+
+- A patch with a stale base hash is refused. No profile file is written without an explicit
+  apply action and a passing validation.
+
 ## [1.18.10] - 2026-11-20
 
 ### Added

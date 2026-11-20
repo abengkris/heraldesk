@@ -215,7 +215,7 @@ def test_health_reports_version_and_database(initialized: InitResult) -> None:
     assert body["status"] == "ok"
     assert body["version"] == __version__
     assert body["db"]["ok"] is True
-    assert body["db"]["revision"] == "0011"
+    assert body["db"]["revision"] == "0012"
 
 
 def test_status_reports_profiles_and_queue_counts(
@@ -555,4 +555,4 @@ def test_health_reports_a_stale_schema(initialized: InitResult) -> None:
     body = response.json()
     assert body["status"] == "error"
     assert body["db"]["revision"] == "0009"
-    assert body["db"]["expected_revision"] == "0011"
+    assert body["db"]["expected_revision"] == "0012"

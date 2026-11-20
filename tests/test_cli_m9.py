@@ -215,9 +215,9 @@ def test_restore_migrates_an_older_backup(initialized: InitResult, tmp_path: Pat
     result = invoke("restore", str(archive), "--force")
 
     assert result.exit_code == 0, result.output
-    assert "Schema revision: 0011" in result.output
+    assert "Schema revision: 0012" in result.output
     assert "Safety backup:" in result.output
-    assert inspect_database(initialized.layout.db_path).revision == "0011"
+    assert inspect_database(initialized.layout.db_path).revision == "0012"
 
 
 def test_backup_prune_command(initialized: InitResult) -> None:

@@ -869,6 +869,7 @@ def _studio_thread_payload(
         "draft_text": draft_text,
         "notice": notice,
         "platforms": ["threads", "nostr", "fake"],
+        "profile_files": list(PROFILE_FILES),
     }
 
 
@@ -941,6 +942,7 @@ async def studio_message_create(request: Request, thread_id: int) -> Response:
     text = _form_value(form, "text")
     role = _form_value(form, "role").strip() or "editor"
     platform = _form_value(form, "platform").strip() or None
+    file = _form_value(form, "file").strip() or None
     with ctx.database.session() as db:
         scope = StudioThreadRepository(db).scope_for(thread_id)
         if scope is None:
@@ -948,7 +950,13 @@ async def studio_message_create(request: Request, thread_id: int) -> Response:
         constraints = constraints_for(platform) if platform else None
         try:
             _studio_service(ctx, db, with_provider=True).send_message(
-                scope, thread_id, text, role=role, platform=platform, constraints=constraints
+                scope,
+                thread_id,
+                text,
+                role=role,
+                platform=platform,
+                constraints=constraints,
+                file=file,
             )
         except (AgentRunError, LLMError, StudioError, ValueError) as exc:
             error = ctx.redactor.redact(str(exc))[:500]
@@ -1002,6 +1010,35 @@ async def studio_draft_create(request: Request, message_id: int) -> Response:
     if result.blocked:
         return RedirectResponse(f"/studio/{thread_id}?notice=blocked", status_code=303)
     return RedirectResponse("/queue?ok=drafted", status_code=303)
+
+
+@router.post("/studio/{message_id}/patch", response_class=HTMLResponse)
+async def studio_patch_apply(request: Request, message_id: int) -> Response:
+    """Apply a profile patch after re-checking its base hash."""
+    ctx = _require_studio(request)
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    with ctx.database.session() as db:
+        repository = StudioMessageRepository(db)
+        located = repository.locate(message_id)
+        if located is None:
+            raise NotFound(f"studio message {message_id} does not exist")
+        scope, thread_id = located
+        try:
+            _studio_service(ctx, db).apply_profile_patch(scope, message_id)
+        except StudioError as exc:
+            error = ctx.redactor.redact(str(exc))[:500]
+            payload = _studio_thread_payload(ctx, db, thread_id, error=error)
+            return _page(
+                request,
+                session,
+                "studio_thread.html",
+                "studio",
+                status_code=400,
+                **payload,
+            )
+    return RedirectResponse(f"/studio/{thread_id}?notice=applied", status_code=303)
 
 
 @router.post("/studio/{thread_id}/archive", response_class=HTMLResponse)
@@ -1136,4 +1173,5 @@ def _notice(code: str | None) -> str | None:
         "generated": "Report generated.",
         "drafted": "Draft created and queued for approval.",
         "blocked": "Draft created but blocked; see the reason in the queue.",
+        "applied": "Profile patch applied and the profile reloaded.",
     }.get(code or "")

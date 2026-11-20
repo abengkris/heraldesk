@@ -513,8 +513,8 @@ def test_api_ready_reports_schema_and_services(initialized: InitResult) -> None:
     body = response.json()
     assert body["status"] == "ok"
     assert body["db"]["ok"] is True
-    assert body["db"]["revision"] == "0011"
-    assert body["db"]["expected_revision"] == "0011"
+    assert body["db"]["revision"] == "0012"
+    assert body["db"]["expected_revision"] == "0012"
     assert body["scheduler"]["running"] is True
     assert body["telegram"]["mode"] == "polling"
 
@@ -532,7 +532,7 @@ def test_api_ready_returns_503_for_a_stale_schema(initialized: InitResult) -> No
     body = response.json()
     assert body["status"] == "degraded"
     assert body["db"]["revision"] == "0009"
-    assert body["db"]["expected_revision"] == "0011"
+    assert body["db"]["expected_revision"] == "0012"
 
 
 def test_api_calendar_lists_scheduled_items(

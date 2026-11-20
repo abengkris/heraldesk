@@ -608,7 +608,7 @@ class StudioMessage(Base):
     __tablename__ = "studio_messages"
     __table_args__ = (
         CheckConstraint(
-            "role IN ('user','editor','writer','compliance','system')",
+            "role IN ('user','editor','writer','compliance','system','profile')",
             name="ck_studio_messages_role",
         ),
         CheckConstraint(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import inspect
 import re
 
@@ -32,6 +33,7 @@ from heraldesk.studio import (
     StudioNotFoundError,
     StudioService,
 )
+from heraldesk.web.profile_editor import read_profile_files
 from tests.conftest import ProfileSetup
 
 pytestmark = pytest.mark.core
@@ -591,4 +593,148 @@ def test_create_draft_from_the_ui(
 
     assert (
         ContentItemRepository(db_session).list(profile_setup.scope)[0].state == "pending_approval"
+    )
+
+
+def _patch_artifact(profile_setup: ProfileSetup, *, base_hash: str | None = None) -> dict:
+    slug = "acme"
+    state = read_profile_files(profile_setup.layout, slug)
+    current = state.files["soul.md"]
+    proposed = current + "\n"
+    return {
+        "file": "soul.md",
+        "rationale": "warmer greeting",
+        "proposed_text": proposed,
+        "base_hash": base_hash or hashlib.sha256(current.encode("utf-8")).hexdigest(),
+        "diff": "+warmer",
+        "applied": False,
+    }
+
+
+def test_profile_role_proposes_a_patch(profile_setup: ProfileSetup, db_session: Session) -> None:
+    state = read_profile_files(profile_setup.layout, "acme")
+    current = state.files["soul.md"]
+    proposed = current + "\n"
+    fake = FakeLLM(
+        role_responses={
+            "profile": [
+                '{"file": "soul.md", "rationale": "warmer", "proposed_text": '
+                + __import__("json").dumps(proposed)
+                + "}"
+            ],
+        }
+    )
+    service = service_for(profile_setup, db_session, provider=fake)
+    thread = service.create_thread(profile_setup.scope)
+
+    service.send_message(
+        profile_setup.scope, thread.id, "make it warmer", role="profile", file="soul.md"
+    )
+    db_session.commit()
+
+    message = StudioMessageRepository(db_session).list_messages(profile_setup.scope, thread.id)[-1]
+    assert message.role == "profile"
+    assert message.artifact_type == "profile_patch"
+    assert message.artifact_json is not None
+    assert message.artifact_json["base_hash"] == hashlib.sha256(current.encode("utf-8")).hexdigest()
+    assert message.artifact_json["file"] == "soul.md"
+
+
+def test_apply_profile_patch_writes_and_audits(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    artifact = _patch_artifact(profile_setup)
+    thread = service_for(profile_setup, db_session).create_thread(profile_setup.scope)
+    message = StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="profile",
+        content="warmer",
+        artifact_type="profile_patch",
+        artifact_json=artifact,
+    )
+    db_session.flush()
+
+    service = service_for(profile_setup, db_session)
+    result = service.apply_profile_patch(profile_setup.scope, message.id)
+    db_session.commit()
+
+    assert result.file == "soul.md"
+    assert result.old_hash == artifact["base_hash"]
+    assert result.new_hash == hashlib.sha256(artifact["proposed_text"].encode("utf-8")).hexdigest()
+    assert (
+        read_profile_files(profile_setup.layout, "acme").files["soul.md"]
+        == artifact["proposed_text"]
+    )
+    entries = AuditService(db_session).history(profile_setup.scope, limit=50)
+    actions = [entry.action for entry in entries]
+    assert "studio.profile_patch_applied" in actions
+    payloads = " ".join(str(entry.payload) for entry in entries)
+    assert result.old_hash in payloads
+
+
+def test_apply_refuses_a_stale_base_hash(profile_setup: ProfileSetup, db_session: Session) -> None:
+    artifact = _patch_artifact(profile_setup, base_hash="0" * 64)
+    thread = service_for(profile_setup, db_session).create_thread(profile_setup.scope)
+    message = StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="profile",
+        content="warmer",
+        artifact_type="profile_patch",
+        artifact_json=artifact,
+    )
+    db_session.flush()
+
+    service = service_for(profile_setup, db_session)
+    with pytest.raises(StudioError):
+        service.apply_profile_patch(profile_setup.scope, message.id)
+
+
+def test_apply_refuses_a_non_patch_artifact(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    service = service_for(profile_setup, db_session, provider=FakeLLM())
+    thread = service.create_thread(profile_setup.scope)
+    service.send_message(profile_setup.scope, thread.id, "ship it", role="writer", platform="fake")
+    draft_message = StudioMessageRepository(db_session).list_messages(
+        profile_setup.scope, thread.id
+    )[-1]
+
+    with pytest.raises(StudioError):
+        service.apply_profile_patch(profile_setup.scope, draft_message.id)
+
+
+def test_apply_patch_from_the_ui(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    artifact = _patch_artifact(profile_setup)
+    thread = service_for(profile_setup, db_session).create_thread(profile_setup.scope)
+    message = StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="profile",
+        content="warmer",
+        artifact_type="profile_patch",
+        artifact_json=artifact,
+    )
+    db_session.commit()
+
+    write_studio_config(initialized, enabled=True, fake_llm=True)
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{thread.id}")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        response = client.post(
+            f"/studio/{message.id}/patch",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303, response.text
+        assert "notice=applied" in response.headers["location"]
+
+    assert (
+        read_profile_files(profile_setup.layout, "acme").files["soul.md"]
+        == artifact["proposed_text"]
     )
