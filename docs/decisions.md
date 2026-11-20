@@ -1265,3 +1265,13 @@ The next product goal is a native Draft Room: a conversational editor-in-chief i
 Web UI that can propose ideas, drafts and profile patches. It must not approve or publish;
 those remain explicit human actions through the existing state machine. The domain layer
 stays API-first so an MCP adapter can reuse it later without being the primary interface.
+
+## Copy editing is a suggestion, not a pipeline gate (2026-11-20)
+
+A mandatory KBBI-style proofreader would flatten casual brand voice: `nggak` becomes
+`tidak`, `banget` becomes `sangat`, and fragments become corporate sentences. That is a
+style change, not a correctness fix. Future copy editing is therefore opt-in
+(`copyedit: off|suggest`), suggestion-only, diff-based, and subordinate to the profile
+voice files. Deterministic typo checks come first; an optional LLM pass handles ambiguous
+cases and must preserve slang, register, code-switching and casing. Nothing auto-applies,
+and the step never blocks approval. See `docs/copyedit.md`.

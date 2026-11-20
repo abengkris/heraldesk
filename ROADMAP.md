@@ -64,6 +64,10 @@ and acceptance criteria are written.
   official API access and testable behavior are available.
 - [ ] **Optional headless mode** (`heraldesk mcp`) for power users who bring their own
   agent. Not the default product and not a replacement for the Web UI.
+- [ ] **Voice-aware copy-edit suggestions.** Off by default; deterministic typo checks
+  first, then an optional LLM diff that preserves slang, register and code-switching.
+  Never auto-applies and never blocks approval. See
+  [`docs/copyedit.md`](docs/copyedit.md).
 
 Out of scope: multi-user/multi-tenant, billing, hosted cloud, native mobile app, video
 generation, auto-DM outreach, scraping without official APIs.

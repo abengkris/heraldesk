@@ -33,6 +33,7 @@ def test_key_documents_are_present_and_non_empty() -> None:
         "CHANGELOG.md",
         "docs/architecture.md",
         "docs/decisions.md",
+        "docs/copyedit.md",
         "docs/draft-room.md",
         "docs/open-questions.md",
         "docs/platforms/README.md",
@@ -49,6 +50,14 @@ def test_key_documents_are_present_and_non_empty() -> None:
 def test_readme_links_the_provider_guide() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "docs/providers.md" in text
+
+
+def test_copyedit_spec_preserves_voice_and_human_control() -> None:
+    text = (ROOT / "docs/copyedit.md").read_text(encoding="utf-8")
+    assert "auto-appl" in text.lower()
+    assert "nggak" in text
+    assert "pesaikannya" in text
+    assert "copyedit: off | suggest" in text
 
 
 def test_draft_room_spec_keeps_the_approval_boundary() -> None:
