@@ -738,3 +738,62 @@ def test_apply_patch_from_the_ui(
         read_profile_files(profile_setup.layout, "acme").files["soul.md"]
         == artifact["proposed_text"]
     )
+
+
+def test_compliance_requires_a_draft(profile_setup: ProfileSetup, db_session: Session) -> None:
+    service = service_for(profile_setup, db_session, provider=FakeLLM())
+    thread = service.create_thread(profile_setup.scope)
+
+    with pytest.raises(StudioError):
+        service.send_message(profile_setup.scope, thread.id, "review it", role="compliance")
+
+
+def test_profile_role_rejects_an_unknown_file(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    fake = FakeLLM()
+    service = service_for(profile_setup, db_session, provider=fake)
+    thread = service.create_thread(profile_setup.scope)
+
+    with pytest.raises(StudioError):
+        service.send_message(
+            profile_setup.scope, thread.id, "change it", role="profile", file="nope.md"
+        )
+    assert fake.calls == []
+
+
+def test_create_draft_is_idempotent(profile_setup: ProfileSetup, db_session: Session) -> None:
+    service = service_for(profile_setup, db_session, provider=FakeLLM())
+    thread = service.create_thread(profile_setup.scope)
+    service.send_message(profile_setup.scope, thread.id, "ship it", role="writer", platform="fake")
+    draft_message = StudioMessageRepository(db_session).list_messages(
+        profile_setup.scope, thread.id
+    )[-1]
+    service.create_draft(profile_setup.scope, draft_message.id, constraints=constraints_for("fake"))
+    db_session.commit()
+
+    with pytest.raises(StudioError):
+        service.create_draft(
+            profile_setup.scope, draft_message.id, constraints=constraints_for("fake")
+        )
+
+
+def test_apply_patch_is_idempotent(profile_setup: ProfileSetup, db_session: Session) -> None:
+    artifact = _patch_artifact(profile_setup)
+    thread = service_for(profile_setup, db_session).create_thread(profile_setup.scope)
+    message = StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="profile",
+        content="warmer",
+        artifact_type="profile_patch",
+        artifact_json=artifact,
+    )
+    db_session.flush()
+
+    service = service_for(profile_setup, db_session)
+    service.apply_profile_patch(profile_setup.scope, message.id)
+    db_session.commit()
+
+    with pytest.raises(StudioError):
+        service.apply_profile_patch(profile_setup.scope, message.id)

@@ -1,8 +1,8 @@
 # Draft Room (proposed)
 
-Status: **DR1–DR4 implemented; DR5 pending.** Backend (1.18.6), conversation UI
-(1.18.8), draft creation (1.18.9), and profile patches (1.18.11) are in. Hardening and
-accessibility remain.
+Status: **complete.** DR1–DR5 shipped across 1.18.6, 1.18.8, 1.18.9, 1.18.11 and
+1.18.12. The Draft Room is disabled by default and covers planning, drafting, compliance
+review and profile patches, with no approval or publish path.
 
 ## Problem
 
@@ -287,7 +287,7 @@ Each criterion needs an offline test with the fake LLM provider.
 | DR2 | thread list, message pane, Editor role selector, archive | **done in 1.18.8** |
 | DR3 | artifact cards and “Create draft” with lint and compliance | **done in 1.18.9** |
 | DR4 | profile patches with diff and confirmation | **done in 1.18.11** |
-| DR5 | hardening, docs, accessibility, release | next |
+| DR5 | hardening, docs, accessibility, release | **done in 1.18.12** |
 
 ## Out of scope
 

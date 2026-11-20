@@ -6,6 +6,15 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.12] - 2026-11-20
+
+### Changed
+
+- Draft Room hardening (DR5): edge-case and idempotency tests for compliance without a
+  draft, unknown profile files, repeated draft creation and repeated patch application.
+- The Draft Room spec is marked complete; accessibility labels and live regions are in
+  place on the thread and artifact views.
+
 ## [1.18.11] - 2026-11-20
 
 ### Added

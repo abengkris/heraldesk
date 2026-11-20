@@ -49,10 +49,12 @@ current summary.
   compliance artifacts, "Create draft" with lint + Compliance into pending_approval)
 - [x] M32 Draft Room profile patches (DR4: Profile role, patch artifact with diff and
   base-hash check, atomic apply with validation, reload and audit)
+- [x] M33 Draft Room hardening (DR5: edge-case and idempotency tests, accessibility and
+  docs alignment)
 
 ## Infrastructure status
 
-M0–M32 are complete. The core is feature-complete for a single-user, self-hosted
+M0–M33 are complete. The core is feature-complete for a single-user, self-hosted
 deployment: CLI, Web UI, REST API, scheduler, Telegram, Nostr and Threads publishing,
 backups and restore, key rotation, PyPI and container releases, and Python 3.12–3.14.
 
@@ -61,12 +63,9 @@ backups and restore, key rotation, PyPI and container releases, and Python 3.12�
 These are product goals, not committed milestones. Each starts only after its own design
 and acceptance criteria are written.
 
-- [ ] **All-in-one Heraldesk.** A native Draft Room / editor-in-chief. Conversation
-  produces proposals (an idea, a draft, a profile patch) and never approves or publishes.
-  The deterministic pipeline and the human approval boundary stay unchanged. The DR1
-  backend, DR2 UI, DR3 draft creation and DR4 profile patches landed in
-  1.18.6/1.18.8/1.18.9/1.18.11. See [`docs/draft-room.md`](docs/draft-room.md) for the
-  specification.
+- [x] **All-in-one Heraldesk.** The native Draft Room is complete (DR1–DR5): planning,
+  Writer drafts, Compliance review and profile patches, all disabled by default and with
+  no approve or publish path. See [`docs/draft-room.md`](docs/draft-room.md).
 - [ ] **Real X/Facebook/Instagram/LinkedIn adapters**, or first-party plugins, when
   official API access and testable behavior are available.
 - [ ] **Optional headless mode** (`heraldesk mcp`) for power users who bring their own
