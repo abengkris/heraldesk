@@ -125,7 +125,8 @@ These classes were kept during the redesign and should be deleted once no templa
   `soul.md` and `brief.md` changes are not classified.
 - The stale-hash re-check and the atomic write run under one process-wide lock
   (`profile_editor._PROFILE_EDIT_LOCK`), so two concurrent saves cannot both pass the hash
-  check.
+  check. This lock assumes the supported single-process server (one worker); running
+  multiple worker processes is unsupported and would not share the lock.
 - The `policy.yaml` helper (**approach a**) updates only `default_mode`, `max_posts_per_day` and
   `quiet_hours` with a minimal line-level text edit. It preserves comments and key order and
   refuses shapes it cannot edit safely, telling the user to edit the YAML directly. A YAML

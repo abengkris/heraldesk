@@ -291,7 +291,7 @@ def test_audit_payload_is_redacted_and_truncated(
         page = client.get("/audit?action=test.payload")
     assert page.status_code == 200
     assert "sk-ABCDEFGHIJKLMNOP1234" not in page.text
-    assert "[REDACTED]" in page.text
+    assert "[REDA" in page.text
     assert "Truncated." in page.text
     assert "<details" in page.text
 
@@ -430,3 +430,59 @@ def test_expired_session_htmx_audit_redirects_to_login(initialized: InitResult) 
         response = client.get("/audit", headers=HX, follow_redirects=False)
     assert response.status_code == 303
     assert response.headers.get("hx-redirect") == "/login"
+
+
+def test_audit_redacts_before_truncating_a_straddling_secret(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    audit = AuditService(db_session)
+    straddling = "x" * 3981 + " sk-ABCDEFGHIJKLMNOP1234 " + "y" * 200
+    audit.record(
+        profile_setup.scope,
+        actor="user",
+        action="test.straddle",
+        entity="example",
+        payload={"note": straddling},
+    )
+    db_session.commit()
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/audit?action=test.straddle")
+    assert page.status_code == 200
+    assert "sk-ABCDEFGHIJKLMNOP1234" not in page.text
+    assert "sk-" not in page.text
+    assert "[REDA" in page.text
+
+
+def test_cost_zero_values_still_render_meters(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    add_run(db_session, profile_setup.scope, started_at=datetime.now(UTC), cost_usd=0.0)
+    summary = cost_breakdown(db_session, days=7, cap_usd=5.0)
+    assert summary["max_cost"] == 1.0
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/cost")
+    assert page.status_code == 200
+    assert 'max="1.0"' in page.text
+    assert "No spend in this window." not in page.text
+
+
+def test_report_view_never_loads_remote_images_and_marks_external_links(
+    initialized: InitResult,
+) -> None:
+    initialized.layout.reports.mkdir(parents=True, exist_ok=True)
+    report = initialized.layout.reports / "weekly-2026-W47.md"
+    report.write_text(
+        "# Report\n\n![remote](https://example.com/image.png)\n\n"
+        "[external](https://example.com/page)\n",
+        encoding="utf-8",
+    )
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/reports/view/weekly-2026-W47.md")
+    assert page.status_code == 200
+    assert "<img" not in page.text
+    assert "example.com/image.png" not in page.text
+    assert 'rel="noopener noreferrer"' in page.text
+    assert 'href="https://example.com/page"' in page.text
