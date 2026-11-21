@@ -8,10 +8,10 @@
   </div>
 </div>
 
-{% if notice %}<p class="notice ok" role="status">{{ notice }}</p>{% endif %}
+{% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
 {% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
 
-<section class="grid two report-generate" aria-label="Generate a report">
+<section class="report-generate" aria-label="Generate a report">
   <form method="post" action="/reports/weekly" class="card stack"
         hx-post="/reports/weekly" hx-target="#report-list" hx-swap="outerHTML"
         hx-disabled-elt="find button">

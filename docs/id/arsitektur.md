@@ -1,6 +1,6 @@
 > **Terjemahan ini tertinggal dari implementasi.** Dokumen berbahasa Inggris
 > [`docs/architecture.md`](../architecture.md) adalah sumber kebenaran. Beberapa bagian di
-> bawah masih menggambarkan rencana lama (Tailwind, aiogram, argon2, Docker/PyPI yang
+> bawah masih menggambarkan rencana lama (aiogram, argon2, Docker/PyPI yang
 > belum ada, dan lain-lain). Gunakan versi Inggris dan `ROADMAP.md` untuk status terkini.
 
 # Heraldesk: Arsitektur Teknis (Departemen Social Media Manager Otonom, Open Source, Single-User, Self-Hosted)
@@ -30,7 +30,7 @@ Antarmuka: CLI, Telegram, dan Web UI lokal. Tidak ada layanan cloud milik proyek
 |---|---|
 | Bahasa | Python 3.12 |
 | API/Web server | FastAPI + Uvicorn |
-| Web UI | Jinja2 + HTMX + Tailwind (CSS sudah di-build dan di-commit, tanpa Node saat runtime) |
+| Web UI | Jinja2 + HTMX (vendored) + CSS tulis tangan dengan variabel, tanpa build Node, tanpa Tailwind |
 | Database | SQLite (mode WAL), via SQLAlchemy 2.x + Alembic. Kode tidak boleh memakai fitur khusus SQLite yang menghalangi pindah ke Postgres kelak |
 | Scheduler | APScheduler (in-process); job persisten di tabel `jobs` agar lanjut setelah restart |
 | LLM | LiteLLM (DeepSeek, Claude, OpenAI, Gemini, OpenRouter, Ollama) |

@@ -22,6 +22,7 @@ from heraldesk.db.repositories import (
     StudioMessageRepository,
 )
 from heraldesk.db.scope import ProfileScope
+from heraldesk.domain.profile_edit import read_profile_files
 from heraldesk.domain.profiles import register_definition
 from heraldesk.llm.fake import FakeLLM
 from heraldesk.platforms.base import constraints_for
@@ -33,7 +34,6 @@ from heraldesk.studio import (
     StudioNotFoundError,
     StudioService,
 )
-from heraldesk.web.profile_editor import read_profile_files
 from tests.conftest import ProfileSetup
 
 pytestmark = pytest.mark.core
@@ -1070,6 +1070,7 @@ def test_patch_review_step_writes_nothing_and_then_applies(
         page = client.get(f"/studio/{message.thread_id}")
         csrf = _CSRF.search(page.text)
         assert csrf is not None
+        audits_before = len(AuditService(db_session).history(profile_setup.scope, limit=200))
         review = client.post(
             f"/studio/{message.id}/patch/review",
             data={"csrf": csrf.group(1)},
@@ -1077,6 +1078,10 @@ def test_patch_review_step_writes_nothing_and_then_applies(
         )
         assert review.status_code == 200
         assert "Review profile patch" in review.text
+        db_session.expire_all()
+        assert (
+            len(AuditService(db_session).history(profile_setup.scope, limit=200)) == audits_before
+        )
         assert read_profile_files(profile_setup.layout, "acme").files["brief.md"] == original
         applied = client.post(
             f"/studio/{message.id}/patch",
@@ -1393,3 +1398,50 @@ def test_failed_status_fragment_redacts_the_error(
     assert "sk-ABCDEFGHIJKLMNOP1234" not in page.text
     assert "sk-ABCDEFGHIJKLMNOP1234" not in fragment.text
     assert "hx-trigger" not in fragment.text
+
+
+def test_hostile_notice_value_is_not_rendered(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    thread = service_for(profile_setup, db_session).create_thread(profile_setup.scope)
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{thread.id}?notice=%3Cscript%3Ealert(1)%3C/script%3E")
+    assert page.status_code == 200
+    assert "<script>alert(1)</script>" not in page.text
+    assert "alert(1)" not in page.text
+
+
+def test_patch_becomes_stale_between_review_and_confirm(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    original = read_profile_files(profile_setup.layout, "acme").files["brief.md"]
+    message = _patch_message_for(
+        profile_setup, db_session, file="brief.md", proposed_text=original + "\nPatch.\n"
+    )
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{message.thread_id}")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        review = client.post(
+            f"/studio/{message.id}/patch/review",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert review.status_code == 200
+        path = profile_setup.layout.profiles / "acme" / "brief.md"
+        concurrent = original + "\nChanged after review.\n"
+        path.write_text(concurrent, encoding="utf-8")
+        applied = client.post(
+            f"/studio/{message.id}/patch",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert applied.status_code == 400
+        assert "changed since the patch was proposed" in applied.text
+    assert path.read_text(encoding="utf-8") == concurrent

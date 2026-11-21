@@ -74,6 +74,13 @@ from heraldesk.telegram.runtime import notifier_for
 from heraldesk.web.context import AdapterFactory, WebContext
 from heraldesk.web.errors import BadRequest, NotFound, WebError
 
+RISK_SEMANTIC = {
+    "low": "ok",
+    "medium": "warn",
+    "high": "danger",
+    "blocked": "danger",
+}
+
 STATE_SEMANTIC = {
     "idea": "info",
     "drafted": "muted",
@@ -91,6 +98,13 @@ STATE_SEMANTIC = {
     "handled": "ok",
     "ignored": "muted",
 }
+
+
+def status_semantic(kind: str, value: str) -> str:
+    """Return the single semantic color name for a risk level or state."""
+    mapping = RISK_SEMANTIC if kind == "risk" else STATE_SEMANTIC
+    return mapping.get(value, "muted")
+
 
 QUEUE_COUNT_STATES = (
     "drafted",
@@ -777,23 +791,6 @@ def inbox_counts(session: Session) -> dict[str, int]:
     return InboxRepository(session).count_by_status()
 
 
-def profiles_payload(session: Session) -> list[dict[str, Any]]:
-    """Return profile metadata and queue counts for the profiles page."""
-    rows: list[dict[str, Any]] = []
-    repository = ContentItemRepository(session)
-    for summary in ProfileCatalog(session).list():
-        rows.append(
-            {
-                "slug": summary.slug,
-                "name": summary.name,
-                "status": summary.status,
-                "kill_switch": summary.kill_switch,
-                "queue": _queue_counts(repository.state_counts(ProfileScope(summary.id))),
-            }
-        )
-    return rows
-
-
 def profiles_overview(session: Session, profiles_root: Path) -> list[dict[str, Any]]:
     """Return profile metadata, queue counts and a read-only autonomy summary.
 
@@ -898,12 +895,6 @@ def dashboard_counts(session: Session) -> dict[str, Any]:
     }
 
 
-def latest_report_file(layout: paths.Layout) -> dict[str, Any] | None:
-    """Return the newest generated report metadata, if any."""
-    files = list_report_files(layout)
-    return files[0] if files else None
-
-
 def audit_login(session: Session, action: str, *, detail: str | None = None) -> None:
     """Record an authentication event without a token or full IP."""
     payload: dict[str, Any] = {}
@@ -930,13 +921,11 @@ __all__ = [
     "generate_report",
     "ignore_inbox",
     "inbox_counts",
-    "latest_report_file",
     "list_inbox_views",
     "list_queue_views",
     "list_report_files",
     "loosens_autonomy",
     "profiles_overview",
-    "profiles_payload",
     "publish_content",
     "read_report",
     "reject_by_id",
@@ -1418,7 +1407,7 @@ def calendar_week(
                 "tz": item_tz,
                 "day": day,
                 "hour": local.hour,
-                "status_class": "status-" + STATE_SEMANTIC.get(item.state, "muted"),
+                "status_class": "status-" + status_semantic("state", item.state),
             }
             items_by_cell.setdefault(f"{day}-{local.hour}", []).append(entry)
             if 0 <= day < 7:

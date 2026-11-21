@@ -45,6 +45,17 @@ from heraldesk.domain.errors import (
     ProfileNotFoundError,
     ProfileValidationError,
 )
+from heraldesk.domain.profile_edit import (
+    PROFILE_FILES,
+    ProfileEditError,
+    StaleProfileEdit,
+    apply_policy_helper,
+    content_hash,
+    policy_helper_values,
+    read_profile_files,
+    save_profile_file,
+    validate_profile_files,
+)
 from heraldesk.domain.profiles import list_profiles, load_policy, profile_summary, resolve_scope
 from heraldesk.llm.errors import LLMError
 from heraldesk.llm.factory import build_llm, resolve_model
@@ -63,17 +74,6 @@ from heraldesk.web.auth import (
 )
 from heraldesk.web.context import WebContext
 from heraldesk.web.errors import BadRequest, NotFound, WebError
-from heraldesk.web.profile_editor import (
-    PROFILE_FILES,
-    ProfileEditError,
-    StaleProfileEdit,
-    apply_policy_helper,
-    content_hash,
-    policy_helper_values,
-    read_profile_files,
-    save_profile_file,
-    validate_profile_files,
-)
 from heraldesk.web.rendering import render_markdown
 from heraldesk.web.service import (
     AUDIT_PAGE_SIZE,
@@ -99,6 +99,7 @@ from heraldesk.web.service import (
     reject_by_id,
     reply_inbox,
     report_file,
+    status_semantic,
     studio_thread_overview,
     studio_thread_status,
 )
@@ -108,6 +109,7 @@ router = APIRouter()
 _TEMPLATES = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES))
 templates.env.globals["app_version"] = __version__
+templates.env.globals["status_semantic"] = status_semantic
 
 LOGIN_CSRF_MAX_AGE = 600
 
@@ -1404,7 +1406,7 @@ def studio_thread_page(request: Request, thread_id: int, notice: str | None = No
     ctx = _require_studio(request)
     session = _session(request)
     with ctx.database.session() as db:
-        payload = _studio_thread_payload(ctx, db, thread_id, notice=notice)
+        payload = _studio_thread_payload(ctx, db, thread_id, notice=_notice(notice))
     return _page(request, session, "studio_thread.html", "studio", **payload)
 
 

@@ -1339,8 +1339,7 @@ loosening change.
 
 The shared helpers now live in `heraldesk/domain/profile_edit.py` (lock, validation, save,
 content hash, policy helper) and `heraldesk/domain/autonomy.py` (`loosens_autonomy`).
-`heraldesk/web/profile_editor.py` re-exports them for the Web UI, and the Studio imports the
-neutral domain module directly.
+Both the Web UI and the Studio import the neutral domain module directly.
 
 
 ## Draft Room stays synchronous; status polling is read-only (2026-11-21)
@@ -1350,3 +1349,13 @@ queue or new storage. The status fragment therefore reports the latest linked ag
 it polls every 5 seconds only while that run is `running`, and returns without a trigger once
 it is finished or failed. This covers crashed/stuck runs and gives the UI a place to show a
 redacted failure without changing the conversation flow.
+
+
+## Web UI redesign navigation and context (2026-11-21)
+
+The redesign keeps a few non-obvious choices in one place: after login the user lands on the
+Queue when pending items exist, otherwise the Dashboard (`/` always renders the Dashboard);
+the mobile navigation is a fixed bottom bar plus a `<details>` "More" menu; the global kill
+switch sits in the top bar on every authenticated page; and profile context is query-only
+(`?profile=`), with no new persistent state. Read-only view helpers live in `web/service.py`
+and never duplicate domain transitions.

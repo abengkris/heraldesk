@@ -200,6 +200,13 @@ def test_edit_preview_is_read_only_and_shows_a_diff(
 
     with make_client(initialized) as client:
         login(client)
+        audits_before = len(
+            [
+                row
+                for row in db_session.scalars(select(AuditLog)).all()
+                if row.action == "approval.edited"
+            ]
+        )
         csrf = _CSRF.search(client.get(f"/queue/{approval.id}").text)
         assert csrf is not None
         response = client.post(
@@ -216,6 +223,16 @@ def test_edit_preview_is_read_only_and_shows_a_diff(
     stored = ContentItemRepository(db_session).get(profile_setup.scope, item.id)
     assert stored is not None
     assert stored.body == "first draft"
+    assert (
+        len(
+            [
+                row
+                for row in db_session.scalars(select(AuditLog)).all()
+                if row.action == "approval.edited"
+            ]
+        )
+        == audits_before
+    )
 
 
 def _audit_count(session: Session) -> int:

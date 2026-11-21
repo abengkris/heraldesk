@@ -19,23 +19,23 @@
 {% else %}
 <section class="stack">
   {% if needs.pending_approval > 0 %}
-  <a class="card stat" href="/queue{{ profile_qs }}">
-    <span class="stat-label">Pending approval</span>
-    <strong class="stat-value tnum">{{ needs.pending_approval }}</strong>
+  <a class="card" href="/queue{{ profile_qs }}">
+    <span class="muted small">Pending approval</span>
+    <strong class="tnum">{{ needs.pending_approval }}</strong>
     {% if needs.oldest_pending_age %}<span class="muted small">oldest {{ needs.oldest_pending_age }} old</span>{% endif %}
   </a>
   {% endif %}
 
   {% if needs.inbox_pending > 0 %}
-  <a class="card stat" href="/inbox{{ profile_qs }}">
-    <span class="stat-label">Inbox pending</span>
-    <strong class="stat-value tnum">{{ needs.inbox_pending }}</strong>
+  <a class="card" href="/inbox{{ profile_qs }}">
+    <span class="muted small">Inbox pending</span>
+    <strong class="tnum">{{ needs.inbox_pending }}</strong>
   </a>
   {% endif %}
 
   {% if needs.next_scheduled %}
   <a class="card" href="/queue{{ profile_qs }}">
-    <span class="stat-label">Next scheduled</span>
+    <span class="muted small">Next scheduled</span>
     <strong>{{ needs.next_scheduled.when.strftime("%Y-%m-%d %H:%M") }}</strong>
     <span class="muted small">{{ needs.next_scheduled.platform }} · {{ needs.next_scheduled.profile_slug }}</span>
   </a>

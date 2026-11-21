@@ -9,10 +9,10 @@
   <a class="button ghost" href="/profiles">Back to profiles</a>
 </div>
 
-{% if notice %}<p class="notice ok" role="status">{{ notice }}</p>{% endif %}
+{% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
 {% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
 
-<nav class="tabs profile-tabs" aria-label="Profile files">
+<nav class="tabs" aria-label="Profile files">
   {% for name in files %}
   <a href="/profiles/{{ slug }}/edit?file={{ name }}" {% if name == active_file %}aria-current="page"{% endif %}>
     {{ name }}

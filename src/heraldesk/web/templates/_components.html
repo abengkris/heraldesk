@@ -1,17 +1,7 @@
 {# Reusable UI components. Import with: {% from "_components.html" import status_badge, ... %} #}
 
 {% macro status_badge(kind, value) -%}
-  {%- set risk_map = {"low": "ok", "medium": "warn", "high": "danger", "blocked": "danger"} -%}
-  {%- set state_map = {
-      "idea": "info", "drafted": "muted", "reviewed": "info",
-      "pending_approval": "warn", "approved": "ok", "scheduled": "info",
-      "published": "ok", "rejected": "danger", "failed": "danger",
-      "blocked": "danger", "cancelled": "muted", "needs_review": "warn",
-      "pending": "warn", "handled": "ok", "ignored": "muted",
-      "proposed": "info", "applied": "ok", "archived": "muted", "created": "ok"
-  } -%}
-  {%- set sem = risk_map.get(value, "muted") if kind == "risk" else state_map.get(value, "muted") -%}
-  <span class="badge status-{{ sem }}">{{ value|replace("_", " ") }}</span>
+  <span class="badge status-{{ status_semantic(kind, value) }}">{{ value|replace("_", " ") }}</span>
 {%- endmacro %}
 
 {% macro risk_badge(level) -%}
@@ -26,16 +16,6 @@
 </div>
 {%- endmacro %}
 
-{% macro page_header(title, subtitle='', actions='') -%}
-<div class="page-head">
-  <div>
-    <h1>{{ title }}</h1>
-    {% if subtitle %}<p class="muted">{{ subtitle }}</p>{% endif %}
-  </div>
-  {% if actions %}{{ actions|safe }}{% endif %}
-</div>
-{%- endmacro %}
-
 {% macro field(label, name, value='', type='text', help='', error='', required=false, autofocus=false) -%}
 <div class="field">
   <label for="{{ name }}">{{ label }}</label>
@@ -44,21 +24,5 @@
     {% if autofocus %}autofocus{% endif %}>
   {% if help %}<span class="help">{{ help }}</span>{% endif %}
   {% if error %}<span class="error-text">{{ error }}</span>{% endif %}
-</div>
-{%- endmacro %}
-
-{% macro confirm_form(action, csrf, label, message='', method='post', hidden={}) -%}
-<form method="{{ method }}" action="{{ action }}">
-  <input type="hidden" name="csrf" value="{{ csrf }}">
-  {% for key, val in hidden.items() %}<input type="hidden" name="{{ key }}" value="{{ val }}">{% endfor %}
-  {% if message %}<p class="small muted">{{ message }}</p>{% endif %}
-  <button type="submit" class="button danger">{{ label }}</button>
-</form>
-{%- endmacro %}
-
-{% macro toast(message, kind='ok') -%}
-<div class="toast status-{{ kind }}">
-  <span>{{ message }}</span>
-  <button type="button" class="toast-close" aria-label="Dismiss">×</button>
 </div>
 {%- endmacro %}

@@ -177,3 +177,13 @@ No open questions remain for M0. Later ambiguities are added here when their mil
   silently masking them. The Writer and `heraldesk queue edit` still rely on redaction on
   write. Decide whether all draft creation paths should reject, and whether the CLI needs
   an interactive confirmation. Not changed yet.
+
+
+- [ ] (2026-11-21, Web UI) **Should the inbox classify crisis or complaint messages?**
+  The current inbox sorts by status then age and leaves room for a future marker. No
+  categorization, storage or UI was added in the redesign; decide the taxonomy and whether it
+  belongs in the domain or the web layer.
+
+- [ ] (2026-11-21, Web UI) **Should lint findings be stored for display?**
+  The Draft Room and queue show lint/Compliance results from existing run fields. Persisting a
+  separate lint findings history would need new storage; decide whether that is worth it.

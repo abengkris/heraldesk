@@ -13,8 +13,8 @@ from heraldesk.api.app import AppOptions, create_app
 from heraldesk.config import Config, load_config
 from heraldesk.core.bootstrap import InitResult
 from heraldesk.db.models import AuditLog
+from heraldesk.domain.profile_edit import apply_policy_helper
 from heraldesk.domain.profiles import load_profile
-from heraldesk.web.profile_editor import apply_policy_helper
 from heraldesk.web.service import loosens_autonomy
 from tests.conftest import ProfileSetup
 
@@ -622,7 +622,7 @@ def test_concurrent_saves_cannot_both_pass_the_hash_check(
     from concurrent.futures import ThreadPoolExecutor
 
     from heraldesk.db.session import database_session
-    from heraldesk.web.profile_editor import StaleProfileEdit, save_profile_file
+    from heraldesk.domain.profile_edit import StaleProfileEdit, save_profile_file
 
     with make_client(initialized) as client:
         login(client)
