@@ -1,0 +1,17 @@
+{% if studio_status.state == "running" %}
+<div class="studio-status" hx-get="/studio/{{ thread.id }}/status"
+     hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">
+  <span class="badge status-info">running</span>
+  <span class="muted small">The agent step is still running.</span>
+</div>
+{% elif studio_status.state == "failed" %}
+<div class="studio-status" aria-live="polite">
+  <span class="badge status-danger">failed</span>
+  <span class="muted small">{{ studio_status.error }}</span>
+</div>
+{% elif studio_status.state == "finished" %}
+<div class="studio-status" aria-live="polite">
+  <span class="badge status-ok">finished</span>
+  <span class="muted small">The agent step finished.</span>
+</div>
+{% endif %}

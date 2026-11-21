@@ -863,3 +863,61 @@ meter { width: 100%; max-width: 220px; height: 0.9rem; }
   .filter-grid { grid-template-columns: 1fr; }
   .pagination .button { flex: 1; text-align: center; }
 }
+
+/* ============================================================
+   Draft Room
+   ============================================================ */
+.studio-start { margin-bottom: var(--s4); }
+.studio-group { margin-bottom: var(--s5); }
+.studio-group-head { display: flex; align-items: baseline; gap: var(--s2); margin-bottom: var(--s2); }
+.studio-group-head h2 { margin: 0; font-size: 1.1rem; }
+.archived-threads { margin-top: var(--s3); }
+.archived-threads summary { cursor: pointer; color: var(--muted); font-size: var(--fs-sm); }
+
+.studio-conversation { display: flex; flex-direction: column; gap: var(--s3); max-width: var(--reading); }
+.studio-message {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s3);
+  box-shadow: var(--shadow);
+}
+.studio-message-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
+.role-label { font-weight: 700; font-size: var(--fs-sm); }
+.artifact-card {
+  margin-top: var(--s3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: var(--s3);
+}
+.artifact-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s1); }
+.artifact-label { font-weight: 700; font-size: var(--fs-sm); }
+.artifact-subhead { margin: var(--s2) 0 var(--s1); font-size: var(--fs-sm); }
+.artifact-card .diff-wrap { margin: var(--s2) 0; background: var(--surface); }
+.studio-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: var(--s3);
+}
+.studio-message-form { max-width: var(--reading); }
+
+@media (max-width: 767px) {
+  .studio-conversation { max-width: none; }
+  .studio-table thead { display: none; }
+  .studio-table, .studio-table tbody, .studio-table tr, .studio-table td { display: block; width: 100%; }
+  .studio-table tr { border-bottom: 1px solid var(--border); padding: var(--s2) 0; }
+  .studio-table td { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: var(--s2); border: 0; padding: var(--s1) var(--s3); }
+  .studio-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}

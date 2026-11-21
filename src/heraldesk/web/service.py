@@ -37,7 +37,7 @@ from heraldesk.community import (
 from heraldesk.core.audit import AuditService
 from heraldesk.core.crypto import CredentialCipher
 from heraldesk.core.redact import SecretRegistry
-from heraldesk.db.models import AuditLog
+from heraldesk.db.models import AgentRun, AuditLog
 from heraldesk.db.repositories import (
     AgentRunRepository,
     ApprovalLocator,
@@ -50,6 +50,8 @@ from heraldesk.db.repositories import (
     ProfileCatalog,
     ProfileRepository,
     SocialAccountRepository,
+    StudioMessageRepository,
+    StudioThreadRepository,
 )
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.approvals import (
@@ -825,6 +827,60 @@ def _autonomy_summary(policy: AutonomyPolicy | None) -> str:
     if policy.rules:
         return f"{mode} ({len(policy.rules)} rules)"
     return mode
+
+
+def studio_thread_overview(session: Session, *, profile: str | None = None) -> list[dict[str, Any]]:
+    """Return open and archived threads grouped by profile, with artifact counts."""
+    groups: list[dict[str, Any]] = []
+    thread_repository = StudioThreadRepository(session)
+    message_repository = StudioMessageRepository(session)
+    for summary in ProfileCatalog(session).list():
+        if profile is not None and summary.slug != profile:
+            continue
+        scope = ProfileScope(summary.id)
+        threads = thread_repository.list_threads(scope, limit=100)
+        rows: list[dict[str, Any]] = []
+        for thread in threads:
+            messages = message_repository.list_messages(scope, thread.id, limit=200)
+            rows.append(
+                {
+                    "thread": thread,
+                    "message_count": len(messages),
+                    "artifact_count": sum(1 for message in messages if message.artifact_type),
+                }
+            )
+        groups.append(
+            {
+                "profile": summary.slug,
+                "open": [row for row in rows if row["thread"].status == "open"],
+                "archived": [row for row in rows if row["thread"].status == "archived"],
+            }
+        )
+    return groups
+
+
+def studio_thread_status(
+    session: Session,
+    scope: ProfileScope,
+    thread_id: int,
+    redactor: SecretRegistry,
+) -> dict[str, Any]:
+    """Return the latest agent-step state for a thread, if one exists."""
+    messages = StudioMessageRepository(session).list_messages(scope, thread_id, limit=200)
+    run_ids = [message.agent_run_id for message in messages if message.agent_run_id is not None]
+    if not run_ids:
+        return {"state": "idle", "error": None}
+    run = session.get(AgentRun, run_ids[-1])
+    if run is None:
+        return {"state": "idle", "error": None}
+    if run.status == "running":
+        return {"state": "running", "error": None}
+    if run.status == "failed":
+        return {
+            "state": "failed",
+            "error": redactor.redact(run.error or "")[:500] or "the agent step failed",
+        }
+    return {"state": "finished", "error": None}
 
 
 def dashboard_counts(session: Session) -> dict[str, Any]:

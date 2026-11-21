@@ -589,7 +589,7 @@ def test_create_draft_from_the_ui(
             follow_redirects=False,
         )
         assert response.status_code == 303, response.text
-        assert response.headers["location"] == "/queue?ok=drafted"
+        assert response.headers["location"] == f"/studio/{thread_id}?notice=created"
 
     assert (
         ContentItemRepository(db_session).list(profile_setup.scope)[0].state == "pending_approval"
@@ -800,7 +800,12 @@ def test_apply_patch_is_idempotent(profile_setup: ProfileSetup, db_session: Sess
 
 
 def _patch_message_for(
-    setup: ProfileSetup, session: Session, *, file: str, proposed_text: str
+    setup: ProfileSetup,
+    session: Session,
+    *,
+    file: str,
+    proposed_text: str,
+    thread_id: int | None = None,
 ) -> object:
     state = read_profile_files(setup.layout, "acme")
     current = state.files.get(file)
@@ -814,10 +819,11 @@ def _patch_message_for(
         "diff": "",
         "applied": False,
     }
-    thread = service_for(setup, session).create_thread(setup.scope)
+    if thread_id is None:
+        thread_id = service_for(setup, session).create_thread(setup.scope).id
     message = StudioMessageRepository(session).add(
         setup.scope,
-        thread.id,
+        thread_id,
         role="profile",
         content="test patch",
         artifact_type="profile_patch",
@@ -923,3 +929,467 @@ def test_concurrent_patch_applies_cannot_both_succeed(
     with ThreadPoolExecutor(max_workers=2) as pool:
         outcomes = list(pool.map(lambda _: attempt(), range(2)))
     assert sorted(outcomes) == ["applied", "rejected"]
+
+
+def test_every_studio_route_is_404_when_disabled(initialized: InitResult) -> None:
+    with client_for(initialized) as client:
+        for method, path in (
+            ("GET", "/studio"),
+            ("GET", "/studio/1"),
+            ("GET", "/studio/1/status"),
+            ("POST", "/studio/threads"),
+            ("POST", "/studio/1/messages"),
+            ("POST", "/studio/1/draft"),
+            ("POST", "/studio/1/patch/review"),
+            ("POST", "/studio/1/patch"),
+            ("POST", "/studio/1/archive"),
+        ):
+            response = client.request(method, path)
+            assert response.status_code == 404, (method, path, response.status_code)
+
+
+def test_thread_list_groups_profiles_and_archives_quietly(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    service = service_for(profile_setup, db_session)
+    open_thread = service.create_thread(profile_setup.scope, title="Open plan")
+    archived_thread = service.create_thread(profile_setup.scope, title="Old plan")
+    service.archive_thread(profile_setup.scope, archived_thread.id)
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get("/studio")
+    assert page.status_code == 200
+    assert "All profiles" in page.text
+    assert "Open plan" in page.text
+    assert "Old plan" in page.text
+    assert "Archived threads" in page.text
+    assert f"/studio/{open_thread.id}" in page.text
+
+
+def test_start_thread_with_an_initial_message(
+    initialized: InitResult, profile_setup: ProfileSetup
+) -> None:
+    write_studio_config(initialized, enabled=True, fake_llm=True)
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get("/studio")
+        match = _CSRF.search(page.text)
+        assert match is not None
+        response = client.post(
+            "/studio/threads",
+            data={
+                "csrf": match.group(1),
+                "profile": "acme",
+                "title": "Plan it",
+                "message": "Plan a launch post.",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        thread_page = client.get(response.headers["location"])
+    assert "Plan a launch post." in thread_page.text
+    assert "Editor" in thread_page.text
+
+
+def test_draft_artifact_messages_are_escaped_and_redacted(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    service = service_for(profile_setup, db_session)
+    thread = service.create_thread(profile_setup.scope)
+    body = "<script>alert(1)</script> token sk-ABCDEFGHIJKLMNOP1234"
+    StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="writer",
+        content=body,
+        artifact_type="draft",
+        artifact_json={"body": body, "platform": "fake", "variants": [], "hashtags": []},
+    )
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{thread.id}")
+    assert page.status_code == 200
+    assert "<script>" not in page.text
+    assert "&lt;script&gt;" in page.text
+    assert "sk-ABCDEFGHIJKLMNOP1234" not in page.text
+    assert "[REDACTED]" in page.text
+    assert 'aria-label="Writer at' in page.text
+
+
+def test_blocked_draft_card_explains_and_offers_no_bypass(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True, fake_llm=True)
+    service = service_for(profile_setup, db_session, provider=FakeLLM())
+    thread = service.create_thread(profile_setup.scope)
+    message = StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="writer",
+        content="seamless",
+        artifact_type="draft",
+        artifact_json={
+            "body": "A seamless launch.",
+            "platform": "fake",
+            "variants": [],
+            "hashtags": [],
+        },
+    )
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{thread.id}")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        response = client.post(
+            f"/studio/{message.id}/draft",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        thread_page = client.get(response.headers["location"])
+    assert "blocked" in thread_page.text
+    assert "lint:" in thread_page.text
+    assert "Create draft" not in thread_page.text
+
+
+def test_patch_review_step_writes_nothing_and_then_applies(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    original = read_profile_files(profile_setup.layout, "acme").files["brief.md"]
+    proposed = original + "\nA new line.\n"
+    message = _patch_message_for(profile_setup, db_session, file="brief.md", proposed_text=proposed)
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{message.thread_id}")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        review = client.post(
+            f"/studio/{message.id}/patch/review",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert review.status_code == 200
+        assert "Review profile patch" in review.text
+        assert read_profile_files(profile_setup.layout, "acme").files["brief.md"] == original
+        applied = client.post(
+            f"/studio/{message.id}/patch",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert applied.status_code == 303
+    assert read_profile_files(profile_setup.layout, "acme").files["brief.md"] == proposed
+
+
+def test_loosening_patch_needs_the_ui_checkbox(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    current = read_profile_files(profile_setup.layout, "acme").files["policy.yaml"]
+    proposed = current.replace("default_mode: draft_only", "default_mode: require_approval")
+    message = _patch_message_for(
+        profile_setup, db_session, file="policy.yaml", proposed_text=proposed
+    )
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{message.thread_id}")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        review = client.post(
+            f"/studio/{message.id}/patch/review",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert "loosens autonomy" in review.text
+        forged = client.post(
+            f"/studio/{message.id}/patch",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert forged.status_code == 400
+        assert "loosens autonomy" in forged.text
+        assert read_profile_files(profile_setup.layout, "acme").files["policy.yaml"] == current
+        confirmed = client.post(
+            f"/studio/{message.id}/patch",
+            data={"csrf": csrf.group(1), "confirm_loosening": "yes"},
+            follow_redirects=False,
+        )
+        assert confirmed.status_code == 303
+    assert read_profile_files(profile_setup.layout, "acme").files["policy.yaml"] == proposed
+
+
+def test_archived_thread_rejects_forged_writes(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    service = service_for(profile_setup, db_session)
+    thread = service.create_thread(profile_setup.scope)
+    draft = StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="writer",
+        content="draft",
+        artifact_type="draft",
+        artifact_json={"body": "draft", "platform": "fake", "variants": [], "hashtags": []},
+    )
+    patch = _patch_message_for(
+        profile_setup,
+        db_session,
+        file="brief.md",
+        proposed_text=read_profile_files(profile_setup.layout, "acme").files["brief.md"] + "\n",
+        thread_id=thread.id,
+    )
+    service.archive_thread(profile_setup.scope, thread.id)
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{thread.id}")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        assert "read-only" in page.text
+        for path in (
+            f"/studio/{thread.id}/messages",
+            f"/studio/{draft.id}/draft",
+            f"/studio/{patch.id}/patch",
+        ):
+            response = client.post(
+                path,
+                data={"csrf": csrf.group(1), "text": "x", "role": "editor"},
+                follow_redirects=False,
+            )
+            assert response.status_code == 400, path
+
+
+def test_status_fragment_polls_only_while_running(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    from datetime import UTC, datetime
+
+    from heraldesk.db.models import AgentRun
+
+    write_studio_config(initialized, enabled=True)
+    service = service_for(profile_setup, db_session)
+    thread = service.create_thread(profile_setup.scope)
+    run = AgentRunRepository(db_session).add(
+        profile_setup.scope,
+        agent="writer",
+        status="running",
+        model="fake",
+        input={},
+        started_at=datetime.now(UTC),
+    )
+    StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="writer",
+        content="working",
+        agent_run_id=run.id,
+    )
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{thread.id}")
+        assert 'hx-trigger="every 5s"' in page.text
+        running = client.get(f"/studio/{thread.id}/status", headers={"HX-Request": "true"})
+        assert 'hx-trigger="every 5s"' in running.text
+        row = db_session.get(AgentRun, run.id)
+        assert row is not None
+        row.status = "succeeded"
+        db_session.commit()
+        finished = client.get(f"/studio/{thread.id}/status", headers={"HX-Request": "true"})
+    assert finished.status_code == 200
+    assert "hx-trigger" not in finished.text
+    assert "finished" in finished.text
+
+
+def test_studio_writes_require_csrf(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    service = service_for(profile_setup, db_session)
+    thread = service.create_thread(profile_setup.scope)
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        for path, data in (
+            ("/studio/threads", {"profile": "acme"}),
+            (f"/studio/{thread.id}/messages", {"text": "x", "role": "editor"}),
+            (f"/studio/{thread.id}/archive", {}),
+        ):
+            response = client.post(path, data=data, follow_redirects=False)
+            assert response.status_code == 403, path
+
+
+def test_expired_session_studio_status_htmx_redirects(initialized: InitResult) -> None:
+    write_studio_config(initialized, enabled=True)
+    with client_for(initialized) as client:
+        response = client.get(
+            "/studio/1/status", headers={"HX-Request": "true"}, follow_redirects=False
+        )
+    assert response.status_code == 303
+    assert response.headers.get("hx-redirect") == "/login"
+
+
+def test_double_create_from_the_ui_is_rejected(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True, fake_llm=True)
+    service = service_for(profile_setup, db_session)
+    thread = service.create_thread(profile_setup.scope)
+    message = StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="writer",
+        content="A clean draft.",
+        artifact_type="draft",
+        artifact_json={
+            "body": "A clean draft.",
+            "platform": "fake",
+            "variants": [],
+            "hashtags": [],
+        },
+    )
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{thread.id}")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        first = client.post(
+            f"/studio/{message.id}/draft",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert first.status_code == 303
+        second = client.post(
+            f"/studio/{message.id}/draft",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert second.status_code == 400
+        assert "already created" in second.text
+    items = ContentItemRepository(db_session).list(profile_setup.scope)
+    assert len(items) == 1
+
+
+def test_stale_patch_is_rejected_with_the_current_diff(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    original = read_profile_files(profile_setup.layout, "acme").files["brief.md"]
+    message = _patch_message_for(
+        profile_setup, db_session, file="brief.md", proposed_text=original + "\nPatch.\n"
+    )
+    db_session.commit()
+    path = profile_setup.layout.profiles / "acme" / "brief.md"
+    concurrent = original + "\nConcurrent.\n"
+    path.write_text(concurrent, encoding="utf-8")
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{message.thread_id}")
+        csrf = _CSRF.search(page.text)
+        assert csrf is not None
+        review = client.post(
+            f"/studio/{message.id}/patch/review",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert "changed since the patch was proposed" in review.text
+        assert "Concurrent." in review.text
+        applied = client.post(
+            f"/studio/{message.id}/patch",
+            data={"csrf": csrf.group(1)},
+            follow_redirects=False,
+        )
+        assert applied.status_code == 400
+    assert path.read_text(encoding="utf-8") == concurrent
+
+
+def test_studio_pages_have_no_external_urls(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    thread = service_for(profile_setup, db_session).create_thread(profile_setup.scope)
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        for path in ("/studio", f"/studio/{thread.id}", "/studio?profile=acme"):
+            response = client.get(path)
+            assert "http://" not in response.text
+            assert "https://" not in response.text
+
+
+def test_artifact_write_forms_require_csrf(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    write_studio_config(initialized, enabled=True)
+    service = service_for(profile_setup, db_session)
+    thread = service.create_thread(profile_setup.scope)
+    draft = StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="writer",
+        content="draft",
+        artifact_type="draft",
+        artifact_json={"body": "draft", "platform": "fake", "variants": [], "hashtags": []},
+    )
+    patch = _patch_message_for(
+        profile_setup,
+        db_session,
+        file="brief.md",
+        proposed_text=read_profile_files(profile_setup.layout, "acme").files["brief.md"] + "\n",
+        thread_id=thread.id,
+    )
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        for path in (
+            f"/studio/{draft.id}/draft",
+            f"/studio/{patch.id}/patch/review",
+            f"/studio/{patch.id}/patch",
+        ):
+            response = client.post(path, data={}, follow_redirects=False)
+            assert response.status_code == 403, path
+
+
+def test_failed_status_fragment_redacts_the_error(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    from datetime import UTC, datetime
+
+    write_studio_config(initialized, enabled=True)
+    service = service_for(profile_setup, db_session)
+    thread = service.create_thread(profile_setup.scope)
+    run = AgentRunRepository(db_session).add(
+        profile_setup.scope,
+        agent="writer",
+        status="failed",
+        model="fake",
+        input={},
+        started_at=datetime.now(UTC),
+        error="provider failed with sk-ABCDEFGHIJKLMNOP1234",
+    )
+    StudioMessageRepository(db_session).add(
+        profile_setup.scope,
+        thread.id,
+        role="writer",
+        content="failed",
+        agent_run_id=run.id,
+    )
+    db_session.commit()
+    with client_for(initialized) as client:
+        login(client)
+        page = client.get(f"/studio/{thread.id}")
+        fragment = client.get(f"/studio/{thread.id}/status", headers={"HX-Request": "true"})
+    assert page.status_code == 200
+    assert "failed" in page.text
+    assert "sk-ABCDEFGHIJKLMNOP1234" not in page.text
+    assert "sk-ABCDEFGHIJKLMNOP1234" not in fragment.text
+    assert "hx-trigger" not in fragment.text

@@ -73,6 +73,8 @@ These classes were kept during the redesign and should be deleted once no templa
 - `.alert.ok` — replaced by `.notice`; remove when the last occurrence is gone.
 - `.alert.error` — still used by error blocks; keep until the final cleanup.
 - `.card.stat` — still used by Dashboard; remove after its final pass.
+- `.chat`, `.message`, `.artifact` — replaced by `.studio-conversation`, `.studio-message`
+  and `.artifact-card`; remove in the final cleanup.
 - `.empty` — still used by the Profiles empty state; replace with `empty_state()` when the
   remaining pages are reworked.
 
@@ -174,6 +176,33 @@ Read-only helpers: `profiles_overview` and `loosens_autonomy` in `web/service.py
 - Report names must match `weekly-YYYY-Www.md` or `monthly-YYYY-MM.md`, resolve inside the
   reports directory, and not follow a symlink out of it. Downloads use an attachment
   `Content-Disposition` filename and `text/markdown`.
+
+## Draft Room (`studio.enabled`)
+
+- When `studio.enabled` is false the nav item is hidden and every `/studio*` route returns
+  404, including POST routes.
+- The list groups open threads by profile (or shows one profile when `?profile=` is set),
+  keeps archived threads in a quieter `<details>` section, and shows title, status, last
+  activity, artifact and message counts. The start form includes a profile select when
+  viewing all profiles and an optional initial message.
+- The thread view uses compact role-labelled message blocks (Editor, Writer, Compliance,
+  Profile, You). Message content is escaped plain text with line breaks preserved; display
+  passes through the redactor. No avatars or per-role colors.
+- Artifact cards use a type label and the shared state/risk badges. Draft cards show the
+  platform, redacted body, character count, queue state, lint/Compliance notes and a queue
+  link; a blocked draft has no bypass. Compliance cards show risk, reasons and fixes.
+- Profile patch cards show a line diff between the file on disk now and the proposed text,
+  validation, staleness and loosening state. **Review patch** is a separate POST step with no
+  writes; its confirm form applies through `StudioService.apply_profile_patch`, which uses
+  the shared guarded single-file edit path (validation, stale hash, loosening confirmation,
+  lock, atomic write, reload and audit).
+- Archive is a secondary one-step action. Archived threads hide the message form and artifact
+  actions and reject forged writes server-side.
+- The status fragment polls with `hx-trigger="every 5s"` only while the latest agent run is
+  running; finished and idle states carry no trigger. A failed step shows redacted error text.
+- The thread total cost is shown as a small text line. No message editing, deletion,
+  regeneration, branching or new roles are offered.
+- Read-only helpers: `studio_thread_overview` and `studio_thread_status` in `web/service.py`.
 
 ## Navigation model
 

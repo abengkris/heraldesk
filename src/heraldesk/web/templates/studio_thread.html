@@ -1,93 +1,143 @@
 {% extends "base.html" %}
+{% from "_components.html" import status_badge, risk_badge, empty_state %}
 {% block title %}{{ thread.title }} · Draft Room{% endblock %}
 {% block content %}
-<section class="stack">
-  <div class="page-head">
-    <div>
-      <p class="muted"><a href="/studio?profile={{ profile.slug }}">Draft Room</a> / {{ profile.slug }}</p>
-      <h1>{{ thread.title }}</h1>
-      <p class="muted">
-        {{ thread.status }} · ${{ "%.4f"|format(spent) }} of ${{ "%.2f"|format(max_cost_usd) }}
-        · {{ remaining_messages }} message(s) left
-      </p>
-    </div>
-    {% if thread.status == "open" %}
-    <form method="post" action="/studio/{{ thread.id }}/archive" class="inline-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button type="submit" class="button ghost">Archive</button>
-    </form>
-    {% endif %}
+<div class="page-head">
+  <div>
+    <p class="muted"><a href="/studio?profile={{ profile.slug }}">Draft Room</a> / {{ profile.slug }}</p>
+    <h1>{{ thread.title }}</h1>
+    <p class="muted">
+      {{ thread.status }} · <span class="tnum">${{ "%.4f"|format(spent) }}</span> of
+      <span class="tnum">${{ "%.2f"|format(max_cost_usd) }}</span>
+      · {{ remaining_messages }} message(s) left
+    </p>
   </div>
-
-  {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
-  {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
-
-  <div class="chat" role="log" aria-live="polite" aria-label="Conversation">
-    {% for message in messages %}
-    <article class="message {{ message.role }}">
-      <header>
-        <strong>{{ message.role }}</strong>
-        <span class="muted">{{ message.created_at }}</span>
-      </header>
-
-      {% if message.artifact_type == "draft" %}
-        <div class="artifact">
-          <p class="muted">Draft · {{ message.artifact_json.get("platform", "") }}</p>
-          <div class="message-body">{{ message.content }}</div>
-          {% if message.artifact_json.get("hashtags") %}
-          <p class="muted">#{{ message.artifact_json["hashtags"]|join(" #") }}</p>
-          {% endif %}
-          {% if message.content_item_id %}
-          <p class="muted">Content #{{ message.content_item_id }} · <a href="/queue">view queue</a></p>
-          {% else %}
-          <form method="post" action="/studio/{{ message.id }}/draft" class="inline-form">
-            <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button type="submit" class="button primary">Create draft</button>
-          </form>
-          {% endif %}
-        </div>
-      {% elif message.artifact_type == "compliance" %}
-        <div class="artifact compliance">
-          <p class="muted">Compliance · risk {{ message.artifact_json.get("risk_level", "unknown") }}</p>
-          {% if message.artifact_json.get("reasons") %}
-          <ul>
-            {% for reason in message.artifact_json["reasons"] %}<li>{{ reason }}</li>{% endfor %}
-          </ul>
-          {% endif %}
-          <div class="message-body">{{ message.content }}</div>
-        </div>
-      {% elif message.artifact_type == "profile_patch" %}
-        <div class="artifact patch">
-          <p class="muted">Profile patch · {{ message.artifact_json.get("file") }}</p>
-          <p>{{ message.content }}</p>
-          {% if message.artifact_json.get("diff") %}
-          <pre class="diff">{{ message.artifact_json["diff"] }}</pre>
-          {% endif %}
-          {% if message.artifact_json.get("applied") %}
-          <p class="notice">Applied.</p>
-          {% else %}
-          <form method="post" action="/studio/{{ message.id }}/patch" class="inline-form">
-            <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button type="submit" class="button primary">Apply patch</button>
-          </form>
-          {% endif %}
-        </div>
-      {% else %}
-        <div class="message-body">{{ message.content }}</div>
-      {% endif %}
-    </article>
-    {% else %}
-    <p class="empty">No messages yet. Ask the Editor to plan, or the Writer for a draft.</p>
-    {% endfor %}
-  </div>
-
-  {% if thread.status == "open" and remaining_messages > 0 %}
-  <form method="post" action="/studio/{{ thread.id }}/messages" class="card stack tight">
+  {% if thread.status == "open" %}
+  <form method="post" action="/studio/{{ thread.id }}/archive" class="inline-form"
+        hx-post="/studio/{{ thread.id }}/archive" hx-target="body" hx-disabled-elt="find button">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label for="studio-message">Message</label>
-    <textarea id="studio-message" name="text" maxlength="4000" required
-              placeholder="We need a post about...">{{ draft_text }}</textarea>
-    <div class="form-row">
+    <button type="submit" class="button ghost">Archive thread</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
+
+{% include "partials/studio_status.html" %}
+
+<div class="studio-conversation" role="log" aria-label="Conversation">
+  {% for message in messages %}
+  <article class="studio-message" aria-label="{{ message.role_label }} at {{ message.created_at.strftime('%Y-%m-%d %H:%M') }}">
+    <header class="studio-message-head">
+      <span class="role-label">{{ message.role_label }}</span>
+      <time class="muted small" datetime="{{ message.created_at.isoformat() }}">{{ message.created_at.strftime("%Y-%m-%d %H:%M") }}</time>
+    </header>
+    <div class="message-body">{{ message.content }}</div>
+
+    {% if message.artifact_type == "draft" %}
+    <section class="artifact-card" aria-label="Draft artifact">
+      <header class="artifact-head">
+        <span class="artifact-label">Draft</span>
+        {{ status_badge("state", message.draft.state or "proposed") }}
+      </header>
+      <p class="muted small">
+        {{ message.draft.platform or "unknown platform" }}
+        · <span class="tnum">{{ message.draft.char_count }}</span> chars{% if message.draft.max_chars %} of <span class="tnum">{{ message.draft.max_chars }}</span>{% endif %}
+      </p>
+      <div class="message-body">{{ message.draft.body }}</div>
+      {% if message.draft.hashtags %}
+      <p class="muted small">#{{ message.draft.hashtags|join(" #") }}</p>
+      {% endif %}
+      {% if message.draft.risk_level or message.draft.risk_notes %}
+      <p>{% if message.draft.risk_level %}{{ risk_badge(message.draft.risk_level) }}{% endif %}{% if message.draft.risk_notes %} <span class="muted small">{{ message.draft.risk_notes }}</span>{% endif %}</p>
+      {% endif %}
+      {% if message.draft.created %}
+      <p class="actions">
+        {% if message.draft.queue_url %}
+        <a class="button ghost" href="{{ message.draft.queue_url }}">Open in queue</a>
+        {% else %}
+        <span class="badge status-danger">not queued</span>
+        {% endif %}
+        <span class="muted small">Already created. This action cannot run twice.</span>
+      </p>
+      {% elif message.draft.can_create %}
+      <form method="post" action="/studio/{{ message.id }}/draft" class="actions"
+            hx-post="/studio/{{ message.id }}/draft" hx-target="body" hx-disabled-elt="find button">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="button primary">Create draft</button>
+        <span class="muted small">Runs lint and Compliance; a blocked draft is not queued for approval.</span>
+      </form>
+      {% else %}
+      <p class="muted small">This thread is archived. Draft creation is disabled.</p>
+      {% endif %}
+    </section>
+
+    {% elif message.artifact_type == "compliance" %}
+    <section class="artifact-card" aria-label="Compliance artifact">
+      <header class="artifact-head">
+        <span class="artifact-label">Compliance</span>
+        {{ risk_badge(message.compliance.risk_level) }}
+      </header>
+      {% if message.compliance.platform %}<p class="muted small">{{ message.compliance.platform }}</p>{% endif %}
+      {% if message.compliance.reasons %}
+      <h3 class="artifact-subhead">Reasons</h3>
+      <ul>{% for reason in message.compliance.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if message.compliance.fixes %}
+      <h3 class="artifact-subhead">Suggested fixes</h3>
+      <ul>{% for fix in message.compliance.fixes %}<li>{{ fix }}</li>{% endfor %}</ul>
+      {% endif %}
+    </section>
+
+    {% elif message.artifact_type == "profile_patch" %}
+    <section class="artifact-card" aria-label="Profile patch artifact">
+      <header class="artifact-head">
+        <span class="artifact-label">Profile patch</span>
+        {{ status_badge("state", "applied" if message.patch.applied else "proposed") }}
+      </header>
+      <p class="muted small">Target: <span class="mono">{{ message.patch.file or "unknown" }}</span></p>
+      {% if message.patch.rationale %}<div class="message-body">{{ message.patch.rationale }}</div>{% endif %}
+      {% if message.patch.validation %}
+      <p class="alert error" role="alert">{{ message.patch.validation }}</p>
+      {% endif %}
+      {% if message.patch.stale %}
+      <p class="alert error" role="alert">This file changed since the patch was proposed. Regenerate the patch to continue.</p>
+      {% endif %}
+      {% if message.patch.diff_html %}
+      <div class="diff-wrap">{{ message.patch.diff_html|safe }}</div>
+      {% endif %}
+      {% if message.patch.applied %}
+      <p class="muted small">Applied. This patch cannot be applied again.</p>
+      {% elif thread.status != "open" %}
+      <p class="muted small">This thread is archived. Patch actions are disabled.</p>
+      {% elif message.patch.can_apply %}
+      <form method="post" action="/studio/{{ message.id }}/patch/review" class="actions"
+            hx-post="/studio/{{ message.id }}/patch/review" hx-target="body" hx-disabled-elt="find button">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="button primary">Review patch</button>
+        <span class="muted small">Review the current diff and confirm before applying.</span>
+      </form>
+      {% else %}
+      <p class="muted small">This patch cannot be applied until the file is valid and unchanged.</p>
+      {% endif %}
+    </section>
+    {% endif %}
+  </article>
+  {% else %}
+  {{ empty_state("No messages yet.", "Ask the Editor to plan, or the Writer for a draft.") }}
+  {% endfor %}
+</div>
+
+{% if thread.status == "open" and remaining_messages > 0 %}
+<form method="post" action="/studio/{{ thread.id }}/messages" class="card stack tight studio-message-form"
+      hx-post="/studio/{{ thread.id }}/messages" hx-target="body" hx-disabled-elt="find button">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="studio-message">Message</label>
+  <textarea id="studio-message" name="text" maxlength="4000" required
+            placeholder="We need a post about...">{{ draft_text }}</textarea>
+  <div class="form-row">
+    <div class="field">
       <label for="studio-role">Role</label>
       <select id="studio-role" name="role">
         <option value="editor" selected>Editor</option>
@@ -95,29 +145,33 @@
         <option value="compliance">Compliance</option>
         <option value="profile">Profile</option>
       </select>
+    </div>
+    <div class="field">
       <label for="studio-platform">Platform</label>
       <select id="studio-platform" name="platform">
         {% for platform in platforms %}
         <option value="{{ platform }}" {% if platform == "threads" %}selected{% endif %}>{{ platform }}</option>
         {% endfor %}
       </select>
+    </div>
+    <div class="field">
       <label for="studio-file">File</label>
       <select id="studio-file" name="file">
         {% for file in profile_files %}
         <option value="{{ file }}" {% if file == "soul.md" %}selected{% endif %}>{{ file }}</option>
         {% endfor %}
       </select>
-      <button type="submit" class="button primary">Send</button>
     </div>
-    <p class="muted">
-      Editor plans, Writer drafts for the selected platform, Compliance reviews the latest
-      draft. Nothing is approved or published here.
-    </p>
-  </form>
-  {% elif thread.status != "open" %}
-  <p class="empty">This thread is archived. Create a new one to continue.</p>
-  {% else %}
-  <p class="empty">This thread has reached its message limit.</p>
-  {% endif %}
-</section>
+    <button type="submit" class="button primary">Send</button>
+  </div>
+  <p class="muted small">
+    Editor plans, Writer drafts for the selected platform, Compliance reviews the latest
+    draft. Threads can be archived but not edited. Nothing is approved or published here.
+  </p>
+</form>
+{% elif thread.status != "open" %}
+<p class="empty">This thread is archived and read-only. Create a new one to continue.</p>
+{% else %}
+<p class="empty">This thread has reached its message limit.</p>
+{% endif %}
 {% endblock %}

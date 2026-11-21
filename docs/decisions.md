@@ -1341,3 +1341,12 @@ The shared helpers now live in `heraldesk/domain/profile_edit.py` (lock, validat
 content hash, policy helper) and `heraldesk/domain/autonomy.py` (`loosens_autonomy`).
 `heraldesk/web/profile_editor.py` re-exports them for the Web UI, and the Studio imports the
 neutral domain module directly.
+
+
+## Draft Room stays synchronous; status polling is read-only (2026-11-21)
+
+Agent steps still run inside the request that sends a message; the Draft Room adds no job
+queue or new storage. The status fragment therefore reports the latest linked agent run:
+it polls every 5 seconds only while that run is `running`, and returns without a trigger once
+it is finished or failed. This covers crashed/stuck runs and gives the UI a place to show a
+redacted failure without changing the conversation flow.

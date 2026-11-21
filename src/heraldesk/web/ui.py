@@ -32,6 +32,8 @@ from heraldesk.core.locks import (
 )
 from heraldesk.db.repositories import (
     ApprovalLocator,
+    ApprovalRepository,
+    ContentItemRepository,
     ProfileCatalog,
     StudioMessageRepository,
     StudioThreadRepository,
@@ -97,6 +99,8 @@ from heraldesk.web.service import (
     reject_by_id,
     reply_inbox,
     report_file,
+    studio_thread_overview,
+    studio_thread_status,
 )
 
 router = APIRouter()
@@ -1191,6 +1195,16 @@ def _studio_service(ctx: WebContext, db: Any, *, with_provider: bool = False) ->
     )
 
 
+_STUDIO_ROLE_LABELS = {
+    "user": "You",
+    "editor": "Editor",
+    "writer": "Writer",
+    "compliance": "Compliance",
+    "profile": "Profile",
+    "system": "System",
+}
+
+
 def _studio_thread_payload(
     ctx: WebContext,
     db: Any,
@@ -1209,9 +1223,61 @@ def _studio_thread_payload(
     messages = service.list_messages(scope, thread_id)
     summary = profile_summary(db, scope)
     spent = sum(message.cost_usd for message in messages)
+    item_repository = ContentItemRepository(db)
+    message_views: list[dict[str, Any]] = []
+    for message in messages:
+        data = message.artifact_json or {}
+        view: dict[str, Any] = {
+            "id": message.id,
+            "role": message.role,
+            "role_label": _STUDIO_ROLE_LABELS.get(message.role, message.role.title()),
+            "created_at": message.created_at,
+            "content": ctx.redactor.redact(message.content),
+            "artifact_type": message.artifact_type,
+            "content_item_id": message.content_item_id,
+        }
+        if message.artifact_type == "draft":
+            body = str(data.get("body") or "")
+            platform = str(data.get("platform") or "")
+            constraints = constraints_for(platform) if platform else None
+            item = (
+                item_repository.get(scope, message.content_item_id)
+                if message.content_item_id is not None
+                else None
+            )
+            approval = (
+                ApprovalRepository(db).pending_for_item(scope, item.id)
+                if item is not None
+                else None
+            )
+            view["draft"] = {
+                "platform": platform,
+                "body": ctx.redactor.redact(body),
+                "hashtags": [ctx.redactor.redact(str(tag)) for tag in data.get("hashtags") or []],
+                "char_count": len(body),
+                "max_chars": constraints.max_characters if constraints else None,
+                "state": item.state if item is not None else None,
+                "risk_level": item.risk_level if item is not None else None,
+                "risk_notes": ctx.redactor.redact(item.risk_notes or "") if item else "",
+                "created": item is not None,
+                "can_create": item is None and thread.status == "open",
+                "queue_url": f"/queue/{approval.id}" if approval is not None else None,
+            }
+        elif message.artifact_type == "compliance":
+            view["compliance"] = {
+                "risk_level": str(data.get("risk_level") or "unknown"),
+                "reasons": [
+                    ctx.redactor.redact(str(reason)) for reason in data.get("reasons") or []
+                ],
+                "fixes": [ctx.redactor.redact(str(fix)) for fix in data.get("fixes") or []],
+                "platform": str(data.get("platform") or ""),
+            }
+        elif message.artifact_type == "profile_patch":
+            view["patch"] = _studio_patch_view(ctx, db, summary.slug, data, thread.status)
+        message_views.append(view)
     return {
         "thread": thread,
-        "messages": messages,
+        "messages": message_views,
         "profile": summary,
         "spent": spent,
         "max_cost_usd": ctx.config.studio.max_cost_usd,
@@ -1221,12 +1287,54 @@ def _studio_thread_payload(
         "notice": notice,
         "platforms": ["threads", "nostr", "fake"],
         "profile_files": list(PROFILE_FILES),
+        "studio_status": studio_thread_status(db, scope, thread_id, ctx.redactor),
     }
+
+
+def _studio_patch_view(
+    ctx: WebContext,
+    db: Any,
+    slug: str,
+    data: dict[str, Any],
+    thread_status: str,
+) -> dict[str, Any]:
+    file = str(data.get("file") or "")
+    proposed = data.get("proposed_text")
+    view: dict[str, Any] = {
+        "file": file,
+        "rationale": ctx.redactor.redact(str(data.get("rationale") or "")),
+        "proposed_text": (ctx.redactor.redact(proposed) if isinstance(proposed, str) else ""),
+        "applied": bool(data.get("applied")),
+        "validation": None,
+        "loosening": False,
+        "stale": False,
+        "diff_html": "",
+        "can_apply": False,
+        "unknown_target": file not in PROFILE_FILES,
+    }
+    if view["unknown_target"] or view["applied"]:
+        return view
+    if not isinstance(proposed, str) or not proposed.strip():
+        view["validation"] = "The patch has no proposed content."
+        return view
+    try:
+        state = read_profile_files(ctx.layout, slug)
+    except ProfileEditError as exc:
+        view["validation"] = ctx.redactor.redact(str(exc)) or "The profile cannot be read."
+        return view
+    current = state.files[file]
+    view["diff_html"] = _line_diff(ctx.redactor.redact(current), view["proposed_text"])
+    view["stale"] = content_hash(current) != str(data.get("base_hash") or "")
+    error = validate_profile_files(ctx.layout, slug, {**state.files, file: proposed})
+    view["validation"] = ctx.redactor.redact(error) if error is not None else None
+    view["loosening"] = loosens_autonomy(file, current, proposed)
+    view["can_apply"] = thread_status == "open" and not view["stale"] and view["validation"] is None
+    return view
 
 
 @router.get("/studio", response_class=HTMLResponse)
 def studio_page(request: Request, profile: str | None = None) -> HTMLResponse:
-    """List Draft Room threads and let the user start a conversation."""
+    """List Draft Room threads, grouped by profile when no profile is selected."""
     ctx = _require_studio(request)
     session = _session(request)
     with ctx.database.session() as db:
@@ -1234,16 +1342,11 @@ def studio_page(request: Request, profile: str | None = None) -> HTMLResponse:
         selected = None
         if profile is not None:
             try:
-                scope = resolve_scope(db, profile)
+                resolve_scope(db, profile)
             except (ProfileNotFoundError, ProfileValidationError) as exc:
                 raise NotFound(f"profile '{profile}' is not loaded") from exc
             selected = next((item for item in summaries if item.slug == profile), None)
-        elif summaries:
-            scope = resolve_scope(db, summaries[0].slug)
-            selected = summaries[0]
-        else:
-            scope = None
-        threads = _studio_service(ctx, db).list_threads(scope) if scope is not None else []
+        groups = studio_thread_overview(db, profile=profile)
     return _page(
         request,
         session,
@@ -1251,23 +1354,45 @@ def studio_page(request: Request, profile: str | None = None) -> HTMLResponse:
         "studio",
         profiles=summaries,
         selected=selected,
-        threads=threads,
+        groups=groups,
+        all_profiles=profile is None,
+        current_profile=profile,
     )
 
 
 @router.post("/studio/threads", response_class=HTMLResponse)
 async def studio_thread_create(request: Request) -> Response:
-    """Create a Draft Room thread for one profile."""
+    """Create a Draft Room thread and optionally send its first message."""
     ctx = _require_studio(request)
     session = _session(request)
     form = await _form(request)
     _require_csrf(_auth(request), session, form)
     slug = _form_value(form, "profile").strip()
     title = _form_value(form, "title").strip() or "New thread"
+    message = _form_value(form, "message").strip()
+    if not slug:
+        raise BadRequest("choose a profile for the new thread")
     with ctx.database.session() as db:
         try:
             scope = resolve_scope(db, slug)
-            thread = _studio_service(ctx, db).create_thread(scope, title=title)
+            service = _studio_service(ctx, db, with_provider=bool(message))
+            thread = service.create_thread(scope, title=title)
+            if message:
+                try:
+                    service.send_message(scope, thread.id, message, role="editor")
+                except (AgentRunError, LLMError, StudioError, ValueError) as exc:
+                    error = ctx.redactor.redact(str(exc))[:500]
+                    payload = _studio_thread_payload(
+                        ctx, db, thread.id, error=error, draft_text=message
+                    )
+                    return _page(
+                        request,
+                        session,
+                        "studio_thread.html",
+                        "studio",
+                        status_code=400,
+                        **payload,
+                    )
         except (ProfileNotFoundError, ProfileValidationError, StudioError) as exc:
             raise BadRequest(str(exc)) from exc
     return RedirectResponse(f"/studio/{thread.id}", status_code=303)
@@ -1281,6 +1406,26 @@ def studio_thread_page(request: Request, thread_id: int, notice: str | None = No
     with ctx.database.session() as db:
         payload = _studio_thread_payload(ctx, db, thread_id, notice=notice)
     return _page(request, session, "studio_thread.html", "studio", **payload)
+
+
+@router.get("/studio/{thread_id}/status", response_class=HTMLResponse)
+def studio_thread_status_fragment(request: Request, thread_id: int) -> Response:
+    """Return the polling status fragment for one thread."""
+    ctx = _require_studio(request)
+    _session(request)
+    with ctx.database.session() as db:
+        scope = StudioThreadRepository(db).scope_for(thread_id)
+        if scope is None:
+            raise NotFound(f"studio thread {thread_id} does not exist")
+        thread = _studio_service(ctx, db).get_thread(scope, thread_id)
+        status = studio_thread_status(db, scope, thread_id, ctx.redactor)
+    if not _is_htmx(request):
+        return RedirectResponse(f"/studio/{thread_id}", status_code=303)
+    return _render(
+        request,
+        "partials/studio_status.html",
+        {"thread": thread, "studio_status": status},
+    )
 
 
 @router.post("/studio/{thread_id}/messages", response_class=HTMLResponse)
@@ -1336,12 +1481,28 @@ async def studio_draft_create(request: Request, message_id: int) -> Response:
         if located is None:
             raise NotFound(f"studio message {message_id} does not exist")
         scope, thread_id = located
+        service = _studio_service(ctx, db, with_provider=True)
+        try:
+            thread = service.get_thread(scope, thread_id)
+            if thread.status != "open":
+                raise StudioError("this thread is archived; create a new one")
+        except StudioError as exc:
+            error = ctx.redactor.redact(str(exc))[:500]
+            payload = _studio_thread_payload(ctx, db, thread_id, error=error)
+            return _page(
+                request,
+                session,
+                "studio_thread.html",
+                "studio",
+                status_code=400,
+                **payload,
+            )
         message = repository.get(scope, message_id)
         platform = (message.artifact_json or {}).get("platform") if message else None
         constraints = constraints_for(platform) if platform else None
         max_text_bytes = 500 if platform == "threads" else None
         try:
-            result = _studio_service(ctx, db, with_provider=True).create_draft(
+            result = service.create_draft(
                 scope,
                 message_id,
                 constraints=constraints,
@@ -1358,14 +1519,28 @@ async def studio_draft_create(request: Request, message_id: int) -> Response:
                 status_code=400,
                 **payload,
             )
-    if result.blocked:
-        return RedirectResponse(f"/studio/{thread_id}?notice=blocked", status_code=303)
-    return RedirectResponse("/queue?ok=drafted", status_code=303)
+    notice = "blocked" if result.blocked else "created"
+    return RedirectResponse(f"/studio/{thread_id}?notice={notice}", status_code=303)
+
+
+@router.post("/studio/{message_id}/patch/review", response_class=HTMLResponse)
+async def studio_patch_review(request: Request, message_id: int) -> Response:
+    """Show a read-only patch review before applying. Performs no writes."""
+    ctx = _require_studio(request)
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    with ctx.database.session() as db:
+        located = StudioMessageRepository(db).locate(message_id)
+        if located is None:
+            raise NotFound(f"studio message {message_id} does not exist")
+        _scope, thread_id = located
+        return _studio_patch_review_page(request, session, ctx, db, message_id, thread_id)
 
 
 @router.post("/studio/{message_id}/patch", response_class=HTMLResponse)
 async def studio_patch_apply(request: Request, message_id: int) -> Response:
-    """Apply a profile patch after re-checking its base hash."""
+    """Apply a reviewed profile patch, enforcing the loosening confirmation."""
     ctx = _require_studio(request)
     session = _session(request)
     form = await _form(request)
@@ -1377,12 +1552,19 @@ async def studio_patch_apply(request: Request, message_id: int) -> Response:
             raise NotFound(f"studio message {message_id} does not exist")
         scope, thread_id = located
         try:
+            thread = _studio_service(ctx, db).get_thread(scope, thread_id)
+            if thread.status != "open":
+                raise StudioError("this thread is archived; create a new one")
             confirm = _form_value(form, "confirm_loosening") == "yes"
             _studio_service(ctx, db).apply_profile_patch(
                 scope, message_id, confirm_loosening=confirm
             )
         except StudioError as exc:
             error = ctx.redactor.redact(str(exc))[:500]
+            if "loosens autonomy" in error:
+                return _studio_patch_review_page(
+                    request, session, ctx, db, message_id, thread_id, error=error, status_code=400
+                )
             payload = _studio_thread_payload(ctx, db, thread_id, error=error)
             return _page(
                 request,
@@ -1393,6 +1575,42 @@ async def studio_patch_apply(request: Request, message_id: int) -> Response:
                 **payload,
             )
     return RedirectResponse(f"/studio/{thread_id}?notice=applied", status_code=303)
+
+
+def _studio_patch_review_page(
+    request: Request,
+    session: UISession,
+    ctx: WebContext,
+    db: Any,
+    message_id: int,
+    thread_id: int,
+    *,
+    error: str | None = None,
+    status_code: int = 200,
+) -> HTMLResponse:
+    payload = _studio_thread_payload(ctx, db, thread_id)
+    view = next(
+        (
+            message["patch"]
+            for message in payload["messages"]
+            if message["id"] == message_id and "patch" in message
+        ),
+        None,
+    )
+    if view is None:
+        raise NotFound("profile patch not found")
+    return _page(
+        request,
+        session,
+        "studio_patch_review.html",
+        "studio",
+        status_code=status_code,
+        thread=payload["thread"],
+        profile=payload["profile"],
+        message_id=message_id,
+        patch=view,
+        error=error,
+    )
 
 
 @router.post("/studio/{thread_id}/archive", response_class=HTMLResponse)
@@ -1949,6 +2167,7 @@ def _notice(code: str | None) -> str | None:
         "ignored": "Item ignored.",
         "generated": "Report generated.",
         "drafted": "Draft created and queued for approval.",
-        "blocked": "Draft created but blocked; see the reason in the queue.",
+        "created": "Draft created and queued for approval.",
+        "blocked": "Draft created but blocked; the artifact card explains why.",
         "applied": "Profile patch applied and the profile reloaded.",
     }.get(code or "")

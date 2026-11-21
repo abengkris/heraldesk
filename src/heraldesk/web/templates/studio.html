@@ -1,56 +1,128 @@
 {% extends "base.html" %}
-{% block title %}Draft Room{% endblock %}
+{% from "_components.html" import empty_state %}
+{% block title %}Draft Room · Heraldesk{% endblock %}
 {% block content %}
-<section class="stack">
-  <div class="page-head">
-    <div>
-      <h1>Draft Room</h1>
-      <p class="muted">Planning conversations. Proposals only; approval still happens in the queue.</p>
-    </div>
+<div class="page-head">
+  <div>
+    <h1>Draft Room</h1>
+    <p class="muted">Planning conversations. Proposals only; approval still happens in the queue.</p>
   </div>
+</div>
 
-  {% if profiles %}
-  <nav class="tabs" aria-label="Profiles">
-    {% for item in profiles %}
-    <a href="/studio?profile={{ item.slug }}"
-       {% if selected and selected.slug == item.slug %}aria-current="page"{% endif %}>{{ item.slug }}</a>
-    {% endfor %}
-  </nav>
+{% if profiles %}
+<nav class="tabs" aria-label="Profiles">
+  <a href="/studio" {% if all_profiles %}aria-current="page"{% endif %}>All profiles</a>
+  {% for item in profiles %}
+  <a href="/studio?profile={{ item.slug }}"
+     {% if selected and selected.slug == item.slug %}aria-current="page"{% endif %}>{{ item.slug }}</a>
+  {% endfor %}
+</nav>
 
-  <form method="post" action="/studio/threads" class="card stack tight">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <input type="hidden" name="profile" value="{{ selected.slug if selected else '' }}">
-    <label for="studio-title">New thread</label>
-    <div class="form-row">
-      <input id="studio-title" type="text" name="title" maxlength="200"
-             placeholder="What do you want to plan?">
-      <button type="submit" class="button primary">Start thread</button>
-    </div>
-    <p class="muted">A thread is a conversation. It cannot approve or publish anything.</p>
-  </form>
+<form method="post" action="/studio/threads" class="card stack tight studio-start"
+      hx-post="/studio/threads" hx-target="body" hx-disabled-elt="find button">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Start thread</h2>
+  {% if all_profiles %}
+  <div class="field">
+    <label for="studio-profile">Profile</label>
+    <select id="studio-profile" name="profile" required>
+      {% for item in profiles %}<option value="{{ item.slug }}">{{ item.slug }}</option>{% endfor %}
+    </select>
+  </div>
+  {% else %}
+  <input type="hidden" name="profile" value="{{ selected.slug }}">
+  {% endif %}
+  <div class="field">
+    <label for="studio-title">Thread title (optional)</label>
+    <input id="studio-title" name="title" type="text" maxlength="200"
+           placeholder="What do you want to plan?">
+  </div>
+  <div class="field">
+    <label for="studio-initial">Initial message (optional)</label>
+    <textarea id="studio-initial" name="message" rows="3" maxlength="4000"
+              placeholder="We need a post about..."></textarea>
+    <span class="help">The Editor replies when an initial message is present.</span>
+  </div>
+  <div class="actions">
+    <button type="submit" class="button primary">Start thread</button>
+  </div>
+</form>
 
-  {% if threads %}
+{% for group in groups %}
+<section class="studio-group" aria-labelledby="studio-profile-{{ group.profile }}">
+  <div class="studio-group-head">
+    <h2 id="studio-profile-{{ group.profile }}">{{ group.profile }}</h2>
+    <span class="muted small">{{ group.open|length }} open</span>
+  </div>
+  {% if group.open %}
   <div class="table-wrap">
-    <table>
+    <table class="studio-table">
+      <caption class="sr-only">Open threads for {{ group.profile }}</caption>
       <thead>
-        <tr><th>Thread</th><th>Status</th><th>Updated</th></tr>
+        <tr>
+          <th scope="col">Thread</th>
+          <th scope="col">Status</th>
+          <th scope="col">Last activity (UTC)</th>
+          <th scope="col">Artifacts</th>
+          <th scope="col">Messages</th>
+        </tr>
       </thead>
       <tbody>
-        {% for thread in threads %}
+        {% for row in group.open %}
         <tr>
-          <td><a href="/studio/{{ thread.id }}">{{ thread.title }}</a></td>
-          <td>{{ thread.status }}</td>
-          <td>{{ thread.updated_at }}</td>
+          <td data-label="Thread">
+            <a href="/studio/{{ row.thread.id }}?profile={{ group.profile }}">{{ row.thread.title }}</a>
+          </td>
+          <td data-label="Status">open</td>
+          <td data-label="Last activity" class="nowrap">{{ row.thread.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td data-label="Artifacts" class="tnum">{{ row.artifact_count }}</td>
+          <td data-label="Messages" class="tnum">{{ row.message_count }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <p class="empty">No threads yet. Start one above.</p>
+  <p class="muted">No open threads for this profile.</p>
   {% endif %}
-  {% else %}
-  <p class="empty">No profiles are loaded. Create one with <code>heraldesk profile new</code> first.</p>
+
+  {% if group.archived %}
+  <details class="archived-threads">
+    <summary>Archived threads ({{ group.archived|length }})</summary>
+    <div class="table-wrap">
+      <table class="studio-table">
+        <caption class="sr-only">Archived threads for {{ group.profile }}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Thread</th>
+            <th scope="col">Status</th>
+            <th scope="col">Last activity (UTC)</th>
+            <th scope="col">Artifacts</th>
+            <th scope="col">Messages</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in group.archived %}
+          <tr>
+            <td data-label="Thread">
+              <a href="/studio/{{ row.thread.id }}?profile={{ group.profile }}">{{ row.thread.title }}</a>
+            </td>
+            <td data-label="Status">archived</td>
+            <td data-label="Last activity" class="nowrap">{{ row.thread.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+            <td data-label="Artifacts" class="tnum">{{ row.artifact_count }}</td>
+            <td data-label="Messages" class="tnum">{{ row.message_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
   {% endif %}
 </section>
+{% else %}
+{{ empty_state("No threads yet.", "Start one above to plan a post with the Editor.") }}
+{% endfor %}
+{% else %}
+{{ empty_state("No profiles are loaded.", "Create one with heraldesk profile new first.") }}
+{% endif %}
 {% endblock %}

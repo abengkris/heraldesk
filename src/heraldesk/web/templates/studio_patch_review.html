@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Review patch · Draft Room{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="muted"><a href="/studio/{{ thread.id }}?profile={{ profile.slug }}">{{ thread.title }}</a> / {{ profile.slug }}</p>
+    <h1>Review profile patch</h1>
+    <p class="muted">Target: <span class="mono">{{ patch.file or "unknown" }}</span> · nothing is written until you confirm.</p>
+  </div>
+</div>
+
+{% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
+{% if patch.validation %}<p class="alert error" role="alert">{{ patch.validation }}</p>{% endif %}
+{% if patch.stale %}
+<p class="alert error" role="alert">This file changed since the patch was proposed. This is the diff against the current file; regenerate the patch to continue.</p>
+{% endif %}
+{% if patch.unknown_target %}
+<p class="alert error" role="alert">The patch targets an unknown file and cannot be applied.</p>
+{% endif %}
+
+{% if patch.diff_html %}
+<div class="diff-wrap" aria-label="Line diff from the file on disk now to the proposed text">{{ patch.diff_html|safe }}</div>
+{% endif %}
+
+{% if patch.applied %}
+<p class="notice">Applied. This patch cannot be applied again.</p>
+{% elif thread.status != "open" %}
+<p class="notice">This thread is archived. Patch actions are disabled.</p>
+{% elif patch.can_apply %}
+<form method="post" action="/studio/{{ message_id }}/patch" class="card stack tight save-form"
+      hx-post="/studio/{{ message_id }}/patch" hx-target="body" hx-disabled-elt="find button">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% if patch.loosening %}
+  <div class="alert warn autonomy-warning" role="alert">
+    <strong>This patch loosens autonomy.</strong>
+    Review the diff above and confirm explicitly before applying.
+  </div>
+  <label class="checkbox">
+    <input type="checkbox" name="confirm_loosening" value="yes" required>
+    I understand this gives the agents more freedom.
+  </label>
+  {% endif %}
+  <div class="actions">
+    <button type="submit" class="button primary">Apply patch</button>
+    <a class="button ghost" href="/studio/{{ thread.id }}?profile={{ profile.slug }}">Cancel</a>
+  </div>
+</form>
+{% else %}
+<p class="muted">This patch cannot be applied until the target file is valid and unchanged.</p>
+<a class="button ghost" href="/studio/{{ thread.id }}?profile={{ profile.slug }}">Back to thread</a>
+{% endif %}
+{% endblock %}
