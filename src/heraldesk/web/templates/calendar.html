@@ -1,39 +1,86 @@
 {% extends "base.html" %}
+{% from "_components.html" import empty_state %}
 {% block title %}Calendar · Heraldesk{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <h1>Calendar</h1>
-    <p class="muted">Scheduled and published items from the last 7 days through {{ days }} days ahead (UTC).</p>
+    <p class="muted">
+      Week of {{ week.days[0].iso }}
+      {% if week.timezone %} · times in {{ week.timezone }}{% endif %}
+    </p>
   </div>
+  <nav class="actions" aria-label="Week navigation">
+    <a class="button ghost" href="/calendar?week={{ week.prev_week }}{% if current_profile %}&profile={{ current_profile }}{% endif %}">← Previous</a>
+    <a class="button ghost" href="/calendar{{ profile_qs }}">Today</a>
+    <a class="button ghost" href="/calendar?week={{ week.next_week }}{% if current_profile %}&profile={{ current_profile }}{% endif %}">Next →</a>
+  </nav>
 </div>
 
-{% if entries %}
-<div class="table-wrap">
-  <table>
+{% if week.quiet_label %}
+<p class="muted small">Quiet hours {{ week.quiet_label }} are shaded.</p>
+{% elif not week.timezone %}
+<p class="muted small">All profiles: each chip is shown in its own profile's timezone. Quiet hours are not shaded.</p>
+{% endif %}
+
+{% set has_items = week.items_by_cell | length > 0 %}
+
+{% if not has_items %}
+  {{ empty_state("Nothing this week.", "No scheduled or published items in this window.") }}
+{% endif %}
+
+<div class="calendar-grid-wrap">
+  <table class="calendar-grid">
     <thead>
       <tr>
-        <th scope="col">When (UTC)</th>
-        <th scope="col">Profile</th>
-        <th scope="col">Platform</th>
-        <th scope="col">State</th>
-        <th scope="col">Preview</th>
+        <th scope="col" class="hour-col"><span class="sr-only">Hour</span></th>
+        {% for day in week.days %}
+        <th scope="col">{{ day.name }} {{ day.num }}</th>
+        {% endfor %}
       </tr>
     </thead>
     <tbody>
-      {% for entry in entries %}
+      {% for hour in range(24) %}
       <tr>
-        <td class="nowrap">{{ entry.when.strftime("%Y-%m-%d %H:%M") }}</td>
-        <td>{{ entry.profile_slug }}</td>
-        <td>{{ entry.platform }}</td>
-        <td>{{ entry.state }}</td>
-        <td class="preview">{{ entry.preview }}</td>
+        <th scope="row" class="hour-col">{{ "%02d:00"|format(hour) }}</th>
+        {% for day_idx in range(7) %}
+        {% set key = day_idx ~ "-" ~ hour %}
+        <td class="{% if key in week.quiet_cells %}quiet{% endif %}">
+          {% if key in week.items_by_cell %}
+            {% for item in week.items_by_cell[key] %}
+            <a class="chip {{ item.status_class }}" href="/queue/{{ item.content_item_id }}{{ profile_qs }}"
+               aria-label="{{ item.time }} {{ item.platform }} {{ item.state }} {{ item.profile_slug }}: {{ item.preview }}">
+              <span class="chip-time">{{ item.time }}{% if not week.timezone %}<span class="chip-tz">{{ item.tz }}</span>{% endif %}</span>
+              <span class="chip-state">{{ item.state|replace("_", " ") }}</span>
+              <span class="chip-body">{{ item.platform }} · {{ item.preview }}</span>
+            </a>
+            {% endfor %}
+          {% endif %}
+        </td>
+        {% endfor %}
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
-{% else %}
-<p class="empty">Nothing scheduled or published in this window.</p>
-{% endif %}
+
+<div class="calendar-agenda" aria-label="Weekly agenda">
+  {% for day_idx in range(7) %}
+  <section class="agenda-day">
+    <h2>{{ week.days[day_idx].name }} {{ week.days[day_idx].num }}</h2>
+    {% if week.items_by_day[day_idx] %}
+      {% for item in week.items_by_day[day_idx] %}
+      <a class="chip {{ item.status_class }}" href="/queue/{{ item.content_item_id }}{{ profile_qs }}"
+         aria-label="{{ item.time }} {{ item.platform }} {{ item.state }} {{ item.profile_slug }}: {{ item.preview }}">
+        <span class="chip-time">{{ item.time }}{% if not week.timezone %}<span class="chip-tz">{{ item.tz }}</span>{% endif %}</span>
+        <span class="chip-state">{{ item.state|replace("_", " ") }}</span>
+        <span class="chip-body">{{ item.platform }} · {{ item.preview }}</span>
+      </a>
+      {% endfor %}
+    {% else %}
+    <p class="muted small">No items.</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
 {% endblock %}

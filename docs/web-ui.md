@@ -79,6 +79,18 @@ These classes were kept during the redesign and should be deleted once no templa
 - 360px, 768px and 1280px; light and dark; keyboard only; JS disabled for read and write flows.
 - Queue master-detail, Inbox two-pane, Calendar week grid / mobile agenda, Cost meter, Audit `<details>` payloads, Profiles editor tabs, Draft Room conversation.
 
+## Calendar
+
+- Server-rendered Monday-based weekly grid; prev/next/Today links carry `?profile=` and `week=`.
+- Items are chips colored by state (always with a state text label) linking to `/queue/{id}`.
+- Single profile: times shown in that profile's timezone and quiet hours (from `policy.yaml`) shaded, including cross-midnight ranges. All profiles: each chip shows its own timezone label; quiet hours are not shaded.
+- Mobile (≤ 767px): a day-by-day agenda replaces the grid; no horizontal scroll.
+- Read-only helper: `calendar_week` in `web/service.py`.
+
+## Navigation model
+
+Navigation links are ordinary full-page loads; `hx-boost` is intentionally not enabled, so a mobile "More" `<details>` menu closes naturally after navigation without JS.
+
 ## No external requests
 
 `static/app.css` and `static/app.js` contain no external URLs. A test asserts that rendered core pages and both static assets contain no `http://` or `https://`.

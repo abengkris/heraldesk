@@ -9,7 +9,7 @@ from __future__ import annotations
 import difflib
 import hmac
 import html
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +42,7 @@ from heraldesk.domain.errors import (
     ProfileNotFoundError,
     ProfileValidationError,
 )
-from heraldesk.domain.profiles import list_profiles, profile_summary, resolve_scope
+from heraldesk.domain.profiles import list_profiles, load_policy, profile_summary, resolve_scope
 from heraldesk.llm.errors import LLMError
 from heraldesk.llm.factory import build_llm, resolve_model
 from heraldesk.platforms.base import constraints_for
@@ -71,6 +71,7 @@ from heraldesk.web.rendering import render_markdown
 from heraldesk.web.service import (
     approve_by_id,
     audit_login,
+    calendar_week,
     cost_summary,
     dashboard_counts,
     dashboard_needs_attention,
@@ -79,7 +80,6 @@ from heraldesk.web.service import (
     get_queue_detail,
     ignore_inbox,
     list_audit_views,
-    list_calendar_views,
     list_inbox_views,
     list_queue_views,
     list_report_files,
@@ -249,6 +249,14 @@ def _sorted_queue(views: list[Any]) -> list[Any]:
         return (_RISK_PRIORITY.get(view.risk_level or "", 4), created)
 
     return sorted(views, key=key)
+
+
+def _monday_of(day: date) -> date:
+    return day - timedelta(days=day.weekday())
+
+
+def _parse_week(value: str) -> date:
+    return _monday_of(date.fromisoformat(value))
 
 
 def _word_diff(old: str, new: str) -> str:
@@ -1349,24 +1357,39 @@ def cost_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/calendar", response_class=HTMLResponse)
-def calendar_page(request: Request, days: int = 30) -> HTMLResponse:
-    """Show scheduled and recently published content."""
+def calendar_page(
+    request: Request,
+    profile: str | None = None,
+    week: str | None = None,
+) -> HTMLResponse:
+    """Show one Monday-based week of scheduled and published items."""
     session = _session(request)
     context = _context(request)
+    today = datetime.now(UTC).date()
+    try:
+        week_start = _parse_week(week) if week else _monday_of(today)
+    except ValueError:
+        week_start = _monday_of(today)
     with context.database.session() as db:
-        try:
-            entries = list_calendar_views(db, context.redactor, days=days)
-        except WebError as exc:
-            return _page(
-                request,
-                session,
-                "error.html",
-                "calendar",
-                status_code=exc.status_code,
-                code=exc.code,
-                message=exc.message,
-            )
-    return _page(request, session, "calendar.html", "calendar", entries=entries, days=days)
+        timezone = None
+        quiet = None
+        if profile is not None:
+            summary = next((s for s in ProfileCatalog(db).list() if s.slug == profile), None)
+            if summary is not None:
+                timezone = summary.timezone
+                try:
+                    quiet = load_policy(context.layout.profiles / profile).quiet_hours
+                except (ProfileValidationError, OSError):
+                    quiet = None
+        week_data = calendar_week(
+            db,
+            context.redactor,
+            week_start=week_start,
+            timezone=timezone,
+            profile=profile,
+            quiet_hours=quiet,
+        )
+    return _page(request, session, "calendar.html", "calendar", week=week_data)
 
 
 @router.get("/audit", response_class=HTMLResponse)

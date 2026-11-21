@@ -9,9 +9,10 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -67,6 +68,24 @@ from heraldesk.telegram.formatting import mask_chat_id, mask_sender_id, preview
 from heraldesk.telegram.runtime import notifier_for
 from heraldesk.web.context import AdapterFactory, WebContext
 from heraldesk.web.errors import BadRequest, NotFound, WebError
+
+STATE_SEMANTIC = {
+    "idea": "info",
+    "drafted": "muted",
+    "reviewed": "info",
+    "pending_approval": "warn",
+    "approved": "ok",
+    "scheduled": "info",
+    "published": "ok",
+    "rejected": "danger",
+    "failed": "danger",
+    "blocked": "danger",
+    "cancelled": "muted",
+    "needs_review": "warn",
+    "pending": "warn",
+    "handled": "ok",
+    "ignored": "muted",
+}
 
 QUEUE_COUNT_STATES = (
     "drafted",
@@ -1045,6 +1064,121 @@ def list_calendar_views(
             )
     views.sort(key=lambda view: (view.when, view.content_item_id))
     return views
+
+
+def calendar_week(
+    session: Session,
+    redactor: SecretRegistry,
+    *,
+    week_start: date,
+    timezone: str | None = None,
+    profile: str | None = None,
+    quiet_hours: Any = None,
+) -> dict[str, Any]:
+    """Build one Monday-based calendar week with items placed in local time.
+
+    ``timezone`` is the selected profile's timezone; when ``None`` (All profiles), each
+    item is shown in its own profile's timezone and quiet hours are not shaded.
+    """
+    tz: ZoneInfo
+    if timezone:
+        try:
+            tz = ZoneInfo(timezone)
+        except ZoneInfoNotFoundError:
+            tz = ZoneInfo("UTC")
+    else:
+        tz = ZoneInfo("UTC")
+
+    week_start_local = datetime.combine(week_start, datetime.min.time(), tzinfo=tz)
+    week_start_utc = week_start_local.astimezone(UTC)
+    week_end_utc = week_start_utc + timedelta(days=7)
+
+    summaries = ProfileCatalog(session).list()
+    if profile is not None:
+        summaries = [summary for summary in summaries if summary.slug == profile]
+    tz_by_slug = {summary.slug: summary.timezone for summary in summaries}
+
+    items_by_cell: dict[str, list[dict[str, Any]]] = {}
+    items_by_day: list[list[dict[str, Any]]] = [[] for _ in range(7)]
+    for summary in summaries:
+        scope = ProfileScope(summary.id)
+        for item in ContentItemRepository(session).list(
+            scope, states=("scheduled", "published"), limit=500
+        ):
+            station = item.published_at if item.state == "published" else item.scheduled_at
+            if station is None:
+                continue
+            when_utc = as_utc(station)
+            if not (week_start_utc <= when_utc < week_end_utc):
+                continue
+            item_tz = timezone or tz_by_slug.get(summary.slug) or "UTC"
+            try:
+                local = when_utc.astimezone(ZoneInfo(item_tz))
+            except ZoneInfoNotFoundError:
+                local = when_utc.astimezone(UTC)
+            day = local.weekday() if timezone else when_utc.weekday()
+            entry = {
+                "content_item_id": item.id,
+                "platform": item.platform,
+                "state": item.state,
+                "profile_slug": summary.slug,
+                "preview": preview(redactor.redact(item.body), limit=100),
+                "time": local.strftime("%H:%M"),
+                "tz": item_tz,
+                "day": day,
+                "hour": local.hour,
+                "status_class": "status-" + STATE_SEMANTIC.get(item.state, "muted"),
+            }
+            items_by_cell.setdefault(f"{day}-{local.hour}", []).append(entry)
+            if 0 <= day < 7:
+                items_by_day[day].append(entry)
+
+    quiet_cells: list[str] = []
+    quiet_label: str | None = None
+    if quiet_hours is not None and timezone:
+        try:
+            start_min = _clock_minutes(quiet_hours.start)
+            end_min = _clock_minutes(quiet_hours.end)
+            quiet_label = f"{quiet_hours.start}-{quiet_hours.end}"
+            for day in range(7):
+                for hour in range(24):
+                    cell = hour * 60
+                    in_quiet = (
+                        start_min <= cell < end_min
+                        if start_min < end_min
+                        else cell >= start_min or cell < end_min
+                    )
+                    if in_quiet:
+                        quiet_cells.append(f"{day}-{hour}")
+        except (AttributeError, ValueError):
+            quiet_label = None
+
+    day_names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    days = [
+        {
+            "name": day_names[i],
+            "iso": (week_start + timedelta(days=i)).isoformat(),
+            "num": (week_start + timedelta(days=i)).day,
+        }
+        for i in range(7)
+    ]
+
+    return {
+        "week_start": week_start.isoformat(),
+        "prev_week": (week_start - timedelta(days=7)).isoformat(),
+        "next_week": (week_start + timedelta(days=7)).isoformat(),
+        "days": days,
+        "items_by_cell": items_by_cell,
+        "items_by_day": items_by_day,
+        "quiet_cells": quiet_cells,
+        "quiet_label": quiet_label,
+        "timezone": timezone,
+    }
+
+
+def _clock_minutes(value: str) -> int:
+    hour, minute = value.split(":", 1)
+    return int(hour) * 60 + int(minute)
 
 
 @dataclass(frozen=True, slots=True)
