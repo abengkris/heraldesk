@@ -123,3 +123,27 @@ def test_no_external_urls_in_html_or_static_assets(initialized: InitResult) -> N
         text = (static_dir / name).read_text(encoding="utf-8")
         assert "http://" not in text
         assert "https://" not in text
+
+
+def test_htmx_indicator_styles_are_local_and_disable_injected_styles(
+    initialized: InitResult,
+) -> None:
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/")
+    assert 'name="htmx-config"' in page.text
+    assert '"includeIndicatorStyles": false' in page.text
+
+    css = (Path("src/heraldesk/web/static/app.css")).read_text(encoding="utf-8")
+    assert ".htmx-indicator" in css
+    assert ".htmx-request .htmx-indicator" in css
+    assert ".htmx-request.htmx-indicator" in css
+
+
+def test_htmx_attributes_do_not_require_unsafe_eval() -> None:
+    templates = Path("src/heraldesk/web/templates")
+    text = "\n".join(path.read_text(encoding="utf-8") for path in templates.rglob("*.html"))
+    assert "hx-on" not in text
+    triggers = re.findall(r'hx-trigger="([^"]+)"', text)
+    assert set(triggers) <= {"every 5s", "keyup changed delay:500ms"}
+    assert all("[" not in trigger and "&&" not in trigger for trigger in triggers)

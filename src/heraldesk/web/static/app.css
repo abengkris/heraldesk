@@ -1,5 +1,10 @@
 /* Heraldesk — hand-written CSS, no framework, no build step. */
 
+/* htmx indicators: supplied here so CSP can stay style-src 'self'. */
+.htmx-indicator { opacity: 0; visibility: hidden; transition: opacity 200ms ease-in; }
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator { opacity: 1; visibility: visible; }
+
 /* ============================================================
    Tokens
    ============================================================ */

@@ -35,6 +35,8 @@ DYNAMIC_CLASSES = {
     "diff-no",
     "del",
     "ins",
+    "htmx-indicator",
+    "htmx-request",
 }
 
 LEGACY_CLASSES = {

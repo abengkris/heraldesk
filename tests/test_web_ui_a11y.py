@@ -337,3 +337,13 @@ def test_one_status_mapping_covers_every_state_and_risk() -> None:
     for risk in ("low", "medium", "high", "blocked"):
         html = macro.status_badge("risk", risk)
         assert risk in html and status_semantic("risk", risk) in html
+
+
+def test_each_status_badge_maps_to_a_contrasting_foreground_background_pair() -> None:
+    from heraldesk.web.service import RISK_SEMANTIC, STATE_SEMANTIC
+
+    tokens = _theme_tokens()[0]
+    for mapping in (RISK_SEMANTIC, STATE_SEMANTIC):
+        for value, semantic in mapping.items():
+            ratio = _contrast(tokens[f"status-{semantic}"], tokens[f"status-{semantic}-bg"])
+            assert ratio >= 4.5, (value, semantic, ratio)
