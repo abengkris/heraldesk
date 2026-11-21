@@ -57,8 +57,11 @@ jobs:
           enable-cache: true
       - name: Install dependencies
         run: uv sync --locked
+      - name: Run the full suite with coverage gate
+        if: runner.os == 'Linux'
+        run: uv run pytest --cov=heraldesk --cov-report=term-missing:skip-covered --cov-fail-under=85
       - name: Run the full suite
-        if: runner.os != 'Windows'
+        if: runner.os == 'macOS'
         run: uv run pytest
       - name: Run core tests on Windows
         if: runner.os == 'Windows'
