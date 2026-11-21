@@ -1,0 +1,5 @@
+{% if ok %}
+<p class="notice ok" role="status">Valid. Nothing was saved.</p>
+{% else %}
+<p class="alert error" role="alert">{{ error }}</p>
+{% endif %}

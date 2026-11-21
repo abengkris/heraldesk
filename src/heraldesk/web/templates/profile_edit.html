@@ -1,23 +1,92 @@
 {% extends "base.html" %}
-{% block title %}Edit {{ state.slug }} · Heraldesk{% endblock %}
+{% block title %}Edit {{ slug }} · Heraldesk{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Edit {{ state.slug }}</h1>
-    <p class="muted">Changes are validated with the same loader as <code>profile reload</code>.</p>
+    <h1>Edit {{ slug }}</h1>
+    <p class="muted">The raw file is the source of truth. Saving validates all four files first.</p>
   </div>
-  <a class="button" href="/profiles">Back to profiles</a>
+  <a class="button ghost" href="/profiles">Back to profiles</a>
 </div>
 
+{% if notice %}<p class="notice ok" role="status">{{ notice }}</p>{% endif %}
 {% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
 
-<form method="post" action="/profiles/{{ state.slug }}/edit" class="card">
-  <input type="hidden" name="csrf" value="{{ csrf }}">
+<nav class="tabs profile-tabs" aria-label="Profile files">
   {% for name in files %}
-  <label for="file-{{ name }}"><strong>{{ name }}</strong></label>
-  <textarea id="file-{{ name }}" name="{{ name }}" rows="{{ 8 if name.endswith('.md') else 12 }}"
-            spellcheck="false">{{ state.files[name] }}</textarea>
+  <a href="/profiles/{{ slug }}/edit?file={{ name }}" {% if name == active_file %}aria-current="page"{% endif %}>
+    {{ name }}
+    {% if name in problem_files %}<span class="badge status-warn">validation problem</span>{% endif %}
+  </a>
   {% endfor %}
-  <button type="submit" class="button primary">Validate and save</button>
+</nav>
+
+<form method="post" action="/profiles/{{ slug }}/edit/preview" class="editor-form" data-profile-editor>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="file" value="{{ active_file }}">
+  <input type="hidden" name="base_hash" value="{{ base_hash }}">
+
+  <div class="editor-grid">
+    {% if active_file == "policy.yaml" and helper %}
+    <aside class="editor-helper" aria-labelledby="helper-title">
+      <fieldset class="fieldset">
+        <legend id="helper-title">Policy helper</legend>
+        <p class="help">
+          Changes only these values with a text-level update, keeping comments and key order.
+          Click <strong>Apply helper</strong>, review the YAML, then save.
+        </p>
+        <div class="field">
+          <label for="helper-mode">Default mode</label>
+          <select id="helper-mode" name="default_mode">
+            {% for mode in ["draft_only", "require_approval", "auto_publish", "auto", "auto_after_delay"] %}
+            <option value="{{ mode }}" {% if helper.default_mode == mode %}selected{% endif %}>{{ mode }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="helper-max">Max posts per day</label>
+          <input id="helper-max" name="max_posts_per_day" type="number" min="0" step="1" value="{{ helper.max_posts_per_day }}">
+        </div>
+        <div class="field">
+          <label for="helper-quiet-start">Quiet hours start</label>
+          <input id="helper-quiet-start" name="quiet_start" type="time" value="{{ helper.quiet_start }}">
+        </div>
+        <div class="field">
+          <label for="helper-quiet-end">Quiet hours end</label>
+          <input id="helper-quiet-end" name="quiet_end" type="time" value="{{ helper.quiet_end }}">
+        </div>
+        <p class="help">Leave both quiet fields empty to remove the quiet-hours window.</p>
+        <button type="submit" class="button ghost" formaction="/profiles/{{ slug }}/edit/helper">
+          Apply helper
+        </button>
+      </fieldset>
+    </aside>
+    {% endif %}
+
+    <div class="editor-main">
+      <label for="profile-text">{{ active_file }}</label>
+      <p class="help" id="text-help">
+        Raw file content. Validation uses the same loader as <code>heraldesk profile reload</code>.
+      </p>
+      <textarea id="profile-text" name="text" rows="22" spellcheck="false"
+                aria-describedby="text-help{% if validation %} validation-panel{% endif %}"
+                hx-post="/profiles/{{ slug }}/validate"
+                hx-trigger="keyup changed delay:500ms"
+                hx-target="#validation-panel"
+                hx-swap="innerHTML"
+                hx-include="closest form">{{ text }}</textarea>
+
+      <div id="validation-panel" aria-live="polite">
+        {% if validation %}
+        <p class="alert error" role="alert">{{ validation }}</p>
+        {% endif %}
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="button" formaction="/profiles/{{ slug }}/validate">Validate</button>
+        <button type="submit" class="button primary">Review changes</button>
+      </div>
+    </div>
+  </div>
 </form>
 {% endblock %}

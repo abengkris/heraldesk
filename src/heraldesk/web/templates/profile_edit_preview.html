@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Review {{ file }} · Heraldesk{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Review changes</h1>
+    <p class="muted">{{ slug }} · {{ file }} · nothing is written until you save.</p>
+  </div>
+  <a class="button ghost" href="/profiles/{{ slug }}/edit?file={{ file }}">Back to editor</a>
+</div>
+
+{% if error %}<p class="alert error" role="alert">{{ error }}</p>{% endif %}
+
+<div class="diff-wrap" aria-label="Line diff from the file on disk to your submitted text">
+  {{ diff_html|safe }}
+</div>
+
+{% if can_save %}
+<form method="post" action="/profiles/{{ slug }}/edit" class="actions save-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="file" value="{{ file }}">
+  <input type="hidden" name="base_hash" value="{{ base_hash }}">
+  <textarea name="text" hidden>
+{{ text }}</textarea>
+
+  {% if loosening %}
+  <div class="alert warn autonomy-warning" role="alert">
+    <strong>This change loosens autonomy.</strong>
+    Review the diff above. Confirm explicitly before saving.
+  </div>
+  <label class="checkbox">
+    <input type="checkbox" name="loosen_confirm" value="yes" required>
+    I understand this gives the agents more freedom.
+  </label>
+  {% endif %}
+
+  <button type="submit" class="button primary">Save</button>
+  <a class="button ghost" href="/profiles/{{ slug }}/edit?file={{ file }}">Cancel</a>
+</form>
+{% elif not stale %}
+<p class="muted">Fix the validation error above, then review again. Nothing was saved.</p>
+{% endif %}
+{% endblock %}

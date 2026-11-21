@@ -1303,3 +1303,13 @@ rejects an edit whose submitted body differs from its redacted form, or that con
 `[REDACTED]` marker, before any write or audit entry. The operator removes the secret-like
 content instead of silently publishing a masked body. Surrounding whitespace is still
 trimmed by the web layer. The alternative (storing raw) was rejected.
+
+
+## Profile policy helper edits text, not YAML (2026-11-21)
+
+The `policy.yaml` helper form updates `default_mode`, `max_posts_per_day` and `quiet_hours`
+with a conservative line-level text edit. PyYAML round-tripping would silently drop comments
+and reorder keys, so it is not used for writes. The helper refuses unsupported shapes (for
+example an unexpected `quiet_hours` structure or a partially filled quiet window) and tells
+the user to edit the YAML directly. Applying the helper only changes the editor textarea;
+nothing is written until the normal review and save steps.

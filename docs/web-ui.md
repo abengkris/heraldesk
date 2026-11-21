@@ -73,6 +73,8 @@ These classes were kept during the redesign and should be deleted once no templa
 - `.facts` — the old detail definition list; unused after the Queue rework.
 - `.alert.ok`, `.alert.error` — replaced by `.notice`, toast, and `status_badge`.
 - `.card.stat` — replaced by the metric component.
+- `.empty` — still used by the Profiles empty state; replace with `empty_state()` when the
+  remaining pages are reworked.
 
 ## Manual test checklist
 
@@ -99,6 +101,34 @@ These classes were kept during the redesign and should be deleted once no templa
 - Single profile: times shown in that profile's timezone and quiet hours (from `policy.yaml`) shaded, including cross-midnight ranges. All profiles: each chip shows its own timezone label; quiet hours are not shaded.
 - Mobile (≤ 767px): a day-by-day agenda replaces the grid; no horizontal scroll.
 - Read-only helper: `calendar_week` in `web/service.py`.
+
+## Profiles
+
+- The list shows name/slug, type, status, autonomy summary, pending/scheduled/failed counts and
+  kill-switch state (display only). A broken `policy.yaml` shows `unknown`, never an error page.
+- The editor selects one of the four files by plain links (`?file=soul.md|brief.md|policy.yaml|banned.yaml`).
+  Tabs mark the active file and any file whose current content fails validation.
+- The raw textarea is the source of truth. `Validate` works with or without JS; with JS the same
+  endpoint is called on `keyup changed delay:500ms` and swaps the `aria-live="polite"` panel.
+  The endpoint authenticates, requires CSRF and writes/audits nothing.
+- `Review changes` shows a read-only line diff against the file on disk plus the validation
+  result. `Save` validates again, writes only that file atomically, reloads the profile and
+  records the existing `profile.edited` audit payload with `files: [name]`.
+- The form carries a SHA-256 `base_hash`. If the file changed on disk, preview/save reject the
+  edit with the diff against the current content instead of overwriting.
+- If a change loosens autonomy, Save requires the explicit review-step confirmation checkbox.
+  The check is server-side; a forged POST is rejected. Detection lives in the pure
+  `loosens_autonomy` helper (`web/service.py`) and covers default mode, rule modes, new auto
+  rules, decreased delays, increased daily limits, shortened/removed quiet hours, `disclose_ai`
+  off, removed banned entries, and widened risk/intents on auto rules.
+- The `policy.yaml` helper (**approach a**) updates only `default_mode`, `max_posts_per_day` and
+  `quiet_hours` with a minimal line-level text edit. It preserves comments and key order and
+  refuses shapes it cannot edit safely, telling the user to edit the YAML directly. A YAML
+  round-trip was rejected because it would drop comments and reorder keys.
+- Mobile: single column, helper above the textarea, full-width textarea, and the profiles table
+  stacks into labeled rows without horizontal scroll.
+
+Read-only helpers: `profiles_overview` and `loosens_autonomy` in `web/service.py`.
 
 ## Navigation model
 

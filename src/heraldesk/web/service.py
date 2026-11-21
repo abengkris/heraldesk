@@ -60,7 +60,16 @@ from heraldesk.domain.approvals import (
     reject,
     scope_for_content_item,
 )
-from heraldesk.domain.profiles import load_profile
+from heraldesk.domain.errors import ProfileValidationError
+from heraldesk.domain.policy import (
+    AutonomyPolicy,
+    BannedLists,
+    PolicyMode,
+    PolicyRisk,
+    parse_banned_yaml,
+    parse_policy_yaml,
+)
+from heraldesk.domain.profiles import load_policy, load_profile
 from heraldesk.platforms import publish_adapter_for
 from heraldesk.platforms.base import PlatformAdapter, PublishError, constraints_for
 from heraldesk.publisher import PublishOutcome, publish_item
@@ -680,6 +689,141 @@ def profiles_payload(session: Session) -> list[dict[str, Any]]:
     return rows
 
 
+def profiles_overview(session: Session, profiles_root: Path) -> list[dict[str, Any]]:
+    """Return profile metadata, queue counts and a read-only autonomy summary.
+
+    A policy that cannot be loaded is reported as ``unknown`` instead of failing the page.
+    """
+    rows: list[dict[str, Any]] = []
+    repository = ContentItemRepository(session)
+    for summary in ProfileCatalog(session).list():
+        try:
+            policy: AutonomyPolicy | None = load_policy(profiles_root / summary.slug)
+        except (ProfileValidationError, OSError):
+            policy = None
+        rows.append(
+            {
+                "slug": summary.slug,
+                "name": summary.name,
+                "type": summary.profile_type,
+                "status": summary.status,
+                "kill_switch": summary.kill_switch,
+                "autonomy": _autonomy_summary(policy),
+                "queue": _queue_counts(repository.state_counts(ProfileScope(summary.id))),
+            }
+        )
+    return rows
+
+
+def _autonomy_summary(policy: AutonomyPolicy | None) -> str:
+    if policy is None:
+        return "unknown"
+    mode = policy.default_mode.value
+    if policy.rules:
+        return f"{mode} ({len(policy.rules)} rules)"
+    return mode
+
+
+_MODE_RANK = {
+    PolicyMode.DRAFT_ONLY: 0,
+    PolicyMode.REQUIRE_APPROVAL: 1,
+    PolicyMode.AUTO_PUBLISH: 2,
+    PolicyMode.AUTO: 3,
+    PolicyMode.AUTO_AFTER_DELAY: 4,
+}
+_RISK_RANK = {PolicyRisk.LOW: 0, PolicyRisk.MEDIUM: 1, PolicyRisk.HIGH: 2}
+_AUTO_MODES = (PolicyMode.AUTO, PolicyMode.AUTO_AFTER_DELAY)
+
+
+def loosens_autonomy(filename: str, old_text: str, new_text: str) -> bool:
+    """Return ``True`` when a one-file edit gives the agents more freedom.
+
+    Pure and conservative: unparsable input never reports a loosening (the save path
+    rejects invalid files separately).
+    """
+    if old_text == new_text:
+        return False
+    try:
+        if filename == "policy.yaml":
+            return _policy_loosens(
+                parse_policy_yaml(old_text, source="policy.yaml"),
+                parse_policy_yaml(new_text, source="policy.yaml"),
+            )
+        if filename == "banned.yaml":
+            return _banned_loosens(
+                parse_banned_yaml(old_text, source="banned.yaml"),
+                parse_banned_yaml(new_text, source="banned.yaml"),
+            )
+    except (ProfileValidationError, ValueError):
+        return False
+    return False
+
+
+def _policy_loosens(old: AutonomyPolicy, new: AutonomyPolicy) -> bool:
+    if new.default_mode is not PolicyMode.DRAFT_ONLY and (
+        _MODE_RANK[new.default_mode] > _MODE_RANK[old.default_mode]
+    ):
+        return True
+    if new.max_posts_per_day > old.max_posts_per_day:
+        return True
+    if old.disclose_ai and not new.disclose_ai:
+        return True
+    if _quiet_loosens(old, new):
+        return True
+    return _rules_loosen(old, new)
+
+
+def _quiet_loosens(old: AutonomyPolicy, new: AutonomyPolicy) -> bool:
+    if old.quiet_hours is None:
+        return False
+    if new.quiet_hours is None:
+        return True
+    return _quiet_minutes(new) < _quiet_minutes(old)
+
+
+def _quiet_minutes(policy: AutonomyPolicy) -> int:
+    assert policy.quiet_hours is not None
+    start = _clock_minutes(policy.quiet_hours.start)
+    end = _clock_minutes(policy.quiet_hours.end)
+    return end - start if start < end else 1440 - start + end
+
+
+def _clock_minutes(value: str) -> int:
+    hour, minute = value.split(":", 1)
+    return int(hour) * 60 + int(minute)
+
+
+def _rules_loosen(old: AutonomyPolicy, new: AutonomyPolicy) -> bool:
+    old_by_key: dict[tuple[str, tuple[str, ...]], list[Any]] = {}
+    for rule in old.rules:
+        old_by_key.setdefault((rule.action.value, tuple(sorted(rule.intents))), []).append(rule)
+    for rule in new.rules:
+        key = (rule.action.value, tuple(sorted(rule.intents)))
+        candidates = old_by_key.get(key)
+        if not candidates:
+            if rule.mode in _AUTO_MODES:
+                return True
+            continue
+        previous = candidates.pop(0)
+        if previous.mode not in _AUTO_MODES and rule.mode in _AUTO_MODES:
+            return True
+        if rule.delay_minutes < previous.delay_minutes:
+            return True
+        if (
+            previous.mode in _AUTO_MODES
+            and rule.mode in _AUTO_MODES
+            and _RISK_RANK[rule.risk] > _RISK_RANK[previous.risk]
+        ):
+            return True
+    return False
+
+
+def _banned_loosens(old: BannedLists, new: BannedLists) -> bool:
+    return bool(set(old.banned_words) - set(new.banned_words)) or bool(
+        set(old.banned_topics) - set(new.banned_topics)
+    )
+
+
 def dashboard_counts(session: Session) -> dict[str, Any]:
     """Return aggregate queue and inbox counts for the dashboard."""
     totals = {state: 0 for state in QUEUE_COUNT_STATES}
@@ -731,6 +875,8 @@ __all__ = [
     "list_inbox_views",
     "list_queue_views",
     "list_report_files",
+    "loosens_autonomy",
+    "profiles_overview",
     "profiles_payload",
     "publish_content",
     "read_report",
@@ -1174,11 +1320,6 @@ def calendar_week(
         "quiet_label": quiet_label,
         "timezone": timezone,
     }
-
-
-def _clock_minutes(value: str) -> int:
-    hour, minute = value.split(":", 1)
-    return int(hour) * 60 + int(minute)
 
 
 @dataclass(frozen=True, slots=True)

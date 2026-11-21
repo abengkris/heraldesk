@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -492,6 +493,12 @@ def test_calendar_page_lists_scheduled_items(
     assert "scheduled" in page.text
 
 
+def _base_hash(html: str) -> str:
+    match = re.search(r'name="base_hash" value="([^"]+)"', html)
+    assert match is not None, html[:500]
+    return match.group(1)
+
+
 def test_profile_editor_saves_valid_changes(
     initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
 ) -> None:
@@ -499,35 +506,34 @@ def test_profile_editor_saves_valid_changes(
     from heraldesk.domain.profiles import load_profile
 
     directory = initialized.layout.profiles / "acme"
-    form = {
-        "soul.md": (directory / "soul.md").read_text(encoding="utf-8"),
-        "brief.md": "# Updated brief\n\nNew audience and goals.\n",
-        "policy.yaml": (directory / "policy.yaml").read_text(encoding="utf-8"),
-        "banned.yaml": (directory / "banned.yaml").read_text(encoding="utf-8"),
-    }
+    updated = "# Updated brief\n\nNew audience and goals.\n"
     with make_client(initialized) as client:
         login(client)
-        page = client.get("/profiles/acme/edit")
+        page = client.get("/profiles/acme/edit?file=brief.md")
         assert page.status_code == 200
-        csrf = csrf_from(page.text)
-        form["csrf"] = csrf
         saved = client.post(
             "/profiles/acme/edit",
-            data=form,
+            data={
+                "csrf": csrf_from(page.text),
+                "file": "brief.md",
+                "text": updated,
+                "base_hash": _base_hash(page.text),
+            },
             follow_redirects=False,
         )
 
     assert saved.status_code == 303
-    assert (directory / "brief.md").read_text(encoding="utf-8").startswith("# Updated brief")
+    assert (directory / "brief.md").read_text(encoding="utf-8") == updated
     assert load_profile(directory).brief.startswith("# Updated brief")
     from heraldesk.db.session import database_session
 
     with database_session(initialized.layout) as audit_session:
-        actions = {
-            entry.action
-            for entry in AuditService(audit_session).history(profile_setup.scope, limit=100)
-        }
+        entries = AuditService(audit_session).history(profile_setup.scope, limit=100)
+        actions = {entry.action for entry in entries}
+        edited = [entry for entry in entries if entry.action == "profile.edited"]
     assert "profile.edited" in actions
+    assert edited[-1].payload["files"] == ["brief.md"]
+    assert "New audience and goals" not in json.dumps(edited[-1].payload)
 
 
 def test_profile_editor_rejects_invalid_policy_without_writing(
@@ -537,20 +543,20 @@ def test_profile_editor_rejects_invalid_policy_without_writing(
     original = (directory / "policy.yaml").read_text(encoding="utf-8")
     with make_client(initialized) as client:
         login(client)
-        csrf = csrf_from(client.get("/profiles/acme/edit").text)
+        page = client.get("/profiles/acme/edit?file=policy.yaml")
         response = client.post(
             "/profiles/acme/edit",
             data={
-                "csrf": csrf,
-                "soul.md": (directory / "soul.md").read_text(encoding="utf-8"),
-                "brief.md": (directory / "brief.md").read_text(encoding="utf-8"),
-                "policy.yaml": "default_mode: not-a-mode\n",
-                "banned.yaml": (directory / "banned.yaml").read_text(encoding="utf-8"),
+                "csrf": csrf_from(page.text),
+                "file": "policy.yaml",
+                "text": "default_mode: not-a-mode\n",
+                "base_hash": _base_hash(page.text),
             },
             follow_redirects=False,
         )
 
     assert response.status_code == 400
+    assert "invalid autonomy policy" in response.text
     assert (directory / "policy.yaml").read_text(encoding="utf-8") == original
 
 
@@ -558,13 +564,13 @@ def test_profile_editor_requires_csrf(initialized: InitResult, profile_setup: Pr
     directory = initialized.layout.profiles / "acme"
     with make_client(initialized) as client:
         login(client)
+        page = client.get("/profiles/acme/edit?file=policy.yaml")
         response = client.post(
             "/profiles/acme/edit",
             data={
-                "soul.md": (directory / "soul.md").read_text(encoding="utf-8"),
-                "brief.md": (directory / "brief.md").read_text(encoding="utf-8"),
-                "policy.yaml": (directory / "policy.yaml").read_text(encoding="utf-8"),
-                "banned.yaml": (directory / "banned.yaml").read_text(encoding="utf-8"),
+                "file": "policy.yaml",
+                "text": (directory / "policy.yaml").read_text(encoding="utf-8"),
+                "base_hash": _base_hash(page.text),
             },
             follow_redirects=False,
         )

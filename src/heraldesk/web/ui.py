@@ -63,9 +63,13 @@ from heraldesk.web.errors import BadRequest, NotFound, WebError
 from heraldesk.web.profile_editor import (
     PROFILE_FILES,
     ProfileEditError,
-    ProfileEditState,
+    StaleProfileEdit,
+    apply_policy_helper,
+    content_hash,
+    policy_helper_values,
     read_profile_files,
-    save_profile_files,
+    save_profile_file,
+    validate_profile_files,
 )
 from heraldesk.web.rendering import render_markdown
 from heraldesk.web.service import (
@@ -83,8 +87,9 @@ from heraldesk.web.service import (
     list_inbox_views,
     list_queue_views,
     list_report_files,
+    loosens_autonomy,
     profile_mode,
-    profiles_payload,
+    profiles_overview,
     publish_content,
     read_report,
     reject_by_id,
@@ -1440,69 +1445,370 @@ def audit_page(request: Request, limit: int = 100) -> HTMLResponse:
 
 
 @router.get("/profiles/{slug}/edit", response_class=HTMLResponse)
-def profile_edit_page(request: Request, slug: str) -> HTMLResponse:
-    """Show the profile text files in a validated editor."""
+def profile_edit_page(
+    request: Request,
+    slug: str,
+    file: str | None = None,
+    ok: str | None = None,
+) -> HTMLResponse:
+    """Show one profile text file in the validated editor."""
     session = _session(request)
     context = _context(request)
+    active = file or PROFILE_FILES[0]
+    if active not in PROFILE_FILES:
+        return _profile_error(request, session, "that file is not editable", status_code=400)
+    try:
+        payload = _profile_editor_context(context, slug, active)
+    except ProfileEditError as exc:
+        return _profile_error(
+            request, session, context.redactor.redact(str(exc)) or "profile not found"
+        )
+    if ok == "saved":
+        payload["notice"] = "Saved."
+    return _page(request, session, "profile_edit.html", "profiles", **payload)
+
+
+@router.post("/profiles/{slug}/validate", response_class=HTMLResponse)
+async def profile_validate(request: Request, slug: str) -> Response:
+    """Validate one submitted file without writing or auditing anything."""
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    context = _context(request)
+    active = _form_value(form, "file") or PROFILE_FILES[0]
+    text = _form_value(form, "text")
+    if active not in PROFILE_FILES:
+        return _profile_error(request, session, "that file is not editable", status_code=400)
+    try:
+        payload = _profile_editor_context(context, slug, active, text)
+    except ProfileEditError as exc:
+        return _profile_error(
+            request, session, context.redactor.redact(str(exc)) or "profile not found"
+        )
+    if payload["validation"] is None:
+        result = {"ok": True, "error": None}
+    else:
+        result = {"ok": False, "error": payload["validation"]}
+    if _is_htmx(request):
+        return _render(request, "partials/profile_validate.html", result)
+    payload["notice"] = (
+        "Valid. Nothing was saved."
+        if payload["validation"] is None
+        else "Fix the validation error above. Nothing was saved."
+    )
+    return _page(request, session, "profile_edit.html", "profiles", **payload)
+
+
+@router.post("/profiles/{slug}/edit/helper", response_class=HTMLResponse)
+async def profile_helper(request: Request, slug: str) -> Response:
+    """Apply the policy helper to the submitted YAML text without writing."""
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    context = _context(request)
+    active = _form_value(form, "file") or "policy.yaml"
+    if active != "policy.yaml":
+        return _profile_error(request, session, "the helper only edits policy.yaml", 400)
+    text = _form_value(form, "text")
+    updated = apply_policy_helper(
+        text,
+        default_mode=_form_value(form, "default_mode"),
+        max_posts_per_day=_form_value(form, "max_posts_per_day"),
+        quiet_start=_form_value(form, "quiet_start"),
+        quiet_end=_form_value(form, "quiet_end"),
+    )
+    if updated is None:
+        error = "The helper could not update this file safely. Edit the YAML directly instead."
+        try:
+            payload = _profile_editor_context(context, slug, active, text, error=error)
+        except ProfileEditError as exc:
+            return _profile_error(
+                request, session, context.redactor.redact(str(exc)) or "profile not found"
+            )
+        return _page(request, session, "profile_edit.html", "profiles", **payload)
+    try:
+        payload = _profile_editor_context(
+            context,
+            slug,
+            active,
+            updated,
+            notice="Helper values applied to the text. Review the changes, then save.",
+        )
+    except ProfileEditError as exc:
+        return _profile_error(
+            request, session, context.redactor.redact(str(exc)) or "profile not found"
+        )
+    return _page(request, session, "profile_edit.html", "profiles", **payload)
+
+
+@router.post("/profiles/{slug}/edit/preview", response_class=HTMLResponse)
+async def profile_edit_preview(request: Request, slug: str) -> Response:
+    """Show a read-only line diff and validation result before saving."""
+    session = _session(request)
+    form = await _form(request)
+    _require_csrf(_auth(request), session, form)
+    context = _context(request)
+    active = _form_value(form, "file") or PROFILE_FILES[0]
+    text = _form_value(form, "text")
+    base_hash = _form_value(form, "base_hash")
+    if active not in PROFILE_FILES:
+        return _profile_error(request, session, "that file is not editable", status_code=400)
     try:
         state = read_profile_files(context.layout, slug)
     except ProfileEditError as exc:
-        return _page(
-            request,
-            session,
-            "error.html",
-            "profiles",
-            status_code=404,
-            code="profile_not_found",
-            message=context.redactor.redact(str(exc)) or "profile not found",
+        return _profile_error(
+            request, session, context.redactor.redact(str(exc)) or "profile not found"
+        )
+    current = state.files[active]
+    stale = base_hash != content_hash(current)
+    error = _profile_validation(context, slug, state.files, active, text)
+    loosening = False if stale else loosens_autonomy(active, current, text)
+    if stale:
+        error = (
+            f"{active} changed on disk since the editor loaded it. "
+            "Review the current file below and try again."
         )
     return _page(
         request,
         session,
-        "profile_edit.html",
+        "profile_edit_preview.html",
         "profiles",
-        state=state,
-        files=PROFILE_FILES,
-        error=None,
-        notice=None,
+        slug=slug,
+        file=active,
+        text=text,
+        base_hash=base_hash,
+        current_hash=content_hash(current),
+        stale=stale,
+        error=error,
+        loosening=loosening,
+        diff_html=_line_diff(current, text),
+        can_save=not stale and error is None,
     )
 
 
 @router.post("/profiles/{slug}/edit", response_class=HTMLResponse)
 async def profile_edit_save(request: Request, slug: str) -> Response:
-    """Validate and save the four profile files, then reload the profile."""
+    """Save one validated file, refusing a stale base or an unconfirmed loosening."""
     session = _session(request)
     form = await _form(request)
     _require_csrf(_auth(request), session, form)
-    submitted = {name: _form_value(form, name) for name in PROFILE_FILES}
     context = _context(request)
+    active = _form_value(form, "file") or PROFILE_FILES[0]
+    text = _form_value(form, "text")
+    base_hash = _form_value(form, "base_hash")
+    confirm = _form_value(form, "loosen_confirm") == "yes"
+    if active not in PROFILE_FILES:
+        return _profile_error(request, session, "that file is not editable", status_code=400)
     try:
-        with context.database.session() as db:
-            save_profile_files(db, context.layout, slug, submitted)
+        state = read_profile_files(context.layout, slug)
     except ProfileEditError as exc:
-        state = ProfileEditState(slug=slug, files=submitted)
+        return _profile_error(
+            request, session, context.redactor.redact(str(exc)) or "profile not found"
+        )
+    current = state.files[active]
+    stale = base_hash != content_hash(current)
+    error = _profile_validation(context, slug, state.files, active, text)
+    loosening = False if stale else loosens_autonomy(active, current, text)
+    if stale:
+        error = (
+            f"{active} changed on disk since the editor loaded it. "
+            "Review the current file below and try again."
+        )
+    elif loosening and not confirm:
+        error = (
+            "This change loosens autonomy. Tick the confirmation box in the review step "
+            "before saving."
+        )
+    if error is not None:
         return _page(
             request,
             session,
-            "profile_edit.html",
+            "profile_edit_preview.html",
             "profiles",
-            status_code=400,
-            state=state,
-            files=PROFILE_FILES,
-            error=context.redactor.redact(str(exc)) or "profile edit failed",
-            notice=None,
+            slug=slug,
+            file=active,
+            text=text,
+            base_hash=base_hash,
+            current_hash=content_hash(current),
+            stale=stale,
+            error=error,
+            loosening=loosening,
+            diff_html=_line_diff(current, text),
+            can_save=False,
+            status_code=409 if stale else 400,
         )
-    return RedirectResponse("/profiles?ok=edited", status_code=303)
+    try:
+        with context.database.session() as db:
+            save_profile_file(
+                db,
+                context.layout,
+                slug,
+                active,
+                text,
+                base_hash=base_hash,
+                actor="user",
+            )
+    except StaleProfileEdit as exc:
+        return _profile_save_error(request, session, context, slug, active, text, exc, 409)
+    except ProfileEditError as exc:
+        return _profile_save_error(request, session, context, slug, active, text, exc, 400)
+    return RedirectResponse(f"/profiles/{slug}/edit?file={active}&ok=saved", status_code=303)
 
 
 @router.get("/profiles", response_class=HTMLResponse)
-def profiles_page(request: Request) -> HTMLResponse:
-    """List profile metadata and queue counts. No profile file bodies."""
+def profiles_page(request: Request, profile: str | None = None) -> HTMLResponse:
+    """List profile metadata, autonomy and queue counts. No profile file bodies."""
     session = _session(request)
     context = _context(request)
     with context.database.session() as db:
-        profiles = profiles_payload(db)
-    return _page(request, session, "profiles.html", "profiles", profiles=profiles)
+        profiles = profiles_overview(db, context.layout.profiles)
+    return _page(
+        request,
+        session,
+        "profiles.html",
+        "profiles",
+        profiles=profiles,
+        current_profile=profile,
+    )
+
+
+def _profile_editor_context(
+    context: WebContext,
+    slug: str,
+    active: str,
+    text: str | None = None,
+    *,
+    error: str | None = None,
+    notice: str | None = None,
+) -> dict[str, Any]:
+    state = read_profile_files(context.layout, slug)
+    current = state.files[active]
+    submitted = current if text is None else text
+    validation = _profile_validation(context, slug, state.files, active, submitted)
+    problem_files = tuple(
+        name for name in PROFILE_FILES if validation is not None and name in validation
+    )
+    helper = policy_helper_values(submitted) if active == "policy.yaml" else None
+    return {
+        "slug": slug,
+        "files": state.files,
+        "active_file": active,
+        "text": submitted,
+        "base_hash": content_hash(current),
+        "validation": validation,
+        "problem_files": problem_files,
+        "helper": helper,
+        "error": error,
+        "notice": notice,
+    }
+
+
+def _profile_validation(
+    context: WebContext,
+    slug: str,
+    files: dict[str, str],
+    active: str,
+    text: str,
+) -> str | None:
+    candidate = {**files, active: text}
+    error = validate_profile_files(context.layout, slug, candidate)
+    return context.redactor.redact(error) if error is not None else None
+
+
+def _profile_save_error(
+    request: Request,
+    session: UISession,
+    context: WebContext,
+    slug: str,
+    active: str,
+    text: str,
+    exc: Exception,
+    status_code: int,
+) -> HTMLResponse:
+    try:
+        current = read_profile_files(context.layout, slug).files[active]
+    except ProfileEditError:
+        current = ""
+    return _page(
+        request,
+        session,
+        "profile_edit_preview.html",
+        "profiles",
+        status_code=status_code,
+        slug=slug,
+        file=active,
+        text=text,
+        base_hash="",
+        current_hash=content_hash(current),
+        stale=isinstance(exc, StaleProfileEdit),
+        error=context.redactor.redact(str(exc)) or "profile edit failed",
+        loosening=False,
+        diff_html=_line_diff(current, text),
+        can_save=False,
+    )
+
+
+def _profile_error(
+    request: Request,
+    session: UISession,
+    message: str,
+    status_code: int = 404,
+) -> HTMLResponse:
+    return _page(
+        request,
+        session,
+        "error.html",
+        "profiles",
+        status_code=status_code,
+        code="profile_not_found",
+        message=message,
+    )
+
+
+def _line_diff(old: str, new: str) -> str:
+    """Return a line-based HTML diff with visible line numbers."""
+    old_lines = old.splitlines()
+    new_lines = new.splitlines()
+    matcher = difflib.SequenceMatcher(a=old_lines, b=new_lines)
+    rows: list[str] = []
+    old_no = new_no = 1
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for line in old_lines[i1:i2]:
+                rows.append(_diff_row("ctx", old_no, new_no, line))
+                old_no += 1
+                new_no += 1
+        elif tag == "delete":
+            for line in old_lines[i1:i2]:
+                rows.append(_diff_row("del", old_no, None, line))
+                old_no += 1
+        elif tag == "insert":
+            for line in new_lines[j1:j2]:
+                rows.append(_diff_row("ins", None, new_no, line))
+                new_no += 1
+        else:
+            for line in old_lines[i1:i2]:
+                rows.append(_diff_row("del", old_no, None, line))
+                old_no += 1
+            for line in new_lines[j1:j2]:
+                rows.append(_diff_row("ins", None, new_no, line))
+                new_no += 1
+    return '<div class="diff-lines">' + "".join(rows) + "</div>"
+
+
+def _diff_row(kind: str, old_no: int | None, new_no: int | None, line: str) -> str:
+    old_label = "" if old_no is None else str(old_no)
+    new_label = "" if new_no is None else str(new_no)
+    content = html.escape(line) or "&nbsp;"
+    numbers = (
+        f'<span class="diff-no" aria-hidden="true">{old_label}</span>'
+        f'<span class="diff-no" aria-hidden="true">{new_label}</span>'
+    )
+    if kind == "del":
+        return f'<div class="diff-line del">{numbers}<del>{content}</del></div>'
+    if kind == "ins":
+        return f'<div class="diff-line ins">{numbers}<ins>{content}</ins></div>'
+    return f'<div class="diff-line ctx">{numbers}<span>{content}</span></div>'
 
 
 def _notice(code: str | None) -> str | None:
