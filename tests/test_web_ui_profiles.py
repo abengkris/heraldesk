@@ -589,3 +589,62 @@ def test_policy_helper_updates_a_flow_style_quiet_window() -> None:
     assert updated is not None
     assert 'start: "22:00"' in updated
     assert 'end: "06:00"' in updated
+
+
+def test_tampered_loosening_flags_still_require_server_side_confirmation(
+    initialized: InitResult, profile_setup: ProfileSetup
+) -> None:
+    original = read(initialized, "policy.yaml")
+    loosened = original.replace("default_mode: draft_only", "default_mode: require_approval")
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/profiles/acme/edit?file=policy.yaml")
+        response = client.post(
+            "/profiles/acme/edit",
+            data={
+                "csrf": csrf_from(page.text),
+                "file": "policy.yaml",
+                "text": loosened,
+                "base_hash": base_hash_from(page.text),
+                "loosening": "yes",
+                "loosen_confirm": "no",
+            },
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+    assert "loosens autonomy" in response.text
+    assert read(initialized, "policy.yaml") == original
+
+
+def test_concurrent_saves_cannot_both_pass_the_hash_check(
+    initialized: InitResult, profile_setup: ProfileSetup
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from heraldesk.db.session import database_session
+    from heraldesk.web.profile_editor import StaleProfileEdit, save_profile_file
+
+    with make_client(initialized) as client:
+        login(client)
+        page = client.get("/profiles/acme/edit?file=brief.md")
+        base_hash = base_hash_from(page.text)
+
+    def attempt(text: str) -> str:
+        try:
+            with database_session(initialized.layout) as session:
+                save_profile_file(
+                    session,
+                    initialized.layout,
+                    "acme",
+                    "brief.md",
+                    text,
+                    base_hash=base_hash,
+                )
+        except StaleProfileEdit:
+            return "stale"
+        return "saved"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(attempt, ["# One\n\nfirst\n", "# Two\n\nsecond\n"]))
+
+    assert sorted(outcomes) == ["saved", "stale"]

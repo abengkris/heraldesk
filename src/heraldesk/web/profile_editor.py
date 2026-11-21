@@ -11,6 +11,7 @@ import hashlib
 import re
 import shutil
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from heraldesk.domain.profiles import (
 
 PROFILE_FILES = ("soul.md", "brief.md", "policy.yaml", "banned.yaml")
 MAX_FILE_BYTES = 128 * 1024
+_PROFILE_EDIT_LOCK = threading.Lock()
 
 
 class ProfileEditError(Exception):
@@ -223,39 +225,42 @@ def save_profile_file(
     directory = layout.profiles / slug
     if not directory.is_dir():
         raise ProfileEditError(f"profile directory {directory} does not exist")
-    path = directory / name
-    current = _read(path)
-    if content_hash(current) != base_hash:
-        raise StaleProfileEdit(f"{name} changed on disk since the editor loaded it")
+    with _PROFILE_EDIT_LOCK:
+        path = directory / name
+        current = _read(path)
+        if content_hash(current) != base_hash:
+            raise StaleProfileEdit(f"{name} changed on disk since the editor loaded it")
 
-    files = {item: (_read(directory / item) if item != name else text) for item in PROFILE_FILES}
-    error = validate_profile_files(layout, slug, files)
-    if error is not None:
-        raise ProfileEditError(error)
+        files = {
+            item: (_read(directory / item) if item != name else text) for item in PROFILE_FILES
+        }
+        error = validate_profile_files(layout, slug, files)
+        if error is not None:
+            raise ProfileEditError(error)
 
-    _replace_text(path, text)
+        _replace_text(path, text)
 
-    try:
-        summary = reload_profile(session, layout, slug, actor=actor)
-    except (ProfileValidationError, OSError) as exc:
-        raise ProfileEditError(f"{name} was written but reload failed: {exc}") from exc
-    changed = [name] if text != current else []
-    AuditService(session).record(
-        ProfileScope(profile_id),
-        actor=actor,
-        action="profile.edited",
-        entity="profile",
-        entity_id=profile_id,
-        payload={
-            "slug": slug,
-            "files": changed,
-            "config_hash": summary.config_hash,
-            "source": "web",
-        },
-    )
-    return ProfileEditState(
-        slug=slug, files={item: _read(directory / item) for item in PROFILE_FILES}
-    )
+        try:
+            summary = reload_profile(session, layout, slug, actor=actor)
+        except (ProfileValidationError, OSError) as exc:
+            raise ProfileEditError(f"{name} was written but reload failed: {exc}") from exc
+        changed = [name] if text != current else []
+        AuditService(session).record(
+            ProfileScope(profile_id),
+            actor=actor,
+            action="profile.edited",
+            entity="profile",
+            entity_id=profile_id,
+            payload={
+                "slug": slug,
+                "files": changed,
+                "config_hash": summary.config_hash,
+                "source": "web",
+            },
+        )
+        return ProfileEditState(
+            slug=slug, files={item: _read(directory / item) for item in PROFILE_FILES}
+        )
 
 
 def policy_helper_values(text: str) -> PolicyHelperValues | None:
