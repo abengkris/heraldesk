@@ -1369,3 +1369,23 @@ before the test runs and the queue reads empty. Seeds take their clock from
 `tests/conftest.py:fresh_now()`; tests that inject `now=` on both sides of a call (for
 example `request_approval` and `expire_pending_approvals`) may still use a fixed date, and
 `tests/test_approvals.py` pins the 71/73-hour TTL edges.
+
+
+## Coverage gate at 85% on the Ubuntu test job (2026-11-21)
+
+Ruff and mypy strict already gate style and types; nothing gated untested logic paths.
+`pytest-cov` is now a dev dependency and the Linux job runs
+`pytest --cov=heraldesk --cov-fail-under=85`, so a pull request that adds code without tests
+fails CI.
+
+The 85% number is not a target, it is a ratchet: the measured baseline on the full suite was
+88% of 11216 statements (1304 missed, 42 files at 100%), so the gate leaves roughly three
+points of headroom for legitimately unreachable branches and gets raised once the number
+holds. Measurement is statement-level only. Branch coverage would report a much lower number
+today and force a large test-only detour before the gate is useful at all, so it is deferred
+until a clean milestone.
+
+Coverage runs on Linux only: the same suite already runs on macOS, Python 3.13 and 3.14, and
+collecting coverage on every job would add minutes for no extra signal. The `fail_under`
+threshold lives in the CI command rather than `[tool.coverage.report]` so a local partial run
+(one test file) still reports instead of failing.
