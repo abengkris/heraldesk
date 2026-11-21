@@ -6,6 +6,14 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.13] - 2026-11-21
+
+### Fixed
+
+- Web tests (`tests/test_web_api.py`, `tests/test_web_ui.py`) seed approvals with the current
+  time instead of a hardcoded date; the 72-hour approval TTL no longer cancels the seeded
+  items, so the queue reads and approves them again.
+
 ## [1.18.12] - 2026-11-20
 
 ### Changed

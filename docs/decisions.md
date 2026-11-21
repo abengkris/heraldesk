@@ -1359,3 +1359,13 @@ the mobile navigation is a fixed bottom bar plus a `<details>` "More" menu; the 
 switch sits in the top bar on every authenticated page; and profile context is query-only
 (`?profile=`), with no new persistent state. Read-only view helpers live in `web/service.py`
 and never duplicate domain transitions.
+
+## Web test approval seeds use the current time (2026-11-21)
+
+Web tests (`tests/test_web_api.py`, `tests/test_web_ui.py`) seed pending approvals and must
+never freeze them on a hardcoded date. The queue read path sweeps pending approvals with the
+real clock and `APPROVAL_TTL_HOURS` is 72, so a seed written days in the past is cancelled
+before the test runs and the queue reads empty. Seeds take their clock from
+`tests/conftest.py:fresh_now()`; tests that inject `now=` on both sides of a call (for
+example `request_approval` and `expire_pending_approvals`) may still use a fixed date, and
+`tests/test_approvals.py` pins the 71/73-hour TTL edges.
