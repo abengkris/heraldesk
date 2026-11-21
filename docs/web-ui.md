@@ -79,6 +79,19 @@ These classes were kept during the redesign and should be deleted once no templa
 - 360px, 768px and 1280px; light and dark; keyboard only; JS disabled for read and write flows.
 - Queue master-detail, Inbox two-pane, Calendar week grid / mobile agenda, Cost meter, Audit `<details>` payloads, Profiles editor tabs, Draft Room conversation.
 
+## Queue editing
+
+- The edit textarea is prefilled with the stored, already-redacted body. Submitting trims
+  surrounding whitespace (`.strip()`); that normalization is the only text change the web
+  layer applies.
+- If the submitted text differs from its redacted form, or contains `[REDACTED]`, the
+  request is rejected before any write or audit entry. The inline error never repeats the
+  match; the textarea keeps the surrounding text with the match masked.
+- Preview is read-only: it diffs the submitted text against the stored body fetched
+  server-side. The hidden textarea in the preview emits a protective leading newline (the
+  first newline after `<textarea>` is ignored by HTML parsers), and Jinja autoescape stays
+  on.
+
 ## Calendar
 
 - Server-rendered Monday-based weekly grid; prev/next/Today links carry `?profile=` and `week=`.

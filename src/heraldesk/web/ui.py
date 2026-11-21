@@ -259,6 +259,19 @@ def _parse_week(value: str) -> date:
     return _monday_of(date.fromisoformat(value))
 
 
+_REDACTED_MARKER = "[REDACTED]"
+_SECRET_TEXT_ERROR = (
+    "This text contains secret-like content or a redaction marker. Remove it before saving."
+)
+
+
+def _has_secret_like_text(body: str, redactor: Any) -> bool:
+    """Return ``True`` when a body contains a redaction marker or redactor-maskable text."""
+    if _REDACTED_MARKER in body:
+        return True
+    return bool(redactor.redact(body) != body)
+
+
 def _word_diff(old: str, new: str) -> str:
     """Return a word-level HTML diff of two texts with ``ins``/``del``."""
     matcher = difflib.SequenceMatcher(a=old.split(), b=new.split())
@@ -535,6 +548,18 @@ async def queue_edit_preview(request: Request, approval_id: int) -> Response:
     _require_csrf(_auth(request), session, form)
     body = _form_value(form, "body").strip()
     context = _context(request)
+    if not body:
+        return _queue_detail_with_error(
+            request, session, approval_id, BadRequest("edited body must not be empty")
+        )
+    if _has_secret_like_text(body, context.redactor):
+        return _queue_detail_with_error(
+            request,
+            session,
+            approval_id,
+            BadRequest(_SECRET_TEXT_ERROR),
+            draft_text=body,
+        )
     with context.database.session() as db:
         try:
             detail = get_queue_detail(db, context.redactor, approval_id)
@@ -549,9 +574,6 @@ async def queue_edit_preview(request: Request, approval_id: int) -> Response:
                 message=exc.message,
             )
     new_redacted = context.redactor.redact(body)
-    if not new_redacted.strip():
-        error = "edited body must not be empty"
-        return _queue_detail_with_error(request, session, approval_id, BadRequest(error))
     diff_html = _word_diff(detail.body, new_redacted)
     payload: dict[str, Any] = {
         "detail": detail,
@@ -573,6 +595,18 @@ async def queue_edit(request: Request, approval_id: int) -> Response:
     _require_csrf(_auth(request), ui_session, form)
     body = _form_value(form, "body").strip()
     context = _context(request)
+    if not body:
+        return _queue_detail_with_error(
+            request, ui_session, approval_id, BadRequest("edited body must not be empty")
+        )
+    if _has_secret_like_text(body, context.redactor):
+        return _queue_detail_with_error(
+            request,
+            ui_session,
+            approval_id,
+            BadRequest(_SECRET_TEXT_ERROR),
+            draft_text=body,
+        )
     try:
         with context.database.session() as db:
             resolved = ApprovalLocator(db).resolve(approval_id)
@@ -611,6 +645,8 @@ def _queue_detail_with_error(
     ui_session: UISession,
     approval_id: int,
     exc: Exception,
+    *,
+    draft_text: str | None = None,
 ) -> HTMLResponse:
     context = _context(request)
     with context.database.session() as db:
@@ -635,6 +671,7 @@ def _queue_detail_with_error(
         entries=entries,
         detail=detail,
         filter_status="pending",
+        draft_text=context.redactor.redact(draft_text) if draft_text is not None else None,
         notice=None,
         error=context.redactor.redact(str(exc)) or "action failed",
         status_code=400,

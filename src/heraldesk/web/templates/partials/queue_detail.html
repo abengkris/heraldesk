@@ -83,7 +83,7 @@
   <form method="post" action="/queue/{{ detail.approval_id }}/edit" class="card stack tight">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label for="edit-body"><strong>Edit draft</strong></label>
-    <textarea id="edit-body" name="body" rows="8" required data-counter="#edit-count">{{ detail.body }}</textarea>
+    <textarea id="edit-body" name="body" rows="8" required data-counter="#edit-count">{{ draft_text if draft_text is defined and draft_text is not none else detail.body }}</textarea>
     <p class="muted small"><span id="edit-count" class="tnum">{{ detail.body|length }} chars</span> · saving re-runs the edit audit and clears risk notes.</p>
     <div class="actions">
       <button type="submit" class="button">Save draft</button>

@@ -168,3 +168,12 @@ No open questions remain for M0. Later ambiguities are added here when their mil
 - [x] (2026-11-19, M13) **Should the adapter use `auto_publish_text=true`?**
   **RESOLVED 2026-11-19: no.** Its response shape is undocumented. Use the explicit
   create-container / status / publish flow.
+
+
+## Open
+
+- [ ] **Should draft creation share the Web UI's reject-instead-of-mask behavior?**
+  The Queue editor rejects bodies that contain secret-like text or `[REDACTED]` instead of
+  silently masking them. The Writer and `heraldesk queue edit` still rely on redaction on
+  write. Decide whether all draft creation paths should reject, and whether the CLI needs
+  an interactive confirmation. Not changed yet.

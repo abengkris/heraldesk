@@ -6,11 +6,13 @@ import re
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from heraldesk.api.app import AppOptions, create_app
 from heraldesk.config import Config, load_config
 from heraldesk.core.bootstrap import InitResult
+from heraldesk.db.models import AuditLog
 from heraldesk.db.repositories import ContentItemRepository
 from heraldesk.domain.approvals import approve, request_approval
 from heraldesk.domain.content import ContentState
@@ -214,3 +216,112 @@ def test_edit_preview_is_read_only_and_shows_a_diff(
     stored = ContentItemRepository(db_session).get(profile_setup.scope, item.id)
     assert stored is not None
     assert stored.body == "first draft"
+
+
+def _audit_count(session: Session) -> int:
+    return len(
+        [row for row in session.scalars(select(AuditLog)).all() if row.action == "approval.edited"]
+    )
+
+
+def test_edit_rejects_secret_like_text_without_writing(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item_id, approval_id = pending_item(db_session, profile_setup)
+    before = _audit_count(db_session)
+    with make_client(initialized) as client:
+        login(client)
+        csrf = _CSRF.search(client.get(f"/queue/{approval_id}").text)
+        assert csrf is not None
+        response = client.post(
+            f"/queue/{approval_id}/edit",
+            data={"csrf": csrf.group(1), "body": "keep this text sk-ABCDEFGHIJKLMNOP1234"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
+        assert "secret-like content" in response.text
+        assert "sk-ABCDEFGHIJKLMNOP1234" not in response.text
+        assert "keep this text" in response.text
+        assert "[REDACTED]" in response.text
+
+    db_session.expire_all()
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item_id)
+    assert stored is not None
+    assert stored.body == "Queue draft body."
+    assert _audit_count(db_session) == before
+
+
+def test_edit_rejects_a_redaction_marker(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item_id, approval_id = pending_item(db_session, profile_setup)
+    with make_client(initialized) as client:
+        login(client)
+        csrf = _CSRF.search(client.get(f"/queue/{approval_id}").text)
+        assert csrf is not None
+        response = client.post(
+            f"/queue/{approval_id}/edit",
+            data={"csrf": csrf.group(1), "body": "clean text then [REDACTED] marker"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
+        assert "redaction marker" in response.text
+
+    db_session.expire_all()
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item_id)
+    assert stored is not None
+    assert stored.body == "Queue draft body."
+
+
+def test_edit_preview_rejects_secret_like_text_without_writing(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item_id, approval_id = pending_item(db_session, profile_setup)
+    with make_client(initialized) as client:
+        login(client)
+        csrf = _CSRF.search(client.get(f"/queue/{approval_id}").text)
+        assert csrf is not None
+        response = client.post(
+            f"/queue/{approval_id}/edit/preview",
+            data={"csrf": csrf.group(1), "body": "token sk-ABCDEFGHIJKLMNOP1234"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
+        assert "sk-ABCDEFGHIJKLMNOP1234" not in response.text
+
+    db_session.expire_all()
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item_id)
+    assert stored is not None
+    assert stored.body == "Queue draft body."
+
+
+def test_clean_edit_survives_escaping_and_multiline_round_trip(
+    initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item_id, approval_id = pending_item(db_session, profile_setup)
+    typed = '  <b>Hello & "quotes"</b>\nsecond line\n'
+    expected = '<b>Hello & "quotes"</b>\nsecond line'
+    with make_client(initialized) as client:
+        login(client)
+        csrf = _CSRF.search(client.get(f"/queue/{approval_id}").text)
+        assert csrf is not None
+        preview = client.post(
+            f"/queue/{approval_id}/edit/preview",
+            data={"csrf": csrf.group(1), "body": typed},
+            follow_redirects=False,
+        )
+        assert preview.status_code == 200
+        assert "&lt;b&gt;Hello &amp;" in preview.text
+        assert '<textarea name="body" hidden>\n' in preview.text
+
+        saved = client.post(
+            f"/queue/{approval_id}/edit",
+            data={"csrf": csrf.group(1), "body": typed},
+            follow_redirects=False,
+        )
+        assert saved.status_code == 303
+
+    db_session.expire_all()
+    stored = ContentItemRepository(db_session).get(profile_setup.scope, item_id)
+    assert stored is not None
+    assert stored.body == expected
