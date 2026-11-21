@@ -19,8 +19,12 @@ console = Console()
 
 
 def abort(message: str) -> NoReturn:
-    """Print a red error and exit with status 1."""
-    console.print(f"[bold red]error:[/bold red] {message}")
+    """Print a red error and exit with status 1.
+
+    ``soft_wrap`` keeps the message on one line even when the terminal is narrow, so a path
+    or a command name inside it is never split across lines and stays copyable as-is.
+    """
+    console.print(f"[bold red]error:[/bold red] {message}", soft_wrap=True)
     raise typer.Exit(code=1)
 
 
