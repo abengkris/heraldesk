@@ -1325,3 +1325,19 @@ backwards query; the small, single-user log does not justify that complexity tod
 Cost rows use a native `<meter>` with a window-relative `max`. Inline width styles would
 violate the strict CSP, and a class-per-percentage scheme would need many rules; `<meter>`
 gives the bar semantics, an accessible value, and no script or inline style.
+
+
+## Studio profile patches use the shared guarded edit path (2026-11-21)
+
+The previous `StudioService.apply_profile_patch` checked a base hash and called
+`save_profile_files`, which rewrote all four files. It had no autonomy-loosening gate and no
+shared lock around the hash check and write. The Draft Room now calls the same guarded
+single-file path as the Profiles editor: validate the staged profile, refuse a loosening
+change unless `confirm_loosening=True`, re-check the hash, write one file atomically, reload
+and audit under the shared lock. Existing callers get the safe default and must opt in to a
+loosening change.
+
+The shared helpers now live in `heraldesk/domain/profile_edit.py` (lock, validation, save,
+content hash, policy helper) and `heraldesk/domain/autonomy.py` (`loosens_autonomy`).
+`heraldesk/web/profile_editor.py` re-exports them for the Web UI, and the Studio imports the
+neutral domain module directly.

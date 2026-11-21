@@ -46,15 +46,17 @@ from heraldesk.db.repositories import (
 from heraldesk.db.scope import ProfileScope
 from heraldesk.domain.approvals import as_utc, list_queue, request_approval
 from heraldesk.domain.content import ContentState, transition
+from heraldesk.domain.profile_edit import (
+    PROFILE_FILES,
+    AutonomyConfirmationRequired,
+    ProfileEditError,
+    StaleProfileEdit,
+    read_profile_files,
+    save_profile_file,
+)
 from heraldesk.domain.profiles import load_profile, profile_summary
 from heraldesk.llm.types import LLMProvider
 from heraldesk.quality.lint import lint
-from heraldesk.web.profile_editor import (
-    PROFILE_FILES,
-    ProfileEditError,
-    read_profile_files,
-    save_profile_files,
-)
 
 MAX_MESSAGE_CHARS = 4000
 MAX_TITLE_CHARS = 200
@@ -628,13 +630,19 @@ class StudioService:
             None,
         )
 
-    def apply_profile_patch(self, scope: ProfileScope, message_id: int) -> StudioPatchResult:
-        """Apply a profile patch after re-checking the base hash.
+    def apply_profile_patch(
+        self,
+        scope: ProfileScope,
+        message_id: int,
+        *,
+        confirm_loosening: bool = False,
+    ) -> StudioPatchResult:
+        """Apply one profile patch after re-checking the base hash.
 
-        The current file must still match ``base_hash`` recorded when the patch was
-        proposed. The four files are staged and validated before the target file is
-        swapped, then the profile is reloaded and audited. No patch is applied without an
-        explicit call from the operator.
+        Only the target file is written. The shared profile-edit helper validates, refuses
+        an unconfirmed loosening change, re-checks the hash under the shared lock, writes
+        atomically, reloads and audits. Existing callers keep the safe default: a loosening
+        patch is refused unless they pass ``confirm_loosening=True``.
         """
         self._require_enabled()
         message = self._messages.get(scope, message_id)
@@ -662,10 +670,23 @@ class StudioService:
         if current_hash != base_hash:
             raise StudioError(f"{file} changed since the patch was proposed; regenerate the patch")
 
-        files = dict(state.files)
-        files[file] = proposed_text
         try:
-            save_profile_files(self._session, self._layout, summary.slug, files)
+            save_profile_file(
+                self._session,
+                self._layout,
+                summary.slug,
+                file,
+                proposed_text,
+                base_hash=base_hash,
+                actor="user",
+                confirm_loosening=confirm_loosening,
+            )
+        except StaleProfileEdit as exc:
+            raise StudioError(
+                f"{file} changed since the patch was proposed; regenerate the patch"
+            ) from exc
+        except AutonomyConfirmationRequired as exc:
+            raise StudioError("this patch loosens autonomy; confirm it explicitly") from exc
         except ProfileEditError as exc:
             raise StudioError(self._redactor.redact(str(exc))[:MAX_AUDIT_TEXT]) from exc
 

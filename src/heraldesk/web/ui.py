@@ -1377,7 +1377,10 @@ async def studio_patch_apply(request: Request, message_id: int) -> Response:
             raise NotFound(f"studio message {message_id} does not exist")
         scope, thread_id = located
         try:
-            _studio_service(ctx, db).apply_profile_patch(scope, message_id)
+            confirm = _form_value(form, "confirm_loosening") == "yes"
+            _studio_service(ctx, db).apply_profile_patch(
+                scope, message_id, confirm_loosening=confirm
+            )
         except StudioError as exc:
             error = ctx.redactor.redact(str(exc))[:500]
             payload = _studio_thread_payload(ctx, db, thread_id, error=error)
@@ -1773,6 +1776,7 @@ async def profile_edit_save(request: Request, slug: str) -> Response:
                 text,
                 base_hash=base_hash,
                 actor="user",
+                confirm_loosening=confirm,
             )
     except StaleProfileEdit as exc:
         return _profile_save_error(request, session, context, slug, active, text, exc, 409)

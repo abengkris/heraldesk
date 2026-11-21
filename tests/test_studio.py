@@ -797,3 +797,129 @@ def test_apply_patch_is_idempotent(profile_setup: ProfileSetup, db_session: Sess
 
     with pytest.raises(StudioError):
         service.apply_profile_patch(profile_setup.scope, message.id)
+
+
+def _patch_message_for(
+    setup: ProfileSetup, session: Session, *, file: str, proposed_text: str
+) -> object:
+    state = read_profile_files(setup.layout, "acme")
+    current = state.files.get(file)
+    artifact = {
+        "file": file,
+        "rationale": "test patch",
+        "proposed_text": proposed_text,
+        "base_hash": (
+            hashlib.sha256(current.encode("utf-8")).hexdigest() if current is not None else "0" * 64
+        ),
+        "diff": "",
+        "applied": False,
+    }
+    thread = service_for(setup, session).create_thread(setup.scope)
+    message = StudioMessageRepository(session).add(
+        setup.scope,
+        thread.id,
+        role="profile",
+        content="test patch",
+        artifact_type="profile_patch",
+        artifact_json=artifact,
+    )
+    session.flush()
+    return message
+
+
+def test_apply_patch_requires_confirmation_when_it_loosens_autonomy(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    current = read_profile_files(profile_setup.layout, "acme").files["policy.yaml"]
+    proposed = current.replace("default_mode: draft_only", "default_mode: require_approval")
+    message = _patch_message_for(
+        profile_setup, db_session, file="policy.yaml", proposed_text=proposed
+    )
+    service = service_for(profile_setup, db_session)
+
+    with pytest.raises(StudioError, match="loosens autonomy"):
+        service.apply_profile_patch(profile_setup.scope, message.id)
+    assert read_profile_files(profile_setup.layout, "acme").files["policy.yaml"] == current
+
+    service.apply_profile_patch(profile_setup.scope, message.id, confirm_loosening=True)
+    db_session.commit()
+    assert read_profile_files(profile_setup.layout, "acme").files["policy.yaml"] == proposed
+
+
+def test_apply_patch_writes_only_the_target_file(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    before = read_profile_files(profile_setup.layout, "acme").files
+    proposed = before["brief.md"] + "\nExtra line.\n"
+    message = _patch_message_for(profile_setup, db_session, file="brief.md", proposed_text=proposed)
+    service_for(profile_setup, db_session).apply_profile_patch(profile_setup.scope, message.id)
+    db_session.commit()
+
+    after = read_profile_files(profile_setup.layout, "acme").files
+    assert after["brief.md"] == proposed
+    for name in ("soul.md", "policy.yaml", "banned.yaml"):
+        assert after[name] == before[name]
+
+
+def test_apply_patch_never_writes_an_invalid_file(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    current = read_profile_files(profile_setup.layout, "acme").files["policy.yaml"]
+    message = _patch_message_for(
+        profile_setup,
+        db_session,
+        file="policy.yaml",
+        proposed_text="default_mode: not-a-mode\n",
+    )
+    with pytest.raises(StudioError):
+        service_for(profile_setup, db_session).apply_profile_patch(profile_setup.scope, message.id)
+    assert read_profile_files(profile_setup.layout, "acme").files["policy.yaml"] == current
+
+
+def test_apply_patch_rejects_unknown_files_and_traversal(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    for name in ("../soul.md", "secrets.yaml", "/etc/passwd"):
+        message = _patch_message_for(profile_setup, db_session, file=name, proposed_text="nope")
+        with pytest.raises(StudioError):
+            service_for(profile_setup, db_session).apply_profile_patch(
+                profile_setup.scope, message.id
+            )
+
+
+def test_apply_patch_audits_once(profile_setup: ProfileSetup, db_session: Session) -> None:
+    proposed = read_profile_files(profile_setup.layout, "acme").files["brief.md"] + "\n"
+    message = _patch_message_for(profile_setup, db_session, file="brief.md", proposed_text=proposed)
+    service_for(profile_setup, db_session).apply_profile_patch(profile_setup.scope, message.id)
+    db_session.commit()
+    actions = [
+        entry.action for entry in AuditService(db_session).history(profile_setup.scope, limit=100)
+    ]
+    assert actions.count("studio.profile_patch_applied") == 1
+    assert actions.count("profile.edited") == 1
+
+
+def test_concurrent_patch_applies_cannot_both_succeed(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from heraldesk.db.session import database_session
+
+    proposed = read_profile_files(profile_setup.layout, "acme").files["brief.md"] + "\n"
+    message = _patch_message_for(profile_setup, db_session, file="brief.md", proposed_text=proposed)
+    db_session.commit()
+
+    def attempt() -> str:
+        try:
+            with database_session(profile_setup.layout) as session:
+                service_for(profile_setup, session).apply_profile_patch(
+                    profile_setup.scope, message.id
+                )
+        except StudioError:
+            return "rejected"
+        return "applied"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: attempt(), range(2)))
+    assert sorted(outcomes) == ["applied", "rejected"]

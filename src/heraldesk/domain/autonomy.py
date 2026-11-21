@@ -19,14 +19,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Any, Final
 
+from heraldesk.domain.errors import ProfileValidationError
 from heraldesk.domain.policy import (
     AutonomyPolicy,
+    BannedLists,
     PolicyAction,
     PolicyMode,
     PolicyRisk,
     PolicyRule,
+    parse_banned_yaml,
+    parse_policy_yaml,
 )
 
 DEFAULT_AUTO_AFTER_DELAY_MINUTES: Final = 30
@@ -184,4 +188,104 @@ def decide(
         mode=PolicyMode.DRAFT_ONLY,
         decision=AutonomyDecision.PENDING_APPROVAL,
         reason="draft_only: human approval required; the item never auto-schedules",
+    )
+
+
+_MODE_RANK = {
+    PolicyMode.DRAFT_ONLY: 0,
+    PolicyMode.REQUIRE_APPROVAL: 1,
+    PolicyMode.AUTO_PUBLISH: 2,
+    PolicyMode.AUTO: 3,
+    PolicyMode.AUTO_AFTER_DELAY: 4,
+}
+_RISK_RANK = {PolicyRisk.LOW: 0, PolicyRisk.MEDIUM: 1, PolicyRisk.HIGH: 2}
+_AUTO_MODES = (PolicyMode.AUTO, PolicyMode.AUTO_AFTER_DELAY)
+
+
+def loosens_autonomy(filename: str, old_text: str, new_text: str) -> bool:
+    """Return ``True`` when a one-file edit gives the agents more freedom.
+
+    Pure and conservative: unparsable input never reports a loosening (the save path
+    rejects invalid files separately).
+    """
+    if old_text == new_text:
+        return False
+    try:
+        if filename == "policy.yaml":
+            return _policy_loosens(
+                parse_policy_yaml(old_text, source="policy.yaml"),
+                parse_policy_yaml(new_text, source="policy.yaml"),
+            )
+        if filename == "banned.yaml":
+            return _banned_loosens(
+                parse_banned_yaml(old_text, source="banned.yaml"),
+                parse_banned_yaml(new_text, source="banned.yaml"),
+            )
+    except (ProfileValidationError, ValueError):
+        return False
+    return False
+
+
+def _policy_loosens(old: AutonomyPolicy, new: AutonomyPolicy) -> bool:
+    if new.default_mode is not PolicyMode.DRAFT_ONLY and (
+        _MODE_RANK[new.default_mode] > _MODE_RANK[old.default_mode]
+    ):
+        return True
+    if new.max_posts_per_day > old.max_posts_per_day:
+        return True
+    if old.disclose_ai and not new.disclose_ai:
+        return True
+    if _quiet_loosens(old, new):
+        return True
+    return _rules_loosen(old, new)
+
+
+def _quiet_loosens(old: AutonomyPolicy, new: AutonomyPolicy) -> bool:
+    if old.quiet_hours is None:
+        return False
+    if new.quiet_hours is None:
+        return True
+    return _quiet_minutes(new) < _quiet_minutes(old)
+
+
+def _quiet_minutes(policy: AutonomyPolicy) -> int:
+    assert policy.quiet_hours is not None
+    start = _clock_minutes(policy.quiet_hours.start)
+    end = _clock_minutes(policy.quiet_hours.end)
+    return end - start if start < end else 1440 - start + end
+
+
+def _clock_minutes(value: str) -> int:
+    hour, minute = value.split(":", 1)
+    return int(hour) * 60 + int(minute)
+
+
+def _rules_loosen(old: AutonomyPolicy, new: AutonomyPolicy) -> bool:
+    old_by_key: dict[tuple[str, tuple[str, ...]], list[Any]] = {}
+    for rule in old.rules:
+        old_by_key.setdefault((rule.action.value, tuple(sorted(rule.intents))), []).append(rule)
+    for rule in new.rules:
+        key = (rule.action.value, tuple(sorted(rule.intents)))
+        candidates = old_by_key.get(key)
+        if not candidates:
+            if rule.mode in _AUTO_MODES:
+                return True
+            continue
+        previous = candidates.pop(0)
+        if previous.mode not in _AUTO_MODES and rule.mode in _AUTO_MODES:
+            return True
+        if rule.delay_minutes < previous.delay_minutes:
+            return True
+        if (
+            previous.mode in _AUTO_MODES
+            and rule.mode in _AUTO_MODES
+            and _RISK_RANK[rule.risk] > _RISK_RANK[previous.risk]
+        ):
+            return True
+    return False
+
+
+def _banned_loosens(old: BannedLists, new: BannedLists) -> bool:
+    return bool(set(old.banned_words) - set(new.banned_words)) or bool(
+        set(old.banned_topics) - set(new.banned_topics)
     )
