@@ -1284,3 +1284,12 @@ controls — a visible confirmation (Enter or a click) is always required. Short
 disabled while focus is inside an input, textarea or select, and the list is toggled with
 `?`. This keeps every write an explicit form/action with CSRF, unchanged from the
 JavaScript-less behavior. Recorded in `docs/web-ui.md`.
+
+## No hx-boost: navigation is full-page (2026-11-21)
+
+The Web UI deliberately does not enable `hx-boost` on `<body>`. Navigation is ordinary
+full-page loads; htmx is used only for targeted fragments (row selection, panels, badges,
+toasts) via `hx-get`/`hx-post` with explicit `hx-target`/`hx-swap`. This keeps the mobile
+"More" `<details>` menu, the selected `?profile=` query parameter and focus state simple
+and predictable, and avoids a class of stale-URL and history bugs. Recorded in
+`docs/web-ui.md`.

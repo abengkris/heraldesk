@@ -54,7 +54,7 @@ Use `{% from "_components.html" import status_badge, risk_badge %}` and `{{ stat
 ## Interaction patterns (htmx)
 
 - CSRF: `<body hx-headers='{"X-CSRFToken": "…"}'>` for htmx requests; every plain form keeps a hidden `csrf` input so writes work without JS.
-- Progressive enhancement: pages work fully without JS. htmx adds `hx-boost`, `hx-push-url`, `hx-swap="outerHTML"` on rows/cards, and `hx-swap-oob` for badges and toasts.
+- Progressive enhancement: pages work fully without JS. htmx adds `hx-push-url`, `hx-swap="outerHTML"` on rows/cards, and `hx-swap-oob` for badges and toasts. `hx-boost` is intentionally not used: navigation is full-page, which keeps mobile menus and stale state simple.
 - Fragment vs full page: handlers inspect the `HX-Request` header and return a fragment when present, otherwise the full page. An expired session on an htmx request responds with `HX-Redirect: /login`.
 - Loading/error: every list has loading, error and empty states; never swap an empty or error fragment silently.
 
