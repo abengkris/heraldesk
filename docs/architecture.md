@@ -25,7 +25,7 @@ This document is the spec for contributors and coding agents. Work milestone by 
 |---|---|
 | Language | Python 3.12–3.14 (3.14 uses the pure BIP-340 fallback) |
 | API/Web server | FastAPI + Uvicorn |
-| Web UI | Jinja2 + HTMX + custom CSS variables (vendored; no Node at runtime) |
+| Web UI | Jinja2 + htmx (vendored) + hand-written CSS with variables, no Node build, no Tailwind |
 | Database | SQLite (WAL) via SQLAlchemy 2 + Alembic. Avoid SQLite-only features that block a future Postgres move |
 | Scheduler | In-process APScheduler triggers; durable work lives in the business tables |
 | LLM | LiteLLM (DeepSeek, Claude, OpenAI, Gemini, OpenRouter, Ollama) |
