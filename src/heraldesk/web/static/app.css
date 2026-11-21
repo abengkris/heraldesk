@@ -815,3 +815,51 @@ kbd {
     letter-spacing: 0.04em;
   }
 }
+
+/* ============================================================
+   Cost, Audit and Reports
+   ============================================================ */
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.cost-table td.num, .cost-table th.num { text-align: right; }
+meter { width: 100%; max-width: 220px; height: 0.9rem; }
+.cost-table meter { max-width: 110px; }
+.cap-meter { max-width: 420px; }
+.cap-meter.cap-ok { accent-color: var(--status-ok); }
+.cap-meter.cap-warn { accent-color: var(--status-warn); }
+.cap-meter.cap-danger { accent-color: var(--status-danger); }
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--s3);
+  align-items: end;
+  margin-bottom: var(--s4);
+}
+.filter-grid .actions { grid-column: 1 / -1; }
+.pagination { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-top: var(--s3); }
+
+.audit-table details.payload summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: var(--fs-sm);
+}
+.payload-body {
+  margin: var(--s2) 0 0;
+  max-height: 20rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s2);
+  font-size: var(--fs-xs);
+}
+
+.report-body { max-width: var(--reading); }
+.report-body table { display: block; overflow-x: auto; }
+
+@media (max-width: 767px) {
+  .filter-grid { grid-template-columns: 1fr; }
+  .pagination .button { flex: 1; text-align: center; }
+}

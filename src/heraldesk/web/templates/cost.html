@@ -1,52 +1,95 @@
 {% extends "base.html" %}
+{% from "_components.html" import empty_state %}
 {% block title %}Cost · Heraldesk{% endblock %}
 {% block content %}
+{% set suffix = ("&profile=" ~ current_profile) if current_profile else "" %}
 <div class="page-head">
   <div>
     <h1>LLM cost</h1>
-    <p class="muted">Agent-run tokens and USD, from the local database. No estimates.</p>
+    <p class="muted">
+      Agent-run tokens and USD from the local database, newest UTC day first.
+      Window: {{ summary.window_start }} to {{ summary.today }} (UTC).
+      {% if current_profile %}Profile: {{ current_profile }}.{% endif %}
+    </p>
   </div>
+  <nav class="actions" aria-label="Cost window">
+    {% for option in [7, 14, 30] %}
+    <a class="button {{ 'primary' if summary.days == option else 'ghost' }}"
+       href="/cost?days={{ option }}{{ suffix }}"
+       {% if summary.days == option %}aria-current="page"{% endif %}>{{ option }} days</a>
+    {% endfor %}
+  </nav>
 </div>
 
-<section class="grid" aria-label="Totals">
-  {% for label, key in [("Today", "today"), ("Last 7 days", "last_7_days"), ("Last 30 days", "last_30_days")] %}
-  <div class="card stat">
-    <span class="stat-label">{{ label }}</span>
-    <strong class="stat-value">${{ "%.4f"|format(summary.totals[key].cost_usd) }}</strong>
-    <span class="muted small">{{ summary.totals[key].runs }} runs · {{ summary.totals[key].tokens_in + summary.totals[key].tokens_out }} tokens</span>
-  </div>
-  {% endfor %}
+<section class="card" aria-labelledby="cost-rollup">
+  <h2 id="cost-rollup">Window rollup</h2>
+  <dl class="facts">
+    <dt>Cost</dt><dd class="tnum"><strong>${{ "%.4f"|format(summary.total.cost_usd) }}</strong></dd>
+    <dt>Tokens</dt><dd class="tnum">{{ summary.total.tokens_in }} in · {{ summary.total.tokens_out }} out</dd>
+    <dt>Runs</dt><dd class="tnum">{{ summary.total.runs }}</dd>
+    <dt>Timezone</dt><dd>UTC day boundaries</dd>
+  </dl>
 </section>
 
-<section class="card">
-  <h2>Per profile</h2>
-  {% if summary.profiles %}
+<section class="card" aria-labelledby="cap-title">
+  <h2 id="cap-title">Today vs daily cap</h2>
+  {% if summary.cap %}
+  <p class="tnum">
+    <strong>${{ "%.4f"|format(summary.cap.spent) }}</strong> spent of
+    <strong>${{ "%.2f"|format(summary.cap.cap) }}</strong>
+    · {{ summary.cap.percent }}%
+    <span class="badge status-{{ summary.cap.state }}">
+      {% if summary.cap.state == "danger" %}over cap{% elif summary.cap.state == "warn" %}near cap{% else %}within cap{% endif %}
+    </span>
+  </p>
+  <meter class="cap-meter cap-{{ summary.cap.state }}" min="0"
+         max="{{ summary.cap.cap }}" value="{{ summary.cap.spent }}"
+         aria-label="Daily spend {{ summary.cap.percent }} percent of the cap">
+    {{ summary.cap.percent }}%
+  </meter>
+  <p class="muted small">The daily cap is global and resets at midnight UTC.</p>
+  {% else %}
+  <p class="muted">No positive daily cap is configured. Configure <code>llm.max_daily_cost_usd</code> to see the meter.</p>
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="cost-days">
+  <h2 id="cost-days">By day and profile</h2>
+  {% if summary.rows %}
   <div class="table-wrap">
-    <table>
+    <table class="cost-table">
+      <caption class="sr-only">LLM cost by UTC day and profile, newest day first</caption>
       <thead>
         <tr>
+          <th scope="col">Day</th>
           <th scope="col">Profile</th>
-          <th scope="col">Runs today</th>
-          <th scope="col">Today</th>
-          <th scope="col">7 days</th>
-          <th scope="col">30 days</th>
+          <th scope="col" class="num">Tokens in</th>
+          <th scope="col" class="num">Tokens out</th>
+          <th scope="col" class="num">Cost (USD)</th>
+          <th scope="col">Share</th>
         </tr>
       </thead>
       <tbody>
-        {% for row in summary.profiles %}
+        {% for row in summary.rows %}
         <tr>
-          <td>{{ row.profile }}</td>
-          <td>{{ row.runs_today }}</td>
-          <td>${{ "%.4f"|format(row.cost_today) }}</td>
-          <td>${{ "%.4f"|format(row.cost_7d) }}</td>
-          <td>${{ "%.4f"|format(row.cost_30d) }}</td>
+          <td data-label="Day" class="nowrap">{{ row.day }}</td>
+          <td data-label="Profile">{{ row.profile }}</td>
+          <td data-label="Tokens in" class="num tnum">{{ row.tokens_in }}</td>
+          <td data-label="Tokens out" class="num tnum">{{ row.tokens_out }}</td>
+          <td data-label="Cost" class="num tnum">${{ "%.4f"|format(row.cost_usd) }}</td>
+          <td data-label="Share">
+            <meter min="0" max="{{ summary.max_cost }}" value="{{ row.cost_usd }}"
+                   aria-label="Cost share for {{ row.profile }} on {{ row.day }}">
+              ${{ "%.4f"|format(row.cost_usd) }}
+            </meter>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <p class="empty">No profiles registered.</p>
+  {{ empty_state("No spend in this window.", "Agent runs with token or cost data will appear here.") }}
   {% endif %}
 </section>
 {% endblock %}

@@ -111,7 +111,7 @@ def test_csrf_header_only_on_authenticated_pages(initialized: InitResult) -> Non
 def test_no_external_urls_in_html_or_static_assets(initialized: InitResult) -> None:
     with make_client(initialized) as client:
         login(client)
-        for page in ("/", "/queue", "/inbox"):
+        for page in ("/", "/queue", "/inbox", "/cost", "/audit", "/reports"):
             response = client.get(page)
             assert "http://" not in response.text
             assert "https://" not in response.text

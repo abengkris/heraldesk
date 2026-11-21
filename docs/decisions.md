@@ -1313,3 +1313,15 @@ and reorder keys, so it is not used for writes. The helper refuses unsupported s
 example an unexpected `quiet_hours` structure or a partially filled quiet window) and tells
 the user to edit the YAML directly. Applying the helper only changes the editor textarea;
 nothing is written until the normal review and save steps.
+
+
+## Audit uses offset pagination; cost bars use `<meter>` (2026-11-21)
+
+The audit page uses stable offset pagination ordered by `AuditLog.id DESC`, with a 50-row
+page and a 5000-row maximum offset guard. The append-only table makes `id` a stable sort key,
+but bidirectional keyset links would need either a second "upper bound" cursor or a
+backwards query; the small, single-user log does not justify that complexity today.
+
+Cost rows use a native `<meter>` with a window-relative `max`. Inline width styles would
+violate the strict CSP, and a class-per-percentage scheme would need many rules; `<meter>`
+gives the bar semantics, an accessible value, and no script or inline style.

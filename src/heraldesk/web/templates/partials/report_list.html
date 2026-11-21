@@ -1,0 +1,35 @@
+<section class="card" id="report-list" aria-labelledby="report-files">
+  <h2 id="report-files">Generated files</h2>
+  {% if files %}
+  <div class="table-wrap">
+    <table>
+      <caption class="sr-only">Generated reports, newest first</caption>
+      <thead>
+        <tr>
+          <th scope="col">Period</th>
+          <th scope="col">Kind</th>
+          <th scope="col">Size</th>
+          <th scope="col">Modified (UTC)</th>
+          <th scope="col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for file in files %}
+        <tr>
+          <td data-label="Period">{{ file.label }}</td>
+          <td data-label="Kind">{{ file.kind }}</td>
+          <td data-label="Size" class="num">{{ file.size }} bytes</td>
+          <td data-label="Modified" class="nowrap">{{ file.modified_label }}</td>
+          <td class="actions">
+            <a class="button" href="/reports/view/{{ file.filename }}">View</a>
+            <a class="button ghost" href="/reports/download/{{ file.filename }}">Download .md</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">No reports yet. Generate a weekly or monthly report above.</p>
+  {% endif %}
+</section>

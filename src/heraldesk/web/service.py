@@ -181,6 +181,7 @@ class AuditView:
     entity_id: str | None
     payload: str
     created_at: datetime
+    truncated: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -588,13 +589,15 @@ def list_report_files(layout: paths.Layout) -> list[dict[str, Any]]:
     ]
     for path in sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True):
         stat = path.stat()
+        modified = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
         files.append(
             {
                 "filename": path.name,
                 "kind": "weekly" if path.name.startswith("weekly-") else "monthly",
                 "label": path.stem.split("-", 1)[1],
                 "size": stat.st_size,
-                "modified": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
+                "modified": modified.isoformat(),
+                "modified_label": modified.strftime("%Y-%m-%d %H:%M"),
             }
         )
     return files
@@ -622,6 +625,112 @@ def read_report(layout: paths.Layout, filename: str) -> str:
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise NotFound("report cannot be read") from exc
+
+
+COST_WINDOW_DAYS = (7, 14, 30)
+
+
+@dataclass(frozen=True, slots=True)
+class CostDayRow:
+    """One profile's spend on one UTC day."""
+
+    day: str
+    profile_slug: str
+    runs: int
+    tokens_in: int
+    tokens_out: int
+    cost_usd: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "day": self.day,
+            "profile": self.profile_slug,
+            "runs": self.runs,
+            "tokens_in": self.tokens_in,
+            "tokens_out": self.tokens_out,
+            "cost_usd": self.cost_usd,
+        }
+
+
+def cost_breakdown(
+    session: Session,
+    *,
+    days: int = 14,
+    profile: str | None = None,
+    now: datetime | None = None,
+    cap_usd: float | None = None,
+) -> dict[str, Any]:
+    """Return per-day, per-profile cost rows for a rolling UTC window.
+
+    The window includes today and ``days - 1`` earlier UTC days. ``days`` must be one of
+    :data:`COST_WINDOW_DAYS`; anything else falls back to 14.
+    """
+    window = days if days in COST_WINDOW_DAYS else 14
+    current = as_utc(datetime.now(UTC) if now is None else now)
+    today = datetime.combine(current.date(), datetime.min.time(), tzinfo=UTC)
+    summaries = ProfileCatalog(session).list()
+    if profile is not None:
+        summaries = [summary for summary in summaries if summary.slug == profile]
+
+    repository = AgentRunRepository(session)
+    rows: list[CostDayRow] = []
+    total_in = total_out = total_runs = 0
+    total_cost = 0.0
+    for offset in range(window):
+        day_start = today - timedelta(days=offset)
+        day_end = day_start + timedelta(days=1)
+        for summary in summaries:
+            totals = repository.totals_since(ProfileScope(summary.id), day_start, day_end)
+            if totals.runs == 0:
+                continue
+            rows.append(
+                CostDayRow(
+                    day=day_start.date().isoformat(),
+                    profile_slug=summary.slug,
+                    runs=totals.runs,
+                    tokens_in=totals.tokens_in,
+                    tokens_out=totals.tokens_out,
+                    cost_usd=totals.cost_usd,
+                )
+            )
+            total_in += totals.tokens_in
+            total_out += totals.tokens_out
+            total_runs += totals.runs
+            total_cost += totals.cost_usd
+
+    cap: dict[str, Any] | None = None
+    if cap_usd is not None and cap_usd > 0:
+        spent = GlobalCostRepository(session).totals_since(today).cost_usd
+        percent = spent / cap_usd * 100.0
+        if percent > 100.0:
+            state = "danger"
+        elif percent >= 80.0:
+            state = "warn"
+        else:
+            state = "ok"
+        cap = {
+            "spent": spent,
+            "cap": cap_usd,
+            "percent": round(percent, 1),
+            "state": state,
+        }
+
+    return {
+        "days": window,
+        "timezone": "UTC",
+        "as_of": current.isoformat(),
+        "window_start": (today - timedelta(days=window - 1)).date().isoformat(),
+        "today": today.date().isoformat(),
+        "rows": [row.as_dict() for row in rows],
+        "max_cost": max((row.cost_usd for row in rows), default=0.0) or 1.0,
+        "total": {
+            "runs": total_runs,
+            "tokens_in": total_in,
+            "tokens_out": total_out,
+            "cost_usd": total_cost,
+        },
+        "cap": cap,
+    }
 
 
 def publish_content(
@@ -1076,6 +1185,22 @@ def dashboard_needs_attention(
     }
 
 
+AUDIT_PAYLOAD_LIMIT = 4000
+AUDIT_PAGE_SIZE = 50
+AUDIT_MAX_OFFSET = 5000
+
+
+@dataclass(frozen=True, slots=True)
+class AuditPage:
+    """One page of audit entries with stable offset pagination."""
+
+    entries: list[AuditView]
+    offset: int
+    page_size: int
+    has_next: bool
+    has_prev: bool
+
+
 def list_audit_views(
     session: Session,
     redactor: SecretRegistry,
@@ -1089,10 +1214,74 @@ def list_audit_views(
         raise BadRequest("limit must be between 1 and 500", "invalid_limit")
     if offset < 0:
         raise BadRequest("offset must not be negative", "invalid_offset")
+    return _audit_views(
+        AuditCatalog(session).recent(limit=limit, offset=offset, action=action),
+        session,
+        redactor,
+    )
+
+
+def list_audit_page(
+    session: Session,
+    redactor: SecretRegistry,
+    *,
+    actor: str | None = None,
+    action: str | None = None,
+    entity: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    offset: int = 0,
+    page_size: int = AUDIT_PAGE_SIZE,
+) -> AuditPage:
+    """Return one filtered audit page, newest first, with stable offset paging."""
+    size = min(max(page_size, 1), AUDIT_PAGE_SIZE)
+    start = min(max(offset, 0), AUDIT_MAX_OFFSET)
+    action_value = action.strip() if action else None
+    action_prefix = action_value is not None and action_value.endswith("*")
+    if action_prefix and action_value is not None:
+        action_value = action_value[:-1]
+    rows = AuditCatalog(session).recent(
+        limit=size + 1,
+        offset=start,
+        action=action_value or None,
+        action_prefix=action_prefix,
+        actor=actor or None,
+        entity=entity or None,
+        since=since,
+        until=until,
+    )
+    has_next = len(rows) > size
+    entries = _audit_views(
+        rows[:size], session, redactor, pretty=True, payload_limit=AUDIT_PAYLOAD_LIMIT
+    )
+    return AuditPage(
+        entries=entries,
+        offset=start,
+        page_size=size,
+        has_next=has_next,
+        has_prev=start > 0,
+    )
+
+
+def _audit_views(
+    rows: list[AuditLog],
+    session: Session,
+    redactor: SecretRegistry,
+    *,
+    pretty: bool = False,
+    payload_limit: int = 500,
+) -> list[AuditView]:
     slugs = {profile.id: profile.slug for profile in ProfileCatalog(session).list()}
     views: list[AuditView] = []
-    for entry in AuditCatalog(session).recent(limit=limit, offset=offset, action=action):
-        payload = json.dumps(entry.payload, ensure_ascii=True, sort_keys=True)
+    for entry in rows:
+        payload = json.dumps(
+            entry.payload,
+            ensure_ascii=True,
+            sort_keys=True,
+            indent=2 if pretty else None,
+        )
+        redacted = redactor.redact(payload)
+        truncated = len(redacted) > payload_limit
         views.append(
             AuditView(
                 id=entry.id,
@@ -1101,8 +1290,9 @@ def list_audit_views(
                 action=entry.action,
                 entity=entry.entity,
                 entity_id=entry.entity_id,
-                payload=redactor.redact(payload)[:500],
+                payload=redacted[:payload_limit],
                 created_at=as_utc(entry.created_at),
+                truncated=truncated,
             )
         )
     return views

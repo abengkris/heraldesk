@@ -332,15 +332,34 @@ class AuditCatalog:
         limit: int = 100,
         offset: int = 0,
         action: str | None = None,
+        action_prefix: bool = False,
+        actor: str | None = None,
+        entity: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        profile_id: int | None = None,
     ) -> list[AuditLog]:
-        """Return newest audit entries across every profile."""
+        """Return newest audit entries across every profile, with optional filters."""
         if limit < 1 or limit > 1000:
             raise ValueError("limit must be between 1 and 1000")
         if offset < 0:
             raise ValueError("offset must not be negative")
         query = select(AuditLog)
         if action:
-            query = query.where(AuditLog.action == action)
+            if action_prefix:
+                query = query.where(AuditLog.action.like(f"{action}%"))
+            else:
+                query = query.where(AuditLog.action == action)
+        if actor:
+            query = query.where(AuditLog.actor == actor)
+        if entity:
+            query = query.where(AuditLog.entity == entity)
+        if since is not None:
+            query = query.where(AuditLog.created_at >= since)
+        if until is not None:
+            query = query.where(AuditLog.created_at < until)
+        if profile_id is not None:
+            query = query.where(AuditLog.profile_id == profile_id)
         entries = self._session.scalars(
             query.order_by(AuditLog.id.desc()).offset(offset).limit(limit)
         ).all()

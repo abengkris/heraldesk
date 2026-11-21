@@ -66,20 +66,20 @@ Light and dark via `prefers-color-scheme`, plus a manual toggle in `static/app.j
 
 These classes were kept during the redesign and should be deleted once no template references them. Verify with `grep -R "class-name" src/heraldesk/web/templates` before removing.
 
-- `.stat`, `.stat-label`, `.stat-value` — replaced by the new metric components once Dashboard and Cost are reworked.
+- `.stat`, `.stat-label`, `.stat-value` — still used by Dashboard; remove after its final pass.
 - `.danger-text` — replaced by `status_badge` / `.status-danger`.
 - `.reject-form` — replaced by `.form-row` (still used by Queue; remove after Queue actions settle).
-- `.grid`, `.grid.two` — replaced by the new layout utilities.
-- `.facts` — the old detail definition list; unused after the Queue rework.
-- `.alert.ok`, `.alert.error` — replaced by `.notice`, toast, and `status_badge`.
-- `.card.stat` — replaced by the metric component.
+- `.grid`, `.grid.two` — still used by Reports and Dashboard; keep until the final cleanup.
+- `.alert.ok` — replaced by `.notice`; remove when the last occurrence is gone.
+- `.alert.error` — still used by error blocks; keep until the final cleanup.
+- `.card.stat` — still used by Dashboard; remove after its final pass.
 - `.empty` — still used by the Profiles empty state; replace with `empty_state()` when the
   remaining pages are reworked.
 
 ## Manual test checklist
 
 - 360px, 768px and 1280px; light and dark; keyboard only; JS disabled for read and write flows.
-- Queue master-detail, Inbox two-pane, Calendar week grid / mobile agenda, Cost meter, Audit `<details>` payloads, Profiles editor tabs, Draft Room conversation.
+- Queue master-detail, Inbox two-pane, Calendar week grid / mobile agenda, Cost `<meter>` rows and cap, Audit filters/pagination/`<details>` payloads, Reports list/generate flow, Profiles editor tabs, Draft Room conversation.
 
 ## Queue editing
 
@@ -117,10 +117,15 @@ These classes were kept during the redesign and should be deleted once no templa
 - The form carries a SHA-256 `base_hash`. If the file changed on disk, preview/save reject the
   edit with the diff against the current content instead of overwriting.
 - If a change loosens autonomy, Save requires the explicit review-step confirmation checkbox.
-  The check is server-side; a forged POST is rejected. Detection lives in the pure
-  `loosens_autonomy` helper (`web/service.py`) and covers default mode, rule modes, new auto
-  rules, decreased delays, increased daily limits, shortened/removed quiet hours, `disclose_ai`
-  off, removed banned entries, and widened risk/intents on auto rules.
+  The decision is computed server-side from the file on disk and the submitted text; no
+  client-supplied flag is trusted. Detection lives in the pure `loosens_autonomy` helper
+  (`web/service.py`) and covers `policy.yaml` (default mode, rule modes, new auto rules,
+  decreased delays, increased daily limits, shortened/removed quiet hours, `disclose_ai` off,
+  widened risk/intents on auto rules) and `banned.yaml` (removed banned words/topics).
+  `soul.md` and `brief.md` changes are not classified.
+- The stale-hash re-check and the atomic write run under one process-wide lock
+  (`profile_editor._PROFILE_EDIT_LOCK`), so two concurrent saves cannot both pass the hash
+  check.
 - The `policy.yaml` helper (**approach a**) updates only `default_mode`, `max_posts_per_day` and
   `quiet_hours` with a minimal line-level text edit. It preserves comments and key order and
   refuses shapes it cannot edit safely, telling the user to edit the YAML directly. A YAML
@@ -129,6 +134,45 @@ These classes were kept during the redesign and should be deleted once no templa
   stacks into labeled rows without horizontal scroll.
 
 Read-only helpers: `profiles_overview` and `loosens_autonomy` in `web/service.py`.
+
+## Cost
+
+- Table-first, newest UTC day first, with a rolling window of 7, 14 or 30 days (default 14;
+  an invalid `days` falls back to 14). `?profile=` filters the rows and is preserved in the
+  window links.
+- Columns: day, profile, tokens in/out, cost USD, and one inline bar per row. The bar is a
+  native `<meter>` with `max` set to the largest cost in the window; no inline styles, no JS.
+- Day boundaries are UTC, matching the existing global cap and `cost_summary` behavior.
+- "Today vs daily cap" uses a `<meter>` with spent, cap and percent as text plus a text
+  badge (`within cap`, `near cap`, `over cap`). A non-positive cap is treated as not
+  configured for display, with a short note.
+- Read-only helper: `cost_breakdown` in `web/service.py`.
+
+## Audit
+
+- Compact newest-first table with UTC time, profile, actor, action, entity and monospace
+  entity id. Payloads sit inside `<details>` and are pretty-printed, redacted, and truncated
+  with a visible `Truncated.` note.
+- GET-form filters: actor (exact), action (exact, or a trailing `*` for a prefix), entity
+  (exact), and from/to dates in UTC. Invalid dates, offsets and ranges are ignored with an
+  inline notice, never a 500.
+- Pagination is stable offset paging with a 50-row page and a 5000-row maximum offset guard;
+  Prev/Next links preserve every filter and `?profile=`.
+- There are no delete, edit, export or clear routes. The page is read-only.
+- Helpers: `list_audit_page` and the extended `AuditCatalog.recent` filters.
+
+## Reports
+
+- The list shows period, kind, size and modified time (UTC) with View and Download links, and
+  stays visible when empty. Generate forms are secondary POST forms with CSRF and
+  `hx-disabled-elt="find button"`.
+- With JS, generation returns the refreshed list plus an out-of-band toast. Without JS, it is
+  a normal POST redirect with a flash message.
+- The report view keeps the existing sanitized Markdown pipeline inside a ~70ch reading
+  column; tables scroll inside their own wrapper.
+- Report names must match `weekly-YYYY-Www.md` or `monthly-YYYY-MM.md`, resolve inside the
+  reports directory, and not follow a symlink out of it. Downloads use an attachment
+  `Content-Disposition` filename and `text/markdown`.
 
 ## Navigation model
 

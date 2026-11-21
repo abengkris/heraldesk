@@ -1,43 +1,89 @@
 {% extends "base.html" %}
+{% from "_components.html" import empty_state %}
 {% block title %}Audit · Heraldesk{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <h1>Audit</h1>
-    <p class="muted">Append-only history, newest first. Payloads are redacted and truncated.</p>
+    <p class="muted">Append-only history, newest first. Times and dates are UTC. Payloads are redacted and truncated.</p>
   </div>
 </div>
 
+{% if warning %}<p class="notice warn" role="status">{{ warning }}</p>{% endif %}
+
+<form method="get" action="/audit" class="card filter-grid" aria-label="Audit filters">
+  {% if current_profile %}<input type="hidden" name="profile" value="{{ current_profile }}">{% endif %}
+  <div class="field">
+    <label for="filter-actor">Actor</label>
+    <input id="filter-actor" name="actor" type="text" value="{{ filters.actor }}" autocomplete="off">
+  </div>
+  <div class="field">
+    <label for="filter-action">Action</label>
+    <input id="filter-action" name="action" type="text" value="{{ filters.action }}"
+           placeholder="serve.started or profile.*" autocomplete="off">
+  </div>
+  <div class="field">
+    <label for="filter-entity">Entity</label>
+    <input id="filter-entity" name="entity" type="text" value="{{ filters.entity }}" autocomplete="off">
+  </div>
+  <div class="field">
+    <label for="filter-from">From (UTC)</label>
+    <input id="filter-from" name="date_from" type="date" value="{{ filters.date_from }}">
+  </div>
+  <div class="field">
+    <label for="filter-to">To (UTC)</label>
+    <input id="filter-to" name="date_to" type="date" value="{{ filters.date_to }}">
+  </div>
+  <div class="actions">
+    <button type="submit" class="button primary">Filter</button>
+    <a class="button ghost" href="/audit{% if current_profile %}?profile={{ current_profile }}{% endif %}">Clear filters</a>
+  </div>
+</form>
+
 {% if entries %}
 <div class="table-wrap">
-  <table>
+  <table class="audit-table">
+    <caption class="sr-only">Audit entries, newest first</caption>
     <thead>
       <tr>
-        <th scope="col">ID</th>
-        <th scope="col">When (UTC)</th>
+        <th scope="col">Time (UTC)</th>
         <th scope="col">Profile</th>
         <th scope="col">Actor</th>
         <th scope="col">Action</th>
         <th scope="col">Entity</th>
+        <th scope="col">Entity ID</th>
         <th scope="col">Payload</th>
       </tr>
     </thead>
     <tbody>
       {% for entry in entries %}
       <tr>
-        <td>{{ entry.id }}</td>
-        <td class="nowrap">{{ entry.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-        <td>{{ entry.profile_slug or "—" }}</td>
-        <td>{{ entry.actor }}</td>
-        <td>{{ entry.action }}</td>
-        <td>{{ entry.entity }}{% if entry.entity_id %} #{{ entry.entity_id }}{% endif %}</td>
-        <td class="preview"><code>{{ entry.payload }}</code></td>
+        <td data-label="Time" class="nowrap">{{ entry.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        <td data-label="Profile">{{ entry.profile_slug or "—" }}</td>
+        <td data-label="Actor">{{ entry.actor }}</td>
+        <td data-label="Action"><code>{{ entry.action }}</code></td>
+        <td data-label="Entity">{{ entry.entity }}</td>
+        <td data-label="Entity ID" class="mono">{{ entry.entity_id or "—" }}</td>
+        <td data-label="Payload">
+          <details class="payload">
+            <summary>Show payload</summary>
+            <pre class="payload-body">{{ entry.payload }}</pre>
+            {% if entry.truncated %}<p class="muted small">Truncated. Only the first part is shown.</p>{% endif %}
+          </details>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+
+<nav class="pagination" aria-label="Audit pagination">
+  {% if prev_url %}<a class="button ghost" href="{{ prev_url }}" rel="prev">← Previous</a>{% endif %}
+  <span class="muted small tnum">Rows {{ offset + 1 }}-{{ offset + entries|length }}</span>
+  {% if next_url %}<a class="button ghost" href="{{ next_url }}" rel="next">Next →</a>{% endif %}
+</nav>
 {% else %}
-<p class="empty">No audit entries yet.</p>
+{{ empty_state("No audit entries match.", "Clear the filters or widen the date range.") }}
+<p><a class="button ghost" href="/audit{% if current_profile %}?profile={{ current_profile }}{% endif %}">Clear filters</a></p>
 {% endif %}
 {% endblock %}

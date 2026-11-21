@@ -9,9 +9,10 @@ from __future__ import annotations
 import difflib
 import hmac
 import html
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -73,17 +74,18 @@ from heraldesk.web.profile_editor import (
 )
 from heraldesk.web.rendering import render_markdown
 from heraldesk.web.service import (
+    AUDIT_PAGE_SIZE,
     approve_by_id,
     audit_login,
     calendar_week,
-    cost_summary,
+    cost_breakdown,
     dashboard_counts,
     dashboard_needs_attention,
     generate_report,
     get_inbox_detail,
     get_queue_detail,
     ignore_inbox,
-    list_audit_views,
+    list_audit_page,
     list_inbox_views,
     list_queue_views,
     list_report_files,
@@ -1084,6 +1086,16 @@ async def _generate_report(request: Request, kind: str) -> Response:
             generate_report(db, context.layout, kind, value)
     except (ReportError, WebError) as exc:
         message = context.redactor.redact(str(exc)) or "report generation failed"
+        if _is_htmx(request):
+            return _render(
+                request,
+                "partials/reports_after_generate.html",
+                {
+                    "files": list_report_files(context.layout),
+                    "message": message,
+                    "kind": "danger",
+                },
+            )
         return _page(
             request,
             session,
@@ -1096,7 +1108,15 @@ async def _generate_report(request: Request, kind: str) -> Response:
             error=message,
         )
     if _is_htmx(request):
-        return Response("", headers={"HX-Redirect": "/reports?ok=generated"})
+        return _render(
+            request,
+            "partials/reports_after_generate.html",
+            {
+                "files": list_report_files(context.layout),
+                "message": "Report generated.",
+                "kind": "ok",
+            },
+        )
     return RedirectResponse("/reports?ok=generated", status_code=303)
 
 
@@ -1388,13 +1408,59 @@ async def studio_thread_archive(request: Request, thread_id: int) -> Response:
     return RedirectResponse(f"/studio?profile={summary.slug}", status_code=303)
 
 
+def _audit_date(value: str | None, label: str, warnings: list[str]) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        warnings.append(f"{label} date was ignored; use YYYY-MM-DD.")
+        return None
+
+
+def _audit_offset(value: str | None, warnings: list[str]) -> int:
+    if not value:
+        return 0
+    try:
+        parsed = int(value)
+    except ValueError:
+        warnings.append("Page offset was ignored; showing the newest entries.")
+        return 0
+    if parsed < 0:
+        warnings.append("Page offset was ignored; showing the newest entries.")
+        return 0
+    if parsed > 5000:
+        warnings.append("Page offset is capped at 5000 entries.")
+        return 5000
+    return parsed
+
+
+def _audit_url(offset: int, filters: dict[str, str], profile: str | None) -> str:
+    params = {name: value for name, value in filters.items() if value}
+    if profile:
+        params["profile"] = profile
+    if offset:
+        params["offset"] = str(offset)
+    return "/audit" + (f"?{urlencode(params)}" if params else "")
+
+
 @router.get("/cost", response_class=HTMLResponse)
-def cost_page(request: Request) -> HTMLResponse:
-    """Show LLM cost rollups for the instance and each profile."""
+def cost_page(
+    request: Request,
+    profile: str | None = None,
+    days: str | None = None,
+) -> HTMLResponse:
+    """Show per-day, per-profile LLM cost for a rolling UTC window."""
     session = _session(request)
     context = _context(request)
+    selected = int(days) if days in {"7", "14", "30"} else 14
     with context.database.session() as db:
-        summary = cost_summary(db)
+        summary = cost_breakdown(
+            db,
+            days=selected,
+            profile=profile,
+            cap_usd=context.config.llm.max_daily_cost_usd,
+        )
     return _page(request, session, "cost.html", "cost", summary=summary)
 
 
@@ -1435,13 +1501,73 @@ def calendar_page(
 
 
 @router.get("/audit", response_class=HTMLResponse)
-def audit_page(request: Request, limit: int = 100) -> HTMLResponse:
-    """Show the newest audit entries across profiles."""
+def audit_page(
+    request: Request,
+    actor: str | None = None,
+    action: str | None = None,
+    entity: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    offset: str | None = None,
+    profile: str | None = None,
+) -> HTMLResponse:
+    """Show a filtered, newest-first page of the append-only audit log."""
     session = _session(request)
     context = _context(request)
+    warnings: list[str] = []
+    since = _audit_date(date_from, "From", warnings)
+    until_date = _audit_date(date_to, "To", warnings)
+    if since is not None and until_date is not None and since > until_date:
+        warnings.append("The date range was ignored because From is after To.")
+        since = until_date = None
+    until = (
+        datetime.combine(until_date + timedelta(days=1), time.min, tzinfo=UTC)
+        if until_date is not None
+        else None
+    )
+    start = _audit_offset(offset, warnings)
     with context.database.session() as db:
-        entries = list_audit_views(db, context.redactor, limit=limit)
-    return _page(request, session, "audit.html", "audit", entries=entries)
+        page = list_audit_page(
+            db,
+            context.redactor,
+            actor=(actor or "").strip() or None,
+            action=(action or "").strip() or None,
+            entity=(entity or "").strip() or None,
+            since=datetime.combine(since, time.min, tzinfo=UTC) if since else None,
+            until=until,
+            offset=start,
+            page_size=AUDIT_PAGE_SIZE,
+        )
+    filters = {
+        "actor": actor or "",
+        "action": action or "",
+        "entity": entity or "",
+        "date_from": date_from or "",
+        "date_to": date_to or "",
+    }
+    prev_url = (
+        _audit_url(
+            max(0, page.offset - page.page_size),
+            filters,
+            profile,
+        )
+        if page.has_prev
+        else None
+    )
+    next_url = _audit_url(page.offset + page.page_size, filters, profile) if page.has_next else None
+    return _page(
+        request,
+        session,
+        "audit.html",
+        "audit",
+        entries=page.entries,
+        filters=filters,
+        warning=" ".join(warnings) or None,
+        prev_url=prev_url,
+        next_url=next_url,
+        offset=page.offset,
+        page_size=page.page_size,
+    )
 
 
 @router.get("/profiles/{slug}/edit", response_class=HTMLResponse)
