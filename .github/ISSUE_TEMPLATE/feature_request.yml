@@ -1,0 +1,106 @@
+name: Feature request
+description: Propose a capability or improvement for Heraldesk.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Heraldesk is single-user and self-hosted. Features must keep the one-command install,
+        the single process, SQLite only, BYOK through LiteLLM and safe defaults
+        (`draft_only`, loopback binding). Do not include credentials or real account data.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what is missing or awkward today?
+      placeholder: "As an operator managing ..., I need ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: Describe the smallest useful version. Include commands, UI or API shape if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing commands, profile files, plugins or manual workflows you tried.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - CLI
+        - Web UI
+        - JSON API
+        - Queue, approvals or publishing
+        - Calendar or scheduler
+        - Inbox or Telegram
+        - Draft Room
+        - Profiles or policy
+        - Agents, prompts or LLM provider
+        - Platform adapter
+        - Reports or cost
+        - Backup, restore or upgrade
+        - Installation or packaging
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope checks
+      description: Untick anything this request cannot satisfy; explain the exception below.
+      options:
+        - label: It needs no external service at runtime (no Redis, Postgres, Node or broker).
+          required: true
+        - label: It keeps SQLite as the only database.
+          required: true
+        - label: It needs no new heavy dependency (or the dependency is justified in the issue).
+          required: false
+        - label: It can live in editable profile files, prompts or policies rather than new code.
+          required: false
+        - label: It uses only official platform APIs and does not require scraping or browser automation.
+          required: false
+        - label: It does not add telemetry, phone-home behaviour or vendor lock-in.
+          required: true
+        - label: It is not primarily for fake accounts, impersonation, spam or evading platform rules.
+          required: true
+
+  - type: textarea
+    id: data
+    attributes:
+      label: Storage, migration or compatibility impact
+      description: New tables, schema migrations, config keys, API changes or backup implications. Write "none" if unknown.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mockups, prior art, links to official API docs, or a draft profile/policy example.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I removed credentials and private account data.
+          required: true

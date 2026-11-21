@@ -1,0 +1,137 @@
+name: Bug report
+description: Report reproducible, non-security behaviour in Heraldesk.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste credentials or private data.** Remove admin tokens, API keys,
+        Telegram bot tokens, chat ids, Nostr nsecs, `.env` contents, `secret.key` and real
+        account data. Redact logs before pasting. Report security vulnerabilities through
+        `SECURITY.md`, not as a public issue.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear description of the actual behaviour.
+      placeholder: "When I ..., Heraldesk ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest command, UI action or pipeline that shows the problem.
+      placeholder: |
+        1. Run `heraldesk ...`
+        2. Open `...`
+        3. See ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - pipx
+        - uvx
+        - Docker
+        - From source (`uv run`)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Heraldesk version
+      description: Output of `heraldesk --version`.
+      placeholder: "1.18.12"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python --version` (or the container tag).
+      placeholder: "3.13.18"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Ubuntu 24.04, macOS 15, Windows 11, ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      description: |
+        Paste `heraldesk doctor` with secrets removed. Do not paste `.env`,
+        `secret.key` or full configuration files.
+      render: text
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - CLI
+        - Web UI
+        - JSON API
+        - Queue, approvals or publishing
+        - Calendar or scheduler
+        - Inbox or Telegram
+        - Draft Room
+        - Profiles or policy
+        - Agents, prompts or LLM provider
+        - Platform adapter
+        - Reports or cost
+        - Backup, restore or upgrade
+        - Installation or packaging
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or traceback (redacted)
+      description: Remove tokens, chat ids, account handles and message text that is not yours to share.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I can reproduce this on the latest release or current `main`.
+          required: true
+        - label: I removed credentials, private data and real account content.
+          required: true
+        - label: This is not a security vulnerability (those go through SECURITY.md).
+          required: true
