@@ -8,6 +8,7 @@ from __future__ import annotations
 import shutil
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,17 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "heraldesk-home"
     monkeypatch.setenv("HERALDESK_HOME", str(path))
     return path
+
+
+def fresh_now() -> datetime:
+    """Return the current UTC time for seeding time-sensitive rows.
+
+    The queue read path sweeps pending approvals with the real clock and the
+    approval TTL is 72 hours, so a seed written on a hardcoded past date is
+    cancelled before the test runs. Tests that inject ``now=`` on both sides of
+    a call may still use a fixed date; everyone else takes the clock here.
+    """
+    return datetime.now(UTC)
 
 
 @pytest.fixture(scope="session")

@@ -23,11 +23,11 @@ from heraldesk.domain.content import ContentState
 from heraldesk.domain.profiles import ProfileStatus, set_profile_status
 from heraldesk.platforms.fake import FakeAdapter
 from heraldesk.telegram.fake import FakeTelegramAdapter
-from tests.conftest import ProfileSetup
+from tests.conftest import ProfileSetup, fresh_now
 
 pytestmark = pytest.mark.core
 
-NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
+NOW = fresh_now()
 ADMIN_TOKEN = "test-admin-token"
 CHAT_ID = 123456789
 

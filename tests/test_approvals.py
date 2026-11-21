@@ -450,6 +450,49 @@ def test_expiry_before_72_hours_does_nothing(
     assert "approval.expired" not in actions(db_session, profile_setup)
 
 
+def test_approval_at_71_hours_is_still_visible_and_approvable(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item, approval = make_pending(
+        db_session,
+        profile_setup,
+        now=NOW - timedelta(hours=71),
+    )
+
+    outcomes = expire_pending_approvals(db_session, profile_setup.scope, now=NOW)
+
+    assert outcomes == []
+    entries = list_queue(db_session, profile_setup.scope)
+    assert [entry.approval_id for entry in entries] == [approval.id]
+    outcome = approve(db_session, profile_setup.layout, profile_setup.scope, item.id, now=NOW)
+    assert outcome.to_state == "approved"
+
+
+def test_approval_at_73_hours_expires_and_cancels_the_item(
+    profile_setup: ProfileSetup, db_session: Session
+) -> None:
+    item, approval = make_pending(
+        db_session,
+        profile_setup,
+        now=NOW - timedelta(hours=73),
+    )
+
+    outcomes = expire_pending_approvals(db_session, profile_setup.scope, now=NOW)
+
+    assert len(outcomes) == 1
+    assert outcomes[0].cancelled is True
+    assert list_queue(db_session, profile_setup.scope) == []
+    stored_item = ContentItemRepository(db_session).get(profile_setup.scope, item.id)
+    assert stored_item is not None
+    assert stored_item.state == "cancelled"
+    stored = ApprovalRepository(db_session).get(profile_setup.scope, approval.id)
+    assert stored is not None
+    assert stored.state == ApprovalState.EXPIRED.value
+    recorded = actions(db_session, profile_setup)
+    assert "approval.expired" in recorded
+    assert "content.state_changed" in recorded
+
+
 def test_expired_approval_cannot_be_approved(
     profile_setup: ProfileSetup, db_session: Session
 ) -> None:
