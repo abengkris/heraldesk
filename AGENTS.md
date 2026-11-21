@@ -97,6 +97,9 @@ Jinja2 + HTMX (vendored) + CSS variables (no Node build), pytest, ruff, mypy, uv
 - Do not mark a task done while tests, ruff or mypy fail.
 
 ## Working rules for agents
+- Never commit to `main` directly. Work on a branch named
+  `<type>/<milestone>-<short-name>` (e.g. `feat/m3-llm-runtime`)
+  and open a pull request. One milestone = one PR.
 - Work on ONE milestone at a time (see `ROADMAP.md`). Do not start the next one.
 - Before coding: write a short plan (files to touch, tests to add) and wait for confirmation if in plan mode.
 - Do not add heavy dependencies without recording the reason in `docs/decisions.md`.
