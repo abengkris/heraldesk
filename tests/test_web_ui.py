@@ -471,6 +471,15 @@ def test_cost_page_shows_agent_run_totals(
 def test_calendar_page_lists_scheduled_items(
     initialized: InitResult, profile_setup: ProfileSetup, db_session: Session
 ) -> None:
+    """The calendar shows a scheduled item in the week it belongs to.
+
+    The page renders one Monday-based week containing today, so asking for the week that
+    contains ``tomorrow`` keeps the test independent of the weekday it runs on: on a Sunday
+    ``tomorrow`` falls in the next ISO week and the default page is correctly empty.
+    """
+    now = datetime.now(UTC)
+    tomorrow = now + timedelta(days=1)
+    week_of_item = tomorrow.date() - timedelta(days=tomorrow.weekday())
     item = ContentItemRepository(db_session).add(
         profile_setup.scope,
         platform="fake",
@@ -480,14 +489,16 @@ def test_calendar_page_lists_scheduled_items(
     ContentItemRepository(db_session).set_scheduled_at(
         profile_setup.scope,
         item.id,
-        scheduled_at=datetime.now(UTC) + timedelta(days=1),
+        scheduled_at=tomorrow,
     )
     db_session.commit()
 
     with make_client(initialized) as client:
         login(client)
-        page = client.get("/calendar")
+        default_page = client.get("/calendar")
+        page = client.get(f"/calendar?week={week_of_item.isoformat()}")
 
+    assert default_page.status_code == 200
     assert page.status_code == 200
     assert "A calendar item about faster dashboards." in page.text
     assert "scheduled" in page.text

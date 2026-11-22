@@ -6,6 +6,14 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.15] - 2026-11-22
+
+### Fixed
+
+- The calendar Web UI test no longer fails when it runs on a Sunday: it asks for the week that
+  actually contains the scheduled item instead of assuming `now + 1 day` stays in the current
+  week. No product behaviour changed.
+
 ## [1.18.14] - 2026-11-21
 
 ### Fixed

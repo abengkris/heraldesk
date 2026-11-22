@@ -1407,3 +1407,16 @@ and copyability matters more. Other prints (`console.print` for tables and succe
 keep normal wrapping; the 15 table-width failures at `COLUMNS=40` are a separate concern and
 are not solved by this change.
 
+## Time-dependent web tests must pin their window (2026-11-22)
+
+The web suite had a second time bomb of the same class. `test_calendar_page_lists_scheduled_items`
+created an item at `now + 1 day` and then requested `/calendar`, which renders the Monday-based
+week containing today. On a Sunday, "tomorrow" is in the next ISO week, so the page correctly
+rendered an empty week and the substring assertion failed. `main` turned red at 2026-11-22
+00:00 UTC for this reason alone, one day after the approval TTL bug was fixed.
+
+Rule: a test that depends on a calendar window must either inject the window (`?week=`) or
+derive it from the timestamp it seeds, never assume that `now + N` lands in the same window as
+`now`. Tests may use the real clock; they must not assume the real clock's position in a week.
+
+
