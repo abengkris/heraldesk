@@ -1,0 +1,58 @@
+name: Clock drift
+
+# Guards against wall-clock coupling in the test suite (see issue #15 and
+# docs/decisions.md). Every datetime the suite relies on is compared against the
+# real clock somewhere, so a fixed seed or a "now + N" assumption can pass for
+# weeks and then fail with no code change behind it. Two such failures landed on
+# main in two days: approval seeds past the 72-hour TTL, and a calendar item that
+# fell into the next ISO week once the day rolled over.
+#
+# Run weekly rather than per pull request: the suite is deterministic for a given
+# date, so a red run here means "this test will break on <date>", not "this diff
+# broke something".
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clock-drift-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Suite at ${{ matrix.offset }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        # +3 crosses the 72-hour approval TTL, +10 crosses a week and a month
+        # boundary, and the negative offsets cover past-dated windows such as
+        # retention and weekly report lookbacks.
+        offset: ["+3 days", "+10 days", "-3 days", "-10 days"]
+    steps:
+      - name: Check out
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: "0.13.8"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install faketime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends faketime
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run the suite under a shifted clock
+        env:
+          # Counters and deadlines inside the interpreter must stay monotonic;
+          # only the wall clock is shifted.
+          FAKETIME_DONT_FAKE_MONOTONIC: "1"
+        run: faketime "${{ matrix.offset }}" uv run pytest -q
