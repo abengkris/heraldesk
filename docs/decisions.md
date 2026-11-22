@@ -1389,3 +1389,21 @@ Coverage runs on Linux only: the same suite already runs on macOS, Python 3.13 a
 collecting coverage on every job would add minutes for no extra signal. The `fail_under`
 threshold lives in the CI command rather than `[tool.coverage.report]` so a local partial run
 (one test file) still reports instead of failing.
+
+## CLI `abort()` prints with `soft_wrap` (2026-11-21)
+
+`heraldesk` CLI errors go through `abort()` in `src/heraldesk/cli/common.py`, which prints
+through a module-level `Console()`. Rich wraps to the detected width, so on a narrow terminal
+or with a long data-folder path the hint `run 'heraldesk init' first` was split across two
+lines and became unsearchable, and the CLI tests that assert on that text failed depending on
+where the wrap landed (`COLUMNS=40` failed, `COLUMNS=60` passed, `COLUMNS=80` failed again).
+
+`abort()` now prints with `soft_wrap=True`, so the message stays on one line and a path or
+command name inside it can be copied as-is. Message wording is unchanged.
+
+Accepted trade-off: a genuinely long error is no longer folded at narrow widths, so a very
+narrow terminal shows a long line instead of a wrapped paragraph. Errors are short by design
+and copyability matters more. Other prints (`console.print` for tables and success output)
+keep normal wrapping; the 15 table-width failures at `COLUMNS=40` are a separate concern and
+are not solved by this change.
+

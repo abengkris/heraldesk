@@ -6,6 +6,14 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.14] - 2026-11-21
+
+### Fixed
+
+- CLI errors no longer wrap mid-message: `abort()` prints with `soft_wrap=True`, so a path or
+  command name inside an error stays on one line and can be copied as-is on narrow terminals.
+  Message wording is unchanged; CLI tests no longer fail depending on the console width.
+
 ## [1.18.13] - 2026-11-21
 
 ### Fixed

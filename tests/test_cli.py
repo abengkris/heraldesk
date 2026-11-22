@@ -6,6 +6,7 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from heraldesk import __version__
@@ -105,6 +106,26 @@ def test_serve_fails_without_an_initialised_home(home: Path) -> None:
     result = runner.invoke(app, ["serve"])
     assert result.exit_code == 1
     assert "heraldesk init" in result.output
+
+
+def test_abort_message_is_not_folded_at_a_narrow_width(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for issue #9: a narrow console must not split the error message.
+
+    ``abort()`` prints through a module-level console, so the width comes from ``COLUMNS``.
+    With a long data folder and a 40-column console Rich used to wrap the text and split the
+    hint ``run 'heraldesk init' first`` across two lines, which made it unsearchable.
+    """
+    long_home = home / ("padding-" * 4)
+    monkeypatch.setenv("HERALDESK_HOME", str(long_home))
+    monkeypatch.setenv("COLUMNS", "40")
+
+    result = runner.invoke(app, ["profile", "list"])
+
+    assert result.exit_code == 1
+    assert "heraldesk init" in result.output
+    assert result.output.strip().count("\n") == 0, result.output
 
 
 def test_init_command_creates_and_reports(initialized: InitResult) -> None:
