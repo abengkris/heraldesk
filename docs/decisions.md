@@ -1419,6 +1419,51 @@ Rule: a test that depends on a calendar window must either inject the window (`?
 derive it from the timestamp it seeds, never assume that `now + N` lands in the same window as
 `now`. Tests may use the real clock; they must not assume the real clock's position in a week.
 
+## Wall-clock coupling audit: how to probe, and what the sweep found (2026-11-22)
+
+Reviewers cannot catch wall-clock coupling by reading a diff: the failure depends on when the
+suite runs, not on what changed. Two `main` failures in two days proved it (#11 approval TTL,
+#14 calendar week). The audit therefore probes instead of reading.
+
+Probe command (GNU `faketime` is already installed; no new dependency, no new Python package):
+
+```
+FAKETIME_DONT_FAKE_MONOTONIC=1 faketime '+14 days' .venv/bin/pytest -q
+```
+
+A full suite run under one offset takes 13 to 26 minutes, so the audit used a few offsets chosen
+to cross the boundaries the code compares against: +4 days, +14 days (crosses a month), and -7
+days. `tests/test_cli_m8.py` was also checked at +52 days, past the 30-day inbox prune threshold.
+
+### Classification of the 18 modules holding hardcoded 2026 datetimes
+
+Safe by construction, because the fixed value is only a *data* timestamp and the function under
+test receives the same `now=`/`clock=` explicitly. These stay as they are; a fixed date here is
+more readable and reviewable than `datetime.now()`:
+
+| Module | Why it is safe |
+|---|---|
+| `test_approvals.py` | 46 `now=` injections; the clock is a parameter everywhere |
+| `test_notifications.py`, `test_publisher.py`, `test_publisher_nostr.py`, `test_scheduler.py`, `test_scheduling_policy.py`, `test_telegram_inbox.py` | same pattern: `now=`/`clock=lambda: NOW` |
+| `test_web_auth.py` | session `now=` injected for issue and read |
+| `test_cost_cap.py` | `clock=lambda: NOW` plus `profile_day_window(NOW, ...)` |
+| `test_nostr_adapter.py` | `build_event(..., NOW)` and `clock=lambda: NOW` |
+| `test_cli_m10.py` | adapter `clock=lambda: NOW` |
+| `test_analyst.py` | the fixed date is the *assertion* of `weekly_period("2026-W46")`, not a clock read |
+| `test_web_ui_calendar.py` | calls `calendar_week(..., week_start=MONDAY)` explicitly |
+| `test_web_ui_ops.py` | passes `now=` into `cost_breakdown` and audit helpers |
+| `test_cli_m6.py` | the fixed date is a seeded row, and the list command has no time window |
+| `test_community.py`, `test_daily_content.py` | fixed dates are seeded data; the window is asserted, not read |
+
+Fixed in this milestone: `test_cli_m8.py`. Its `make_message()` helper defaulted `created_at` to
+`2026-11-17`, so the row a test called "new" aged past the 30-day prune threshold. The default is
+now the current time (see #17). Pre-fix sweeps at 2026-12-31 and 2027-01-03 both failed exactly
+that test, which confirms the sweep finds real coupling rather than guessing at it.
+
+The guard workflow itself is described in the next section.
+
+
+
 
 ## Clock drift runs weekly, under four offsets (2026-11-22)
 
