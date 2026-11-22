@@ -6,6 +6,20 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.17] - 2026-11-22
+
+### Fixed
+
+- `tests/test_cli_m8.py` no longer dates its "recent" inbox rows in the past: `make_message()`
+  defaults `created_at` to the current time, so the 30-day prune test stops breaking as the wall
+  clock moves forward. Adds a regression test that seeds one old and one default row.
+
+### Changed
+
+- `docs/decisions.md` classifies every test module that holds a hardcoded 2026 datetime as either
+  safe (the clock is injected) or fixed, and documents the `faketime` probe used for the audit.
+  The probe was run at +4, +14 and -7 days against the full suite.
+
 ## [1.18.16] - 2026-11-22
 
 ### Added

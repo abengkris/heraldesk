@@ -51,11 +51,17 @@ def make_message(
     created_at: datetime | None = None,
     handled: bool = False,
 ) -> int:
+    """Insert one inbox message and return its id.
+
+    ``created_at`` defaults to the current time, not a fixed date: a message that a test
+    calls "new" must stay newer than any prune threshold as the wall clock moves forward.
+    Pass ``created_at`` explicitly when a test needs a specific stamp.
+    """
     ensure_profile(initialized)
     with db(initialized) as session:
         scope: ProfileScope = resolve_scope(session, "acme")
         set_profile_status(session, scope, ProfileStatus.ACTIVE)
-        stamp = created_at or datetime(2026, 11, 17, 12, 0, tzinfo=UTC)
+        stamp = created_at if created_at is not None else datetime.now(UTC)
         message = TelegramMessageRepository(session).add(
             scope,
             chat_id=CHAT_ID,
@@ -263,3 +269,25 @@ def test_inbox_prune_removes_only_old_triaged_messages(initialized: InitResult) 
     assert pending_too.exit_code == 0, pending_too.output
     with db(initialized) as session:
         assert InboxRepository(session).get(old_pending) is None
+
+
+def test_inbox_prune_keeps_a_default_dated_message(initialized: InitResult) -> None:
+    """A message seeded without an explicit date must count as recent at any wall-clock time.
+
+    Regression for the fixture default: it used to fall back to a fixed 2026-11-17 stamp, so a
+    message the test treats as "new" silently aged past the 30-day threshold and the prune count
+    changed. Seeding one explicit old row and one default row makes the expected count exact.
+    """
+    old = datetime.now(UTC) - timedelta(days=40)
+    make_message(initialized, "old handled", created_at=old, handled=True)
+    recent = make_message(initialized, "recent handled", handled=True)
+
+    dry_run = invoke("inbox", "prune", "--days", "30", "--dry-run")
+    assert dry_run.exit_code == 0, dry_run.output
+    assert "Would prune: 1 inbox message(s)" in dry_run.output
+
+    pruned = invoke("inbox", "prune", "--days", "30")
+    assert pruned.exit_code == 0, pruned.output
+    with db(initialized) as session:
+        repository = InboxRepository(session)
+        assert repository.get(recent) is not None
