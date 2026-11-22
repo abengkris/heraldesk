@@ -24,6 +24,22 @@ uv run pytest
 - New platform adapters must use official APIs and pass the adapter contract tests.
 - No telemetry, no new runtime services.
 
+## Time-dependent tests
+A test may use the real clock. It must not assume where the real clock sits in a week, a
+month or a TTL window, and it must not compare a hardcoded date against a code path that
+reads the clock itself. Seed from `tests/conftest.py:fresh_now()`, pass `now=` on both sides
+of a call, or pin the query (for example `/calendar?week=YYYY-MM-DD`).
+
+`main` has already gone red twice this way: approval seeds aged past the 72-hour TTL, and a
+calendar item moved into the next ISO week. Run the suite under a shifted clock before
+blaming a diff:
+
+```bash
+FAKETIME_DONT_FAKE_MONOTONIC=1 faketime '+10 days' uv run pytest -q
+```
+
+The `Clock drift` workflow does this weekly at `+3`, `+10`, `-3` and `-10` days.
+
 ## Acceptable use
 We will not accept features whose main purpose is fake-account networks, impersonation, spam or
 evading platform rules.

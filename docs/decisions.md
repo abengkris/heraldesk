@@ -1420,3 +1420,25 @@ derive it from the timestamp it seeds, never assume that `now + N` lands in the 
 `now`. Tests may use the real clock; they must not assume the real clock's position in a week.
 
 
+## Clock drift runs weekly, under four offsets (2026-11-22)
+
+Two `main` failures in two days came from wall-clock coupling, and neither was visible in the
+diff that triggered it: the suite is deterministic for a given date, so review cannot catch
+this class. A guard has to change the date.
+
+`Clock drift` runs the full suite under `faketime` at `+3`, `+10`, `-3` and `-10` days. The
+offsets are chosen for the boundaries the code actually reads, not for round numbers: `+3`
+crosses the 72-hour approval TTL, `+10` crosses an ISO week and a month boundary, and the two
+negative offsets cover past-dated windows such as inbox retention and weekly report lookbacks.
+
+Weekly rather than per pull request. Per-PR would quadruple the test time to catch a failure
+that cannot be introduced by a diff review anyway, and a red run here means "this test will
+break on a given date", which is an issue to fix, not a reason to block a merge. It also runs
+on `workflow_dispatch` so a suspicious date can be checked immediately.
+
+`faketime` comes from Ubuntu's `faketime` package in the job, and `FAKETIME_DONT_FAKE_MONOTONIC`
+is set so only the wall clock shifts: timers and backoff inside the interpreter keep their
+monotonic source. Local use is the same command, documented in `CONTRIBUTING.md`.
+
+Accepted trade-off: the workflow needs `sudo apt-get` on the runner, so it fails if the image
+drops the package. That failure is loud and fixable, unlike a test that rots silently.

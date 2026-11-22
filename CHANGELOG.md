@@ -6,6 +6,15 @@ M0-M9 implementation milestones together; `1.1.0` adds the first real platform a
 `1.3.0` adds third-party adapter plugins; `1.4.0` adds online doctor probes; `1.5.0` adds
 the Threads adapter and production distribution/hardening.
 
+## [1.18.16] - 2026-11-22
+
+### Added
+
+- `Clock drift` workflow: the suite runs weekly at `+3`, `+10`, `-3` and `-10` days from the
+  real date under `faketime`, so a test that couples to the wall clock fails in CI instead of
+  turning `main` red weeks later. On demand through `workflow_dispatch`.
+- `CONTRIBUTING.md` states the rule for time-dependent tests and the local command to check one.
+
 ## [1.18.15] - 2026-11-22
 
 ### Fixed
